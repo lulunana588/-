@@ -1,0 +1,993 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>日常工作日報</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ══════════════════════════════════════
+   共用變數
+══════════════════════════════════════ */
+:root {
+  --bg:#0d1117; --surface:#161b22; --surface2:#1c2330; --surface3:#202c3a;
+  --border:#2a3441; --border2:#3d4f63;
+  --text:#e6edf3; --text2:#8b9ab0; --text3:#5a6a7e;
+  --teal:#39d0a0; --teal-dim:rgba(57,208,160,0.15);
+  --blue:#4a9eff; --blue-dim:rgba(74,158,255,0.12);
+  --red:#f85149; --red-dim:rgba(248,81,73,0.12);
+  --amber:#d29922; --amber-dim:rgba(210,153,34,0.12);
+  --r:8px; --rlg:12px;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;}
+
+/* ══════════════════════════════════════
+   密碼遮罩
+══════════════════════════════════════ */
+#lock-overlay {
+  display:none;position:fixed;inset:0;z-index:9999;
+  background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);
+  align-items:center;justify-content:center;
+}
+#lock-overlay.show{display:flex;}
+.lock-box {
+  background:var(--surface);border:1px solid var(--border2);border-radius:16px;
+  padding:36px 32px;width:320px;text-align:center;
+}
+.lock-icon{font-size:32px;margin-bottom:12px;}
+.lock-title{font-size:16px;font-weight:700;margin-bottom:4px;}
+.lock-sub{font-size:12px;color:var(--text3);margin-bottom:20px;}
+.lock-input {
+  width:100%;background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:'JetBrains Mono',monospace;
+  font-size:18px;padding:12px;text-align:center;outline:none;letter-spacing:0.2em;
+  transition:border-color 0.2s;
+}
+.lock-input:focus{border-color:var(--teal);}
+.lock-input.shake{animation:shake 0.3s ease;}
+@keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px)};}
+.lock-btn {
+  margin-top:14px;width:100%;background:var(--teal);color:#0d1117;border:none;
+  border-radius:var(--r);font-size:14px;font-weight:700;padding:12px;cursor:pointer;
+  font-family:'Noto Sans TC',sans-serif;transition:background 0.2s;
+}
+.lock-btn:hover{background:#4de0b4;}
+.lock-err{font-size:12px;color:var(--red);margin-top:10px;height:16px;}
+.lock-cancel{font-size:12px;color:var(--text3);margin-top:12px;cursor:pointer;transition:color 0.2s;}
+.lock-cancel:hover{color:var(--text2);}
+
+/* ══════════════════════════════════════
+   日報表（組員視圖）
+══════════════════════════════════════ */
+#view-form{display:block;}
+#view-form body-wrap {display:block;}
+
+.form-wrap {
+  padding:32px 16px 80px;
+  position:relative;
+}
+.form-wrap::before {
+  content:'';position:fixed;inset:0;
+  background-image:linear-gradient(rgba(57,208,160,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(57,208,160,0.03) 1px,transparent 1px);
+  background-size:40px 40px;pointer-events:none;z-index:0;
+}
+.container{max-width:680px;margin:0 auto;position:relative;z-index:1;}
+
+.header{margin-bottom:32px;padding-bottom:24px;border-bottom:1px solid var(--border);}
+.header-tag{
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;
+  color:var(--teal);letter-spacing:0.15em;text-transform:uppercase;margin-bottom:10px;
+  cursor:default;user-select:none;
+}
+.header h1{font-size:24px;font-weight:700;letter-spacing:-0.02em;margin-bottom:6px;}
+.header .subtitle{font-size:13px;color:var(--text2);display:flex;align-items:center;gap:16px;}
+.deadline-badge{
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--amber-dim);border:1px solid rgba(210,153,34,0.3);color:var(--amber);
+  font-size:11px;font-weight:500;padding:3px 9px;border-radius:20px;
+  font-family:'JetBrains Mono',monospace;
+}
+
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);padding:24px;margin-bottom:16px;transition:border-color 0.2s;}
+.card:focus-within{border-color:var(--border2);}
+.card-header{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+.card-num{
+  width:22px;height:22px;background:var(--teal-dim);border:1px solid rgba(57,208,160,0.3);
+  border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:500;color:var(--teal);flex-shrink:0;
+}
+.card-title{font-size:14px;font-weight:600;letter-spacing:0.01em;}
+.card-hint{margin-left:auto;font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+
+label{display:block;font-size:12px;font-weight:500;color:var(--text2);letter-spacing:0.05em;margin-bottom:7px;}
+.field-group{margin-bottom:16px;}
+.field-group:last-child{margin-bottom:0;}
+
+input[type="text"],input[type="date"],select,textarea {
+  width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);
+  color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:14px;padding:10px 14px;
+  outline:none;transition:border-color 0.2s,box-shadow 0.2s;-webkit-appearance:none;
+}
+input:focus,select:focus,textarea:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(57,208,160,0.1);}
+textarea{resize:vertical;min-height:80px;line-height:1.6;}
+select option{background:var(--surface2);}
+.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+
+.risk-toggle{
+  display:flex;align-items:center;gap:10px;background:var(--surface2);border:1px solid var(--border);
+  border-radius:var(--r);padding:10px 14px;cursor:pointer;transition:all 0.2s;margin-bottom:12px;user-select:none;
+}
+.risk-toggle:hover{border-color:var(--border2);}
+.risk-toggle.active{background:var(--red-dim);border-color:rgba(248,81,73,0.4);}
+.risk-toggle input{display:none;}
+.risk-indicator{
+  width:20px;height:20px;border-radius:5px;border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;font-size:11px;transition:all 0.2s;flex-shrink:0;
+}
+.risk-toggle.active .risk-indicator{background:var(--red);border-color:var(--red);color:white;}
+.risk-text{font-size:13px;color:var(--text2);transition:color 0.2s;}
+.risk-toggle.active .risk-text{color:var(--red);font-weight:500;}
+
+.dynamic-item{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.item-num{width:20px;text-align:center;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);flex-shrink:0;}
+.dynamic-item input{flex:1;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:14px;padding:9px 12px;outline:none;transition:border-color 0.2s,box-shadow 0.2s;}
+.dynamic-item input:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(57,208,160,0.1);}
+.del-btn{width:28px;height:28px;flex-shrink:0;background:transparent;border:1px solid transparent;border-radius:6px;color:var(--text3);font-size:13px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.15s;}
+.del-btn:hover{background:var(--red-dim);border-color:rgba(248,81,73,0.3);color:var(--red);}
+.add-row-btn{width:100%;margin-top:4px;background:transparent;border:1px dashed var(--border2);border-radius:var(--r);color:var(--text3);font-size:13px;font-family:'Noto Sans TC',sans-serif;padding:8px;cursor:pointer;transition:all 0.2s;}
+.add-row-btn:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-dim);}
+
+.submit-section{margin-top:24px;}
+.submit-btn{width:100%;background:var(--teal);color:#0d1117;border:none;border-radius:var(--r);font-family:'Noto Sans TC',sans-serif;font-size:15px;font-weight:700;padding:14px;cursor:pointer;transition:all 0.2s;letter-spacing:0.05em;}
+.submit-btn:hover{background:#4de0b4;transform:translateY(-1px);box-shadow:0 4px 20px rgba(57,208,160,0.3);}
+.submit-btn:active{transform:translateY(0);}
+.submit-btn:disabled{opacity:0.5;cursor:not-allowed;transform:none;}
+.status-msg{margin-top:14px;padding:12px 16px;border-radius:var(--r);font-size:13px;display:none;align-items:center;gap:8px;}
+.status-msg.success{display:flex;background:rgba(57,208,160,0.1);border:1px solid rgba(57,208,160,0.3);color:var(--teal);}
+.status-msg.error{display:flex;background:var(--red-dim);border:1px solid rgba(248,81,73,0.3);color:var(--red);}
+.divider-text{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;letter-spacing:0.1em;margin-bottom:8px;}
+.tg-section{background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-top:12px;}
+.tg-section pre{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--text2);white-space:pre-wrap;line-height:1.7;}
+.copy-btn{margin-top:10px;background:transparent;border:1px solid var(--border2);border-radius:6px;color:var(--text2);font-size:12px;padding:6px 14px;cursor:pointer;transition:all 0.2s;font-family:'Noto Sans TC',sans-serif;}
+.copy-btn:hover{border-color:var(--teal);color:var(--teal);}
+hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
+.req{color:var(--red);margin-left:2px;}
+
+@media(max-width:480px){.info-grid{grid-template-columns:1fr;}}
+
+/* ══════════════════════════════════════
+   管理後台（Luna 專用）
+══════════════════════════════════════ */
+#view-admin{display:none;flex-direction:column;min-height:100vh;}
+#view-admin.show{display:flex;}
+
+.topbar{
+  display:flex;align-items:center;gap:16px;padding:0 24px;height:52px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:100;
+}
+.topbar-logo{font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:500;color:var(--teal);letter-spacing:0.1em;white-space:nowrap;}
+.tb-div{width:1px;height:20px;background:var(--border2);}
+.tabs{display:flex;gap:2px;}
+.tab{display:flex;align-items:center;gap:6px;padding:6px 14px;border-radius:6px;font-size:13px;color:var(--text2);cursor:pointer;transition:all 0.15s;border:1px solid transparent;white-space:nowrap;}
+.tab:hover{color:var(--text);background:var(--surface2);}
+.tab.active{color:var(--teal);background:var(--teal-dim);border-color:rgba(57,208,160,0.2);}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:10px;}
+.badge{background:var(--red);color:white;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;border-radius:10px;padding:1px 6px;min-width:18px;text-align:center;}
+.date-chip{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--text3);}
+.exit-btn{font-size:12px;color:var(--text3);cursor:pointer;padding:5px 10px;border-radius:6px;border:1px solid var(--border);transition:all 0.2s;font-family:'Noto Sans TC',sans-serif;}
+.exit-btn:hover{color:var(--red);border-color:rgba(248,81,73,0.3);}
+
+.page{display:none;}
+.page.active{display:block;}
+.page-inner{padding:24px;max-width:1100px;width:100%;margin:0 auto;}
+
+.sec-head{display:flex;align-items:center;gap:12px;margin-bottom:20px;}
+.sec-title{font-size:16px;font-weight:700;letter-spacing:-0.01em;}
+.sec-sub{font-size:12px;color:var(--text2);margin-left:auto;font-family:'JetBrains Mono',monospace;}
+
+.a-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:20px;margin-bottom:12px;}
+.stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;}
+.stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:16px 18px;}
+.stat-label{font-size:11px;color:var(--text2);letter-spacing:0.05em;margin-bottom:8px;}
+.stat-val{font-family:'JetBrains Mono',monospace;font-size:26px;font-weight:500;}
+.stat-hint{font-size:11px;color:var(--text3);margin-top:4px;}
+
+.missing-bar{background:var(--amber-dim);border:1px solid rgba(210,153,34,0.25);border-radius:var(--r);padding:12px 16px;display:flex;align-items:center;gap:12px;margin-bottom:16px;}
+.missing-label{font-size:12px;color:var(--amber);font-weight:600;white-space:nowrap;}
+.missing-names{font-size:13px;color:var(--text2);}
+
+.report-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;transition:border-color 0.2s;}
+.report-row:hover{border-color:var(--border2);}
+.report-row.risk{border-left:3px solid var(--red);}
+.report-row.approved{border-left:3px solid var(--teal);}
+.report-row.pending{border-left:3px solid var(--amber);}
+.report-row.flagged{border-left:3px solid var(--red);}
+
+.report-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;}
+.member-avatar{width:32px;height:32px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal);flex-shrink:0;}
+.report-meta{flex:1;min-width:0;}
+.report-name{font-size:14px;font-weight:600;}
+.report-time{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.report-counts{display:flex;gap:8px;align-items:center;}
+.count-pill{font-family:'JetBrains Mono',monospace;font-size:12px;padding:3px 8px;border-radius:4px;}
+.pill-done{background:var(--teal-dim);color:var(--teal);}
+.pill-undone{background:var(--red-dim);color:var(--red);}
+.status-chip{font-size:11px;padding:3px 10px;border-radius:20px;font-family:'JetBrains Mono',monospace;white-space:nowrap;}
+.chip-pending{background:var(--amber-dim);color:var(--amber);border:1px solid rgba(210,153,34,0.3);}
+.chip-approved{background:var(--teal-dim);color:var(--teal);border:1px solid rgba(57,208,160,0.3);}
+.chip-flagged{background:var(--red-dim);color:var(--red);border:1px solid rgba(248,81,73,0.3);}
+.chevron{color:var(--text3);font-size:12px;transition:transform 0.2s;}
+.report-row.open .chevron{transform:rotate(180deg);}
+
+.report-body{display:none;padding:0 16px 16px;border-top:1px solid var(--border);}
+.report-row.open .report-body{display:block;}
+.report-section{margin-top:14px;}
+.rs-label{font-size:11px;color:var(--text3);letter-spacing:0.08em;margin-bottom:6px;}
+.rs-items{display:flex;flex-direction:column;gap:4px;}
+.rs-item{font-size:13px;color:var(--text2);padding:6px 10px;background:var(--surface2);border-radius:5px;display:flex;gap:8px;}
+.rs-item .num{color:var(--text3);font-family:'JetBrains Mono',monospace;font-size:11px;flex-shrink:0;}
+
+.approve-bar{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border);align-items:flex-start;}
+.approve-note{flex:1;}
+.approve-note textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:13px;padding:8px 10px;resize:none;height:52px;outline:none;transition:border-color 0.2s;}
+.approve-note textarea:focus{border-color:var(--teal);}
+
+.btn{padding:8px 16px;border-radius:6px;font-size:13px;font-family:'Noto Sans TC',sans-serif;font-weight:600;cursor:pointer;border:none;transition:all 0.15s;white-space:nowrap;flex-shrink:0;}
+.btn-teal{background:var(--teal);color:#0b0f14;}
+.btn-teal:hover{background:#4de0b4;}
+.btn-red{background:var(--red-dim);color:var(--red);border:1px solid rgba(248,81,73,0.3);}
+.btn-red:hover{background:rgba(248,81,73,0.2);}
+.btn-ghost{background:transparent;color:var(--text2);border:1px solid var(--border2);}
+.btn-ghost:hover{border-color:var(--teal);color:var(--teal);}
+.btn-blue{background:var(--blue);color:#0b0f14;}
+.btn-blue:hover{background:#5aaaff;}
+
+.weekly-editor textarea{width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);color:var(--text);font-family:'Noto Sans TC',sans-serif;font-size:14px;line-height:1.8;padding:16px;resize:vertical;min-height:120px;outline:none;transition:border-color 0.2s;}
+.weekly-editor textarea:focus{border-color:var(--teal);}
+.weekly-section{margin-bottom:16px;}
+.weekly-section-label{font-size:12px;font-weight:600;color:var(--text2);letter-spacing:0.05em;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.action-row{display:flex;gap:10px;margin-top:20px;justify-content:flex-end;}
+
+.data-table{width:100%;border-collapse:collapse;font-size:13px;}
+.data-table th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:var(--text3);letter-spacing:0.08em;border-bottom:1px solid var(--border);background:var(--surface);}
+.data-table td{padding:11px 14px;border-bottom:1px solid var(--border);color:var(--text2);}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tr:hover td{background:var(--surface2);}
+.mono{font-family:'JetBrains Mono',monospace;font-size:12px;}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--r);padding:12px 18px;font-size:13px;color:var(--text);display:none;z-index:9998;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+.toast.show{display:flex;align-items:center;gap:8px;}
+.toast.success{border-color:rgba(57,208,160,0.4);}
+.toast.error{border-color:rgba(248,81,73,0.4);}
+
+::-webkit-scrollbar{width:6px;height:6px;}
+::-webkit-scrollbar-track{background:transparent;}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
+@media(max-width:700px){.stat-grid{grid-template-columns:repeat(2,1fr)};.topbar{overflow-x:auto};}
+</style>
+</head>
+<body>
+
+<!-- ══ 密碼遮罩 ══ -->
+<div id="lock-overlay">
+  <div class="lock-box">
+    <div class="lock-icon">🔐</div>
+    <div class="lock-title">行政管理後台</div>
+    <div class="lock-sub">請輸入組長密碼</div>
+    <input class="lock-input" type="password" id="lock-pw" maxlength="20"
+      placeholder="••••••" onkeydown="if(event.key==='Enter')checkPw()">
+    <button class="lock-btn" onclick="checkPw()">進入後台</button>
+    <div class="lock-err" id="lock-err"></div>
+    <div class="lock-cancel" onclick="closeLock()">取消，返回日報表</div>
+  </div>
+</div>
+
+<!-- ══ 日報表（組員填寫）══ -->
+<div id="view-form">
+<div class="form-wrap">
+<div class="container">
+
+  <div class="header">
+    <!-- 點擊 5 次觸發管理後台 -->
+    <div class="header-tag" id="admin-trigger">L1 → L2 Daily Report</div>
+    <h1>日常工作日報</h1>
+    <div class="subtitle">
+      <span>每日工作打卡回報</span>
+      <span class="deadline-badge">⏰ 截止 21:00</span>
+    </div>
+  </div>
+
+  <!-- 基本資訊 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">①</div>
+      <div class="card-title">基本資訊</div>
+    </div>
+    <div class="info-grid">
+      <div class="field-group">
+        <label>姓名 <span class="req">*</span></label>
+        <select id="member-name">
+          <option value="">請選擇</option>
+          <optgroup label="行政組長"><option>Luna</option></optgroup>
+          <optgroup label="行政專員">
+            <option>妍妍</option><option>小菁</option><option>蕾蕾</option><option>GD</option>
+          </optgroup>
+          <optgroup label="資產專員"><option>田田</option><option>荳荳</option></optgroup>
+        </select>
+      </div>
+      <div class="field-group">
+        <label>日期 <span class="req">*</span></label>
+        <input type="date" id="report-date">
+      </div>
+    </div>
+  </div>
+
+  <!-- 今日完成事項 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">②</div>
+      <div class="card-title">今日完成事項</div>
+      <span class="card-hint">必填，至少 1 項</span>
+    </div>
+    <div id="done-list"></div>
+    <button class="add-row-btn" type="button" onclick="addDoneItem()">＋ 新增完成事項</button>
+  </div>
+
+  <!-- 未完成事項 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num" style="background:rgba(248,81,73,0.12);border-color:rgba(248,81,73,0.3);">
+        <span style="color:var(--red);">③</span>
+      </div>
+      <div class="card-title">未完成事項</div>
+      <span class="card-hint">無則免填</span>
+    </div>
+    <div id="undone-list"></div>
+    <button class="add-row-btn" type="button" onclick="addUndoneItem()"
+      style="border-color:rgba(248,81,73,0.3);">＋ 新增未完成事項</button>
+  </div>
+
+  <!-- 例外上報 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num">④</div>
+      <div class="card-title">例外上報</div>
+      <span class="card-hint">無則免填</span>
+    </div>
+    <label class="risk-toggle" id="risk-toggle" onclick="toggleRisk()">
+      <input type="checkbox" id="is-risk">
+      <div class="risk-indicator" id="risk-icon">△</div>
+      <span class="risk-text" id="risk-label">標記為 △ 風險（影響團隊的異常）</span>
+    </label>
+    <div class="field-group">
+      <label>例外說明</label>
+      <textarea id="exception-text" placeholder="有則填寫，無則留空..."></textarea>
+    </div>
+  </div>
+
+  <!-- 明日計劃 -->
+  <div class="card">
+    <div class="card-header">
+      <div class="card-num" style="background:var(--blue-dim);border-color:rgba(74,158,255,0.3);">
+        <span style="color:var(--blue);">⑤</span>
+      </div>
+      <div class="card-title">明日計劃</div>
+      <span class="card-hint">1–3 項，須量化</span>
+    </div>
+    <div id="plan-list"></div>
+    <button class="add-row-btn" type="button" onclick="addPlanItem()"
+      style="border-color:rgba(74,158,255,0.3);">＋ 新增計劃</button>
+  </div>
+
+  <!-- 送出 -->
+  <div class="submit-section">
+    <button class="submit-btn" id="submit-btn" onclick="submitReport()">提交日報</button>
+    <div class="status-msg" id="status-msg"></div>
+    <hr>
+    <div class="divider-text">— TG 同步貼文（提交後自動產生）—</div>
+    <div class="tg-section">
+      <pre id="tg-preview">填寫完畢後，點擊提交即可產生 TG 格式文字...</pre>
+      <button class="copy-btn" onclick="copyTG()">複製 TG 格式</button>
+    </div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<!-- ══ 管理後台（Luna 專用）══ -->
+<div id="view-admin">
+
+  <div class="topbar">
+    <div class="topbar-logo">⊞ 行政管理後台</div>
+    <div class="tb-div"></div>
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('daily')">📋 日報 <span class="badge" id="badge-pending">3</span></div>
+      <div class="tab" onclick="switchTab('weekly')">📅 週報</div>
+      <div class="tab" onclick="switchTab('data')">📊 數據表</div>
+      <div class="tab" onclick="switchTab('history')">🗂 歷史紀錄</div>
+      <div class="tab" onclick="switchTab('upload')">☁️ 上傳雲端</div>
+    </div>
+    <div class="topbar-right">
+      <span class="date-chip" id="admin-date"></span>
+      <button class="exit-btn" onclick="exitAdmin()">退出後台</button>
+    </div>
+  </div>
+
+  <!-- 日報頁 -->
+  <div class="page active" id="page-daily">
+  <div class="page-inner">
+    <div class="sec-head">
+      <div class="sec-title">日報審批</div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:8px;">
+        <input type="date" id="daily-date-picker"
+          style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;
+                 color:var(--text2);font-size:13px;padding:6px 10px;outline:none;">
+        <button class="btn btn-ghost" onclick="renderDailyPage()" style="padding:6px 12px;font-size:12px;">重新載入</button>
+      </div>
+    </div>
+    <div class="missing-bar" id="missing-bar">
+      <span class="missing-label">⚠ 尚未填報</span>
+      <span class="missing-names" id="missing-names"></span>
+    </div>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">今日填報</div><div class="stat-val" style="color:var(--teal)" id="s-submitted">4 / 7</div><div class="stat-hint">人</div></div>
+      <div class="stat-card"><div class="stat-label">待審批</div><div class="stat-val" style="color:var(--amber)" id="s-pending">3</div><div class="stat-hint">份</div></div>
+      <div class="stat-card"><div class="stat-label">已審批</div><div class="stat-val" style="color:var(--teal)" id="s-approved">1</div><div class="stat-hint">份</div></div>
+      <div class="stat-card"><div class="stat-label">風險標記</div><div class="stat-val" style="color:var(--red)" id="s-risk">1</div><div class="stat-hint">筆</div></div>
+    </div>
+    <div id="report-list"></div>
+  </div>
+  </div>
+
+  <!-- 週報頁 -->
+  <div class="page" id="page-weekly">
+  <div class="page-inner">
+    <div class="sec-head"><div class="sec-title">團隊週報產生器</div><div class="sec-sub">每週六 12:00 前提交至 L3 主管</div></div>
+    <div class="a-card">
+      <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center;">
+        <select style="background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:7px 12px;outline:none;">
+          <option>本週</option><option>上週</option>
+        </select>
+        <button class="btn btn-teal" onclick="generateWeekly()">⚡ AI 自動彙整</button>
+      </div>
+      <div style="font-size:12px;color:var(--text3);">AI 從本週已審批日報自動提取重點產生草稿，確認後送出。</div>
+    </div>
+    <div class="weekly-editor">
+      <div class="weekly-section"><div class="weekly-section-label">✅ 本週團隊產出總結</div><textarea id="w-output" placeholder="AI 自動彙整，或手動填寫..."></textarea></div>
+      <div class="weekly-section"><div class="weekly-section-label">⚠️ 團隊問題 & 風險</div><textarea id="w-risk" placeholder="本週風險事項、待解決問題..."></textarea></div>
+      <div class="weekly-section"><div class="weekly-section-label">📊 人效數據 & 備註</div><textarea id="w-data" placeholder="完成率、異常說明..."></textarea></div>
+      <div class="weekly-section"><div class="weekly-section-label">📅 下週計劃重點</div><textarea id="w-next" placeholder="下週團隊核心任務..."></textarea></div>
+      <div class="action-row">
+        <button class="btn btn-ghost" onclick="copyWeekly()">複製 TG 格式</button>
+        <button class="btn btn-blue" onclick="switchTab('upload')">☁️ 上傳至雲端</button>
+        <button class="btn btn-teal" onclick="showToast('success','✓ 週報已送出至 L3 主管')">✓ 確認送出</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- 數據頁 -->
+  <div class="page" id="page-data">
+  <div class="page-inner">
+    <div class="sec-head"><div class="sec-title">填報數據總覽</div></div>
+    <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);">
+      <div class="stat-card"><div class="stat-label">本週填報率</div><div class="stat-val" style="color:var(--teal)">82%</div><div class="stat-hint">34 / 41 份</div></div>
+      <div class="stat-card"><div class="stat-label">本週風險事項</div><div class="stat-val" style="color:var(--red)">3</div><div class="stat-hint">筆</div></div>
+      <div class="stat-card"><div class="stat-label">平均完成項</div><div class="stat-val" style="color:var(--blue)">4.2</div><div class="stat-hint">項 / 人 / 日</div></div>
+    </div>
+    <div class="a-card" style="padding:0;overflow:hidden;">
+      <table class="data-table">
+        <thead><tr><th>姓名</th><th>本週填報</th><th>漏填</th><th>完成項合計</th><th>未完成項</th><th>風險</th><th>狀態</th></tr></thead>
+        <tbody id="data-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+
+  <!-- 歷史頁 -->
+  <div class="page" id="page-history">
+  <div class="page-inner">
+    <div class="sec-head"><div class="sec-title">歷史日報紀錄</div></div>
+    <div style="display:flex;gap:10px;margin-bottom:16px;align-items:center;flex-wrap:wrap;">
+      <select id="filter-member" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:7px 12px;outline:none;">
+        <option value="">全部成員</option>
+        <option>Luna</option><option>妍妍</option><option>小菁</option>
+        <option>蕾蕾</option><option>GD</option><option>田田</option><option>荳荳</option>
+      </select>
+      <input type="date" id="filter-from" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:7px 12px;outline:none;">
+      <span style="color:var(--text3);font-size:13px;">至</span>
+      <input type="date" id="filter-to" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:7px 12px;outline:none;">
+      <button class="btn btn-ghost" onclick="loadHistory()">查詢</button>
+    </div>
+    <div id="history-list"><div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">選擇條件後點擊查詢</div></div>
+  </div>
+  </div>
+
+  <!-- 上傳頁 -->
+  <div class="page" id="page-upload">
+  <div class="page-inner">
+    <div class="sec-head"><div class="sec-title">上傳至雲端</div></div>
+    <div class="a-card">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">上傳內容</div>
+          <select style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none;">
+            <option>本週週報</option><option>今日日報彙整</option><option>本月月報</option>
+          </select>
+        </div>
+        <div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">上傳格式</div>
+          <select id="upload-format" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text2);font-size:13px;padding:9px 12px;outline:none;">
+            <option value="sheets">Google Sheets</option>
+            <option value="doc">Google Docs</option>
+            <option value="copy">複製文字</option>
+          </select>
+        </div>
+      </div>
+      <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);padding:12px;margin-bottom:14px;">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:6px;">Google Sheet ID</div>
+        <input type="text" id="sheet-id" placeholder="貼上 Sheet ID..." style="width:100%;background:transparent;border:none;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:13px;outline:none;">
+      </div>
+      <button class="btn btn-blue" style="width:100%;padding:12px;" onclick="doUpload()">☁️ 立即上傳</button>
+    </div>
+  </div>
+  </div>
+
+</div><!-- end view-admin -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ══════════════════════════════════════
+// 設定區
+// ══════════════════════════════════════
+const GAS_URL  = 'https://script.google.com/macros/s/AKfycbx5UZA2c9tzADf4tz4tuQOQwOoNn5AIjAK3fhY0l9LrxszTaDShDGeEKH9OFhsYNA6v/exec';
+const MEMBERS  = ['Luna','妍妍','小菁','蕾蕾','GD','田田','荳荳'];
+// ⚠️ 密碼在這裡改（目前預設 luna2026）
+const ADMIN_PW = 'luna2026';
+
+// ══════════════════════════════════════
+// 日報表初始化
+// ══════════════════════════════════════
+const today = new Date();
+document.getElementById('report-date').value =
+  today.toISOString().slice(0,10);
+
+function makeRow(listId, placeholder) {
+  const list = document.getElementById(listId);
+  const idx  = list.children.length + 1;
+  const div  = document.createElement('div');
+  div.className = 'dynamic-item';
+  div.innerHTML = `<span class="item-num">${idx}</span>
+    <input type="text" placeholder="${placeholder}" style="flex:1;">
+    <button class="del-btn" type="button" onclick="removeRow(this,'${listId}')">✕</button>`;
+  list.appendChild(div);
+}
+function removeRow(btn, listId) { btn.closest('.dynamic-item').remove(); renumber(listId); }
+function renumber(listId) {
+  document.querySelectorAll(`#${listId} .item-num`).forEach((el,i)=>el.textContent=i+1);
+}
+function getListValues(listId) {
+  return Array.from(document.querySelectorAll(`#${listId} input`)).map(i=>i.value.trim()).filter(Boolean);
+}
+function addDoneItem()   { makeRow('done-list','完成了什麼事？（可量化）'); }
+function addUndoneItem() { makeRow('undone-list','未完成事項及原因'); }
+function addPlanItem()   { makeRow('plan-list','明日計劃（含預期完成量）'); }
+
+addDoneItem(); addDoneItem(); addDoneItem();
+addPlanItem(); addPlanItem(); addPlanItem();
+
+function toggleRisk() {
+  const toggle=document.getElementById('risk-toggle');
+  const cb=document.getElementById('is-risk');
+  const icon=document.getElementById('risk-icon');
+  const lbl=document.getElementById('risk-label');
+  cb.checked=!cb.checked;
+  if(cb.checked){toggle.classList.add('active');icon.textContent='✓';lbl.textContent='△ 風險已標記 — 提交後將自動通知組長';}
+  else{toggle.classList.remove('active');icon.textContent='△';lbl.textContent='標記為 △ 風險（影響團隊的異常）';}
+}
+
+function generateTG() {
+  const name=document.getElementById('member-name').value||'（未填）';
+  const date=document.getElementById('report-date').value;
+  const done=getListValues('done-list');
+  const undone=getListValues('undone-list');
+  const isRisk=document.getElementById('is-risk').checked;
+  const exc=document.getElementById('exception-text').value.trim();
+  const plans=getListValues('plan-list');
+  let tg=`📋 日報｜${name}｜${date}\n${'─'.repeat(28)}\n\n✅ 今日完成（${done.length} 項）：\n`;
+  tg+=done.length?done.map((d,i)=>`   ${i+1}. ${d}`).join('\n'):'   （未填）';
+  if(undone.length){tg+=`\n\n❌ 未完成（${undone.length} 項）：\n`;tg+=undone.map((d,i)=>`   ${i+1}. ${d}`).join('\n');}
+  tg+=`\n\n`;
+  if(isRisk||exc){tg+=`${isRisk?'⚠️ △ 風險':'📌 例外上報'}：\n   ${exc||'（已標記風險）'}\n\n`;}
+  else{tg+=`📌 例外上報：無\n\n`;}
+  tg+=`📅 明日計劃：\n`;
+  tg+=plans.length?plans.map((p,i)=>`   ${i+1}. ${p}`).join('\n'):'   （未填）';
+  return tg;
+}
+function copyTG(){
+  navigator.clipboard.writeText(document.getElementById('tg-preview').textContent).then(()=>{
+    const btn=document.querySelector('.copy-btn');btn.textContent='✓ 已複製';btn.style.color='var(--teal)';
+    setTimeout(()=>{btn.textContent='複製 TG 格式';btn.style.color='';},2000);
+  });
+}
+
+async function submitReport() {
+  const name=document.getElementById('member-name').value;
+  const done=getListValues('done-list');
+  const plans=getListValues('plan-list');
+  if(!name) return showFormStatus('error','請選擇姓名');
+  if(!done.length) return showFormStatus('error','請填寫至少一項完成事項');
+  if(!plans.length) return showFormStatus('error','請填寫至少一項明日計劃');
+  const btn=document.getElementById('submit-btn');
+  btn.disabled=true;btn.textContent='提交中...';
+  const undone=getListValues('undone-list');
+  const payload={name,date:document.getElementById('report-date').value,
+    doneItems:done.join(' | '),doneCount:done.length,
+    undoneItems:undone.join(' | '),undoneCount:undone.length,
+    isRisk:document.getElementById('is-risk').checked,
+    exceptionText:document.getElementById('exception-text').value,
+    planItems:plans.join(' | '),plan1:plans[0]||'',plan2:plans[1]||'',plan3:plans[2]||'',
+    submittedAt:new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})};
+  document.getElementById('tg-preview').textContent=generateTG();
+  try {
+    if(GAS_URL.includes('YOUR_SCRIPT_ID')){
+      await new Promise(r=>setTimeout(r,800));
+      showFormStatus('success','✓ 日報已提交（示範模式）');
+    } else {
+      const res=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(payload)});
+      const data=await res.json();
+      if(data.result==='success') showFormStatus('success','✓ 日報已成功寫入 Google Sheets');
+      else throw new Error(data.error||'未知錯誤');
+    }
+  } catch(e){showFormStatus('error','✗ 提交失敗：'+e.message);}
+  btn.disabled=false;btn.textContent='提交日報';
+}
+function showFormStatus(type,msg){
+  const el=document.getElementById('status-msg');el.className='status-msg '+type;el.textContent=msg;
+}
+
+// ══════════════════════════════════════
+// 隱藏入口：點 / 觸碰 header-tag 5 次
+// ══════════════════════════════════════
+let tapCount=0, tapTimer=null;
+
+(function(){
+  const el = document.getElementById('admin-trigger');
+  if(!el) return;
+
+  function triggerAdmin(e){
+    e.preventDefault();
+    tapCount++;
+    clearTimeout(tapTimer);
+    tapTimer = setTimeout(()=>{ tapCount=0; }, 3000);
+    if(tapCount >= 5){
+      tapCount = 0;
+      openLock();
+    }
+  }
+
+  // 同時支援 click（桌機）和 touchend（手機）
+  el.addEventListener('click', triggerAdmin);
+  el.addEventListener('touchend', triggerAdmin, {passive: false});
+})();
+
+// ══════════════════════════════════════
+// 密碼鎖
+// ══════════════════════════════════════
+function openLock(){
+  document.getElementById('lock-overlay').classList.add('show');
+  document.getElementById('lock-pw').value='';
+  document.getElementById('lock-err').textContent='';
+  setTimeout(()=>document.getElementById('lock-pw').focus(),100);
+}
+function closeLock(){
+  document.getElementById('lock-overlay').classList.remove('show');
+}
+function checkPw(){
+  const pw=document.getElementById('lock-pw').value;
+  if(pw===ADMIN_PW){
+    closeLock();
+    enterAdmin();
+  } else {
+    document.getElementById('lock-err').textContent='密碼錯誤，請再試一次';
+    const input=document.getElementById('lock-pw');
+    input.classList.add('shake');
+    input.value='';
+    setTimeout(()=>input.classList.remove('shake'),400);
+  }
+}
+
+// ══════════════════════════════════════
+// 進入／退出後台
+// ══════════════════════════════════════
+function enterAdmin(){
+  document.getElementById('view-form').style.display='none';
+  document.getElementById('view-admin').classList.add('show');
+  const d=new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  document.getElementById('admin-date').textContent=d;
+  // 設定日期選擇器預設為今天
+  const picker = document.getElementById('daily-date-picker');
+  if (picker) picker.value = new Date().toISOString().slice(0,10);
+  renderDailyPage();
+  renderDataTable();
+}
+function exitAdmin(){
+  document.getElementById('view-admin').classList.remove('show');
+  document.getElementById('view-form').style.display='block';
+}
+
+// ══════════════════════════════════════
+// 後台 Tab 切換
+// ══════════════════════════════════════
+function switchTab(tab){
+  document.querySelectorAll('#view-admin .tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#view-admin .page').forEach(p=>p.classList.remove('active'));
+  const tabs=['daily','weekly','data','history','upload'];
+  tabs.forEach((t,i)=>{
+    if(t===tab){
+      document.querySelectorAll('#view-admin .tab')[i].classList.add('active');
+      document.getElementById('page-'+t).classList.add('active');
+    }
+  });
+}
+
+// ══════════════════════════════════════
+// 示範資料
+// ══════════════════════════════════════
+// ── 真實資料（從 GAS 讀取）──────────────────────────────────
+let liveReports = [];
+let missingToday = [];
+
+async function renderDailyPage() {
+  const picker = document.getElementById('daily-date-picker');
+  const selDate = picker ? picker.value : '';
+  const list = document.getElementById('report-list');
+  list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">載入中...</div>';
+
+  try {
+    const url = GAS_URL + '?action=daily&date=' + (selDate||'') + '&t=' + Date.now();
+    const res  = await fetch(url);
+    const data = await res.json();
+
+    if (data.result !== 'success') throw new Error(data.error);
+
+    // 轉換格式
+    liveReports = data.rows.map(r => ({
+      id:          r.rowNum,
+      name:        r.name,
+      time:        r.submittedAt ? String(r.submittedAt).replace(/.*(\d{2}:\d{2}).*/, '$1') : '--:--',
+      status:      r.status === '✓ 已審批' ? 'approved' : r.status === '⚠ 標記異常' ? 'flagged' : 'pending',
+      doneItems:   r.doneItems ? r.doneItems.split(' | ') : [],
+      undoneItems: r.undoneItems ? r.undoneItems.split(' | ') : [],
+      isRisk:      r.isRisk,
+      exception:   r.exception || '',
+      plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
+    }));
+    missingToday = data.missing || [];
+
+  } catch(e) {
+    // GAS 未連通時顯示提示
+    list.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;font-size:13px;">⚠ 無法連接後台：' + e.message + '<br><br>請確認 GAS 已重新部署</div>';
+    return;
+  }
+
+  const mn = document.getElementById('missing-names');
+  const mb = document.getElementById('missing-bar');
+  if (missingToday.length) { mb.style.display='flex'; mn.textContent=missingToday.join('、')+' 尚未提交'; }
+  else mb.style.display = 'none';
+
+  const pending  = liveReports.filter(r=>r.status==='pending').length;
+  const approved = liveReports.filter(r=>r.status==='approved').length;
+  const risks    = liveReports.filter(r=>r.isRisk).length;
+  document.getElementById('s-submitted').textContent = liveReports.length + ' / ' + MEMBERS.length;
+  document.getElementById('s-pending').textContent   = pending;
+  document.getElementById('s-approved').textContent  = approved;
+  document.getElementById('s-risk').textContent      = risks;
+  document.getElementById('badge-pending').textContent = pending;
+
+  list.innerHTML = '';
+  if (!liveReports.length) {
+    list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">今日尚無人提交日報</div>';
+    return;
+  }
+  liveReports.forEach(r => list.appendChild(makeReportRow(r)));
+}
+
+function makeReportRow(r){
+  const div=document.createElement('div');
+  div.className='report-row '+(r.isRisk?'risk':r.status);
+  div.id='row-'+r.id;
+  const chips={pending:'<span class="status-chip chip-pending">待審批</span>',approved:'<span class="status-chip chip-approved">✓ 已審批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已標記</span>'};
+  div.innerHTML=`
+    <div class="report-head" onclick="toggleRow(${r.id})">
+      <div class="member-avatar">${r.name[0]}</div>
+      <div class="report-meta">
+        <div class="report-name">${r.name}</div>
+        <div class="report-time">${new Date().toLocaleDateString('zh-TW')} · ${r.time}</div>
+      </div>
+      <div class="report-counts">
+        <span class="count-pill pill-done">✅ ${r.doneItems.length}</span>
+        ${r.undoneItems.length?`<span class="count-pill pill-undone">❌ ${r.undoneItems.length}</span>`:''}
+        ${r.isRisk?'<span class="count-pill pill-undone">△ 風險</span>':''}
+      </div>
+      ${chips[r.status]||''}
+      <span class="chevron">▼</span>
+    </div>
+    <div class="report-body">
+      <div class="report-section">
+        <div class="rs-label">今日完成事項</div>
+        <div class="rs-items">${r.doneItems.map((d,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${d}</div>`).join('')}</div>
+      </div>
+      ${r.undoneItems.length?`<div class="report-section"><div class="rs-label">未完成事項</div><div class="rs-items">${r.undoneItems.map((d,i)=>`<div class="rs-item" style="border-left:2px solid var(--red)"><span class="num">${i+1}</span>${d}</div>`).join('')}</div></div>`:''}
+      ${r.exception?`<div class="report-section"><div class="rs-label">${r.isRisk?'⚠️ 風險說明':'📌 例外說明'}</div><div class="rs-item" style="${r.isRisk?'background:var(--red-dim);border-left:2px solid var(--red);':''}">${r.exception}</div></div>`:''}
+      <div class="report-section">
+        <div class="rs-label">明日計劃</div>
+        <div class="rs-items">${r.plans.map((p,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${p}</div>`).join('')}</div>
+      </div>
+      <div class="approve-bar">
+        <div class="approve-note"><textarea placeholder="審批備註（選填）..." id="note-${r.id}"></textarea></div>
+        <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 標記異常</button>
+        <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 審批通過</button>
+      </div>
+    </div>`;
+  return div;
+}
+
+function toggleRow(id){document.getElementById('row-'+id).classList.toggle('open');}
+async function approveReport(id){
+  const r=liveReports.find(r=>r.id===id); if(!r)return;
+  await fetch(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('✓ 已審批'));
+  showToast('success','✓ '+r.name+' 的日報已審批通過');
+  renderDailyPage();
+}
+async function flagReport(id){
+  const r=liveReports.find(r=>r.id===id); if(!r)return;
+  await fetch(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('⚠ 標記異常'));
+  showToast('error','⚠ '+r.name+' 的日報已標記異常');
+  renderDailyPage();
+}
+
+async function generateWeekly(){
+  showToast('success','載入本週資料中...');
+  try {
+    // 直接從 GAS 抓本週所有資料
+    const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
+    const data = await res.json();
+    if(data.result !== 'success') throw new Error(data.error);
+
+    const allRows = (data.allRows || []).map(r => ({
+      name:        r.name,
+      status:      r.status === '✓ 已審批' ? 'approved' : 'pending',
+      doneItems:   r.doneItems ? r.doneItems.split(' | ') : [],
+      isRisk:      r.isRisk,
+      exception:   r.exception || '',
+      plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
+    }));
+
+    const approved = allRows.filter(r=>r.status==='approved');
+    if(!approved.length){showToast('error','目前沒有已審批的日報，請先在日報頁審批');return;}
+
+    document.getElementById('w-output').value=approved.flatMap(r=>r.doneItems.map(d=>`【${r.name}】${d}`)).join('\n');
+    document.getElementById('w-risk').value=allRows.filter(r=>r.isRisk).map(r=>`【${r.name}】${r.exception}`).join('\n')||'本週無重大風險事項。';
+    document.getElementById('w-data').value=`本週填報：${allRows.length} 份\n已審批：${approved.length} 份\n工作天數：${data.workDays} 天`;
+    document.getElementById('w-next').value=approved.flatMap(r=>r.plans).slice(0,6).map((p,i)=>`${i+1}. ${p}`).join('\n');
+    showToast('success','✓ AI 草稿已產生，請確認後送出');
+  } catch(e) {
+    showToast('error','載入失敗：'+e.message);
+  }
+}
+function copyWeekly(){
+  const txt=['📅 行政組週報','═'.repeat(30),'','【本週產出】',document.getElementById('w-output').value,'','【問題與風險】',document.getElementById('w-risk').value,'','【人效數據】',document.getElementById('w-data').value,'','【下週計劃】',document.getElementById('w-next').value].join('\n');
+  navigator.clipboard.writeText(txt).then(()=>showToast('success','✓ 已複製至剪貼簿'));
+}
+
+async function renderDataTable(){
+  const tbody = document.getElementById('data-tbody');
+  tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">載入中...</td></tr>';
+
+  try {
+    // 拉取本週所有資料
+    const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
+    const data = await res.json();
+
+    if (data.result !== 'success') throw new Error(data.error);
+
+    // 用 liveReports 計算每人統計（今日）+ 歷史需 GAS 支援
+    // 目前先用 allRows 計算
+    const allRows = data.allRows || [];
+
+    const stats = MEMBERS.filter(m => m !== 'Luna').map(name => {
+      const myRows   = allRows.filter(r => r.name === name);
+      const days     = myRows.length;
+      const done     = myRows.reduce((s,r) => s + (parseInt(r.doneCount)||0), 0);
+      const undone   = myRows.reduce((s,r) => s + (parseInt(r.undoneCount)||0), 0);
+      const risk     = myRows.filter(r => r.isRisk).length;
+      const approved = myRows.filter(r => r.status === '✓ 已審批').length;
+      const miss     = Math.max(0, data.workDays - days);
+      const rate     = data.workDays > 0 ? days / data.workDays : 0;
+      return { name, days, miss, done, undone, risk, approved, rate };
+    });
+
+    const totalDays  = stats.reduce((s,r)=>s+r.days,0);
+    const totalPossible = (MEMBERS.length-1) * (data.workDays||1);
+    const fillRate   = totalPossible > 0 ? Math.round(totalDays/totalPossible*100) : 0;
+    const totalRisk  = stats.reduce((s,r)=>s+r.risk,0);
+    const avgDone    = stats.length ? (stats.reduce((s,r)=>s+r.done,0) / Math.max(totalDays,1)).toFixed(1) : '0';
+
+    // 更新統計卡
+    document.querySelector('#page-data .stat-card:nth-child(1) .stat-val').textContent = fillRate + '%';
+    document.querySelector('#page-data .stat-card:nth-child(1) .stat-hint').textContent = totalDays + ' / ' + totalPossible + ' 份';
+    document.querySelector('#page-data .stat-card:nth-child(2) .stat-val').textContent = totalRisk;
+    document.querySelector('#page-data .stat-card:nth-child(3) .stat-val').textContent = avgDone;
+
+    tbody.innerHTML = stats.map(r => `<tr>
+      <td style="font-weight:600">${r.name}</td>
+      <td class="mono">${r.days} 天</td>
+      <td class="mono" style="color:${r.miss?'var(--amber)':'var(--text3)'}">${r.miss?r.miss+' 天':'—'}</td>
+      <td class="mono" style="color:var(--teal)">${r.done}</td>
+      <td class="mono" style="color:${r.undone?'var(--red)':'var(--text3)'}">${r.undone||'—'}</td>
+      <td class="mono" style="color:${r.risk?'var(--red)':'var(--text3)'}">${r.risk?'⚠ '+r.risk:'—'}</td>
+      <td><span class="status-chip ${r.miss<=1?'chip-approved':'chip-pending'}">${r.miss<=1?'正常':'需關注'}</span></td>
+    </tr>`).join('');
+
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px;">⚠ 無法載入：' + e.message + '</td></tr>';
+  }
+}
+
+async function loadHistory(){
+  const member = document.getElementById('filter-member').value;
+  const from   = document.getElementById('filter-from').value;
+  const to     = document.getElementById('filter-to').value;
+  const list   = document.getElementById('history-list');
+
+  if (!from) { list.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">請選擇開始日期</div>'; return; }
+
+  list.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">載入中...</div>';
+
+  try {
+    const url = GAS_URL + '?action=history&from=' + from + '&to=' + (to||from) + '&name=' + encodeURIComponent(member) + '&t=' + Date.now();
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (data.result !== 'success') throw new Error(data.error);
+
+    const results = data.rows.map(r => ({
+      id:          r.rowNum,
+      name:        r.name,
+      time:        r.date || '',
+      status:      r.status === '✓ 已審批' ? 'approved' : r.status === '⚠ 標記異常' ? 'flagged' : 'pending',
+      doneItems:   r.doneItems ? r.doneItems.split(' | ') : [],
+      undoneItems: r.undoneItems ? r.undoneItems.split(' | ') : [],
+      isRisk:      r.isRisk,
+      exception:   r.exception || '',
+      plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
+    }));
+
+    if (!results.length) { list.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">查無資料</div>'; return; }
+    list.innerHTML='';
+    results.forEach(r=>list.appendChild(makeReportRow(r)));
+  } catch(e) {
+    list.innerHTML = '<div style="color:var(--red);font-size:13px;padding:20px;text-align:center;">⚠ 載入失敗：'+e.message+'</div>';
+  }
+}
+
+function doUpload(){
+  const fmt=document.getElementById('upload-format').value;
+  const sid=document.getElementById('sheet-id').value;
+  if(fmt==='copy'){copyWeekly();return;}
+  if(!sid){showToast('error','請填入 Google Sheet ID');return;}
+  showToast('success','☁️ 上傳成功（示範模式）');
+}
+
+function showToast(type,msg){
+  const t=document.getElementById('toast');t.textContent=msg;t.className='toast show '+type;
+  setTimeout(()=>t.classList.remove('show'),3000);
+}
+</script>
+</body>
+</html>
