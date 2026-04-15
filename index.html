@@ -291,7 +291,6 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 <div class="container">
 
   <div class="header">
-    <!-- 點擊 5 次觸發管理後台 -->
     <div class="header-tag" id="admin-trigger">L1 → L2 Daily Report</div>
     <h1>日常工作日報</h1>
     <div class="subtitle">
@@ -572,15 +571,13 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 // ══════════════════════════════════════
 const GAS_URL  = 'https://script.google.com/macros/s/AKfycbx5UZA2c9tzADf4tz4tuQOQwOoNn5AIjAK3fhY0l9LrxszTaDShDGeEKH9OFhsYNA6v/exec';
 const MEMBERS  = ['Luna','妍妍','小菁','蕾蕾','GD','田田','荳荳'];
-// ⚠️ 密碼在這裡改（目前預設 luna2026）
 const ADMIN_PW = 'luna2026';
 
 // ══════════════════════════════════════
 // 日報表初始化
 // ══════════════════════════════════════
 const today = new Date();
-document.getElementById('report-date').value =
-  today.toISOString().slice(0,10);
+document.getElementById('report-date').value = today.toISOString().slice(0,10);
 
 function makeRow(listId, placeholder) {
   const list = document.getElementById(listId);
@@ -651,13 +648,27 @@ async function submitReport() {
   const btn=document.getElementById('submit-btn');
   btn.disabled=true;btn.textContent='提交中...';
   const undone=getListValues('undone-list');
-  const payload={name,date:document.getElementById('report-date').value,
-    doneItems:done.join(' | '),doneCount:done.length,
-    undoneItems:undone.join(' | '),undoneCount:undone.length,
-    isRisk:document.getElementById('is-risk').checked,
-    exceptionText:document.getElementById('exception-text').value,
-    planItems:plans.join(' | '),plan1:plans[0]||'',plan2:plans[1]||'',plan3:plans[2]||'',
-    submittedAt:new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})};
+
+  // ✅ 修正：加入 Agent 數據三個欄位
+  const payload={
+    name,
+    date: document.getElementById('report-date').value,
+    doneItems: done.join(' | '),
+    doneCount: done.length,
+    undoneItems: undone.join(' | '),
+    undoneCount: undone.length,
+    isRisk: document.getElementById('is-risk').checked,
+    exceptionText: document.getElementById('exception-text').value,
+    planItems: plans.join(' | '),
+    plan1: plans[0]||'',
+    plan2: plans[1]||'',
+    plan3: plans[2]||'',
+    agentCount:  document.getElementById('agent-count').value||'',
+    agentSaving: document.getElementById('agent-value').value||'',
+    agentShare:  document.getElementById('agent-learn').value||'',
+    submittedAt: new Date().toLocaleString('zh-TW',{timeZone:'Asia/Taipei'})
+  };
+
   document.getElementById('tg-preview').textContent=generateTG();
   try {
     if(GAS_URL.includes('YOUR_SCRIPT_ID')){
@@ -680,23 +691,16 @@ function showFormStatus(type,msg){
 // 隱藏入口：點 / 觸碰 header-tag 5 次
 // ══════════════════════════════════════
 let tapCount=0, tapTimer=null;
-
 (function(){
   const el = document.getElementById('admin-trigger');
   if(!el) return;
-
   function triggerAdmin(e){
     e.preventDefault();
     tapCount++;
     clearTimeout(tapTimer);
     tapTimer = setTimeout(()=>{ tapCount=0; }, 3000);
-    if(tapCount >= 5){
-      tapCount = 0;
-      openLock();
-    }
+    if(tapCount >= 5){ tapCount = 0; openLock(); }
   }
-
-  // 同時支援 click（桌機）和 touchend（手機）
   el.addEventListener('click', triggerAdmin);
   el.addEventListener('touchend', triggerAdmin, {passive: false});
 })();
@@ -710,19 +714,14 @@ function openLock(){
   document.getElementById('lock-err').textContent='';
   setTimeout(()=>document.getElementById('lock-pw').focus(),100);
 }
-function closeLock(){
-  document.getElementById('lock-overlay').classList.remove('show');
-}
+function closeLock(){ document.getElementById('lock-overlay').classList.remove('show'); }
 function checkPw(){
   const pw=document.getElementById('lock-pw').value;
-  if(pw===ADMIN_PW){
-    closeLock();
-    enterAdmin();
-  } else {
+  if(pw===ADMIN_PW){ closeLock(); enterAdmin(); }
+  else {
     document.getElementById('lock-err').textContent='密碼錯誤，請再試一次';
     const input=document.getElementById('lock-pw');
-    input.classList.add('shake');
-    input.value='';
+    input.classList.add('shake'); input.value='';
     setTimeout(()=>input.classList.remove('shake'),400);
   }
 }
@@ -735,7 +734,6 @@ function enterAdmin(){
   document.getElementById('view-admin').classList.add('show');
   const d=new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
   document.getElementById('admin-date').textContent=d;
-  // 設定日期選擇器預設為今天
   const picker = document.getElementById('daily-date-picker');
   if (picker) picker.value = new Date().toISOString().slice(0,10);
   renderDailyPage();
@@ -762,9 +760,8 @@ function switchTab(tab){
 }
 
 // ══════════════════════════════════════
-// 示範資料
+// 真實資料（從 GAS 讀取）
 // ══════════════════════════════════════
-// ── 真實資料（從 GAS 讀取）──────────────────────────────────
 let liveReports = [];
 let missingToday = [];
 
@@ -773,15 +770,11 @@ async function renderDailyPage() {
   const selDate = picker ? picker.value : '';
   const list = document.getElementById('report-list');
   list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">載入中...</div>';
-
   try {
     const url = GAS_URL + '?action=daily&date=' + (selDate||'') + '&t=' + Date.now();
     const res  = await fetch(url);
     const data = await res.json();
-
     if (data.result !== 'success') throw new Error(data.error);
-
-    // 轉換格式
     liveReports = data.rows.map(r => ({
       id:          r.rowNum,
       name:        r.name,
@@ -794,18 +787,14 @@ async function renderDailyPage() {
       plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
     }));
     missingToday = data.missing || [];
-
   } catch(e) {
-    // GAS 未連通時顯示提示
     list.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;font-size:13px;">⚠ 無法連接後台：' + e.message + '<br><br>請確認 GAS 已重新部署</div>';
     return;
   }
-
   const mn = document.getElementById('missing-names');
   const mb = document.getElementById('missing-bar');
   if (missingToday.length) { mb.style.display='flex'; mn.textContent=missingToday.join('、')+' 尚未提交'; }
   else mb.style.display = 'none';
-
   const pending  = liveReports.filter(r=>r.status==='pending').length;
   const approved = liveReports.filter(r=>r.status==='approved').length;
   const risks    = liveReports.filter(r=>r.isRisk).length;
@@ -814,7 +803,6 @@ async function renderDailyPage() {
   document.getElementById('s-approved').textContent  = approved;
   document.getElementById('s-risk').textContent      = risks;
   document.getElementById('badge-pending').textContent = pending;
-
   list.innerHTML = '';
   if (!liveReports.length) {
     list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">今日尚無人提交日報</div>';
@@ -878,76 +866,32 @@ async function flagReport(id){
 }
 
 async function generateWeekly(){
-  const btn = document.querySelector('.btn-teal');
   showToast('success','⚡ 正在從雲端讀取資料...');
-
   try {
-    // 1. 從 GAS 抓本週所有資料
     const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
     const data = await res.json();
     if(data.result !== 'success') throw new Error(data.error);
-
     const allRows = (data.allRows || []).map(r => ({
-      name:        r.name,
-      status:      r.status === '✓ 已審批' ? 'approved' : 'pending',
-      doneItems:   r.doneItems ? r.doneItems.split(' | ') : [],
-      isRisk:      r.isRisk,
-      exception:   r.exception || '',
-      plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
+      name:      r.name,
+      status:    r.status === '✓ 已審批' ? 'approved' : 'pending',
+      doneItems: r.doneItems ? r.doneItems.split(' | ') : [],
+      isRisk:    r.isRisk,
+      exception: r.exception || '',
+      plans:     [r.plan1, r.plan2, r.plan3].filter(Boolean),
     }));
-
     const approved = allRows.filter(r=>r.status==='approved');
-    if(!approved.length){
-      showToast('error','目前沒有已審批的日報，請先在日報頁審批');
-      return;
-    }
-
-    // 2. 整理資料給 Claude
-    const rawData = approved.map(r =>
-      `【${r.name}】完成事項：${r.doneItems.join('、')}｜明日計劃：${r.plans.join('、')}`
-    ).join('\n');
-
-    const riskData = allRows.filter(r=>r.isRisk)
-      .map(r=>`【${r.name}】${r.exception}`).join('\n') || '本週無風險事項';
-
-    const prompt = `你是一位行政組長，需要根據以下本週組員日報資料，撰寫一份給上級主管（L3）看的行政組週報。
-
-【本週已審批日報資料】
-${rawData}
-
-【本週風險事項】
-${riskData}
-
-【填報統計】
-本週填報：${allRows.length} 份，已審批：${approved.length} 份，工作天數：${data.workDays} 天
-
-請用繁體中文，以條列方式分別撰寫以下四個部分，每個部分3-5條重點：
-1. 本週團隊產出總結（整合各組員完成事項，去除重複，歸納核心成果）
-2. 團隊問題 & 風險（列出本週風險事項及需跟進問題）
-3. 人效數據 & 備註（分析填報率、完成量等數據亮點）
-4. 下週計劃重點（從組員明日計劃中提取下週重點方向）
-
-格式：每個部分只輸出條列內容，不需要標題，用 JSON 回傳：
-{"output": "...", "risk": "...", "data": "...", "next": "..."}
-只輸出 JSON，不要其他文字。`;
-
+    if(!approved.length){ showToast('error','目前沒有已審批的日報，請先在日報頁審批'); return; }
+    const rawData = approved.map(r=>`【${r.name}】完成事項：${r.doneItems.join('、')}｜明日計劃：${r.plans.join('、')}`).join('\n');
+    const riskData = allRows.filter(r=>r.isRisk).map(r=>`【${r.name}】${r.exception}`).join('\n') || '本週無風險事項';
+    const prompt = `你是一位行政組長，需要根據以下本週組員日報資料，撰寫一份給上級主管（L3）看的行政組週報。\n\n【本週已審批日報資料】\n${rawData}\n\n【本週風險事項】\n${riskData}\n\n【填報統計】\n本週填報：${allRows.length} 份，已審批：${approved.length} 份，工作天數：${data.workDays} 天\n\n請用繁體中文，以條列方式分別撰寫以下四個部分，每個部分3-5條重點：\n1. 本週團隊產出總結\n2. 團隊問題 & 風險\n3. 人效數據 & 備註\n4. 下週計劃重點\n\n格式用 JSON 回傳：{"output": "...", "risk": "...", "data": "...", "next": "..."}\n只輸出 JSON，不要其他文字。`;
     showToast('success','🤖 Claude AI 生成中，請稍候...');
-
-    // 3. 呼叫 Claude API
     const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 1000, messages: [{ role: 'user', content: prompt }] })
     });
-
     const aiData = await aiRes.json();
     const text = aiData.content?.[0]?.text || '';
-
-    // 4. 解析並填入
     try {
       const clean = text.replace(/```json|```/g, '').trim();
       const parsed = JSON.parse(clean);
@@ -957,15 +901,12 @@ ${riskData}
       document.getElementById('w-next').value   = parsed.next   || '';
       showToast('success','✓ Claude AI 週報草稿已生成，請確認後送出');
     } catch(e) {
-      // 解析失敗就直接貼原文
       document.getElementById('w-output').value = text;
       showToast('success','✓ 草稿已產生');
     }
-
-  } catch(e) {
-    showToast('error','生成失敗：'+e.message);
-  }
+  } catch(e) { showToast('error','生成失敗：'+e.message); }
 }
+
 function copyWeekly(){
   const txt=['📅 行政組週報','═'.repeat(30),'','【本週產出】',document.getElementById('w-output').value,'','【問題與風險】',document.getElementById('w-risk').value,'','【人效數據】',document.getElementById('w-data').value,'','【下週計劃】',document.getElementById('w-next').value].join('\n');
   navigator.clipboard.writeText(txt).then(()=>showToast('success','✓ 已複製至剪貼簿'));
@@ -974,18 +915,11 @@ function copyWeekly(){
 async function renderDataTable(){
   const tbody = document.getElementById('data-tbody');
   tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px;">載入中...</td></tr>';
-
   try {
-    // 拉取本週所有資料
     const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
     const data = await res.json();
-
     if (data.result !== 'success') throw new Error(data.error);
-
-    // 用 liveReports 計算每人統計（今日）+ 歷史需 GAS 支援
-    // 目前先用 allRows 計算
     const allRows = data.allRows || [];
-
     const stats = MEMBERS.filter(m => m !== 'Luna').map(name => {
       const myRows   = allRows.filter(r => r.name === name);
       const days     = myRows.length;
@@ -997,19 +931,15 @@ async function renderDataTable(){
       const rate     = data.workDays > 0 ? days / data.workDays : 0;
       return { name, days, miss, done, undone, risk, approved, rate };
     });
-
-    const totalDays  = stats.reduce((s,r)=>s+r.days,0);
+    const totalDays     = stats.reduce((s,r)=>s+r.days,0);
     const totalPossible = (MEMBERS.length-1) * (data.workDays||1);
-    const fillRate   = totalPossible > 0 ? Math.round(totalDays/totalPossible*100) : 0;
-    const totalRisk  = stats.reduce((s,r)=>s+r.risk,0);
-    const avgDone    = stats.length ? (stats.reduce((s,r)=>s+r.done,0) / Math.max(totalDays,1)).toFixed(1) : '0';
-
-    // 更新統計卡
+    const fillRate      = totalPossible > 0 ? Math.round(totalDays/totalPossible*100) : 0;
+    const totalRisk     = stats.reduce((s,r)=>s+r.risk,0);
+    const avgDone       = stats.length ? (stats.reduce((s,r)=>s+r.done,0) / Math.max(totalDays,1)).toFixed(1) : '0';
     document.querySelector('#page-data .stat-card:nth-child(1) .stat-val').textContent = fillRate + '%';
     document.querySelector('#page-data .stat-card:nth-child(1) .stat-hint').textContent = totalDays + ' / ' + totalPossible + ' 份';
     document.querySelector('#page-data .stat-card:nth-child(2) .stat-val').textContent = totalRisk;
     document.querySelector('#page-data .stat-card:nth-child(3) .stat-val').textContent = avgDone;
-
     tbody.innerHTML = stats.map(r => `<tr>
       <td style="font-weight:600">${r.name}</td>
       <td class="mono">${r.days} 天</td>
@@ -1019,7 +949,6 @@ async function renderDataTable(){
       <td class="mono" style="color:${r.risk?'var(--red)':'var(--text3)'}">${r.risk?'⚠ '+r.risk:'—'}</td>
       <td><span class="status-chip ${r.miss<=1?'chip-approved':'chip-pending'}">${r.miss<=1?'正常':'需關注'}</span></td>
     </tr>`).join('');
-
   } catch(e) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--red);padding:20px;">⚠ 無法載入：' + e.message + '</td></tr>';
   }
@@ -1030,17 +959,13 @@ async function loadHistory(){
   const from   = document.getElementById('filter-from').value;
   const to     = document.getElementById('filter-to').value;
   const list   = document.getElementById('history-list');
-
   if (!from) { list.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">請選擇開始日期</div>'; return; }
-
   list.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">載入中...</div>';
-
   try {
     const url = GAS_URL + '?action=history&from=' + from + '&to=' + (to||from) + '&name=' + encodeURIComponent(member) + '&t=' + Date.now();
     const res  = await fetch(url);
     const data = await res.json();
     if (data.result !== 'success') throw new Error(data.error);
-
     const results = data.rows.map(r => ({
       id:          r.rowNum,
       name:        r.name,
@@ -1052,7 +977,6 @@ async function loadHistory(){
       exception:   r.exception || '',
       plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
     }));
-
     if (!results.length) { list.innerHTML='<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">查無資料</div>'; return; }
     list.innerHTML='';
     results.forEach(r=>list.appendChild(makeReportRow(r)));
