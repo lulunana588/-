@@ -853,11 +853,9 @@ async function flagReport(id){
 }
 
 async function generateWeekly(){
-  const btn = document.querySelector('.btn-teal');
-  showToast('success','⚡ 正在從雲端讀取資料...');
-
+  showToast('success','載入本週資料中...');
   try {
-    // 1. 從 GAS 抓本週所有資料
+    // 直接從 GAS 抓本週所有資料
     const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
     const data = await res.json();
     if(data.result !== 'success') throw new Error(data.error);
@@ -872,73 +870,15 @@ async function generateWeekly(){
     }));
 
     const approved = allRows.filter(r=>r.status==='approved');
-    if(!approved.length){
-      showToast('error','目前沒有已審批的日報，請先在日報頁審批');
-      return;
-    }
+    if(!approved.length){showToast('error','目前沒有已審批的日報，請先在日報頁審批');return;}
 
-    // 2. 整理資料給 Claude
-    const rawData = approved.map(r =>
-      `【${r.name}】完成事項：${r.doneItems.join('、')}｜明日計劃：${r.plans.join('、')}`
-    ).join('\n');
-
-    const riskData = allRows.filter(r=>r.isRisk)
-      .map(r=>`【${r.name}】${r.exception}`).join('\n') || '本週無風險事項';
-
-    const prompt = `你是一位行政組長，需要根據以下本週組員日報資料，撰寫一份給上級主管（L3）看的行政組週報。
-
-【本週已審批日報資料】
-${rawData}
-
-【本週風險事項】
-${riskData}
-
-【填報統計】
-本週填報：${allRows.length} 份，已審批：${approved.length} 份，工作天數：${data.workDays} 天
-
-請用繁體中文，以條列方式分別撰寫以下四個部分，每個部分3-5條重點：
-1. 本週團隊產出總結（整合各組員完成事項，去除重複，歸納核心成果）
-2. 團隊問題 & 風險（列出本週風險事項及需跟進問題）
-3. 人效數據 & 備註（分析填報率、完成量等數據亮點）
-4. 下週計劃重點（從組員明日計劃中提取下週重點方向）
-
-格式：每個部分只輸出條列內容，不需要標題，用 JSON 回傳：
-{"output": "...", "risk": "...", "data": "...", "next": "..."}
-只輸出 JSON，不要其他文字。`;
-
-    showToast('success','🤖 Claude AI 生成中，請稍候...');
-
-    // 3. 呼叫 Claude API
-    const aiRes = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        messages: [{ role: 'user', content: prompt }]
-      })
-    });
-
-    const aiData = await aiRes.json();
-    const text = aiData.content?.[0]?.text || '';
-
-    // 4. 解析並填入
-    try {
-      const clean = text.replace(/```json|```/g, '').trim();
-      const parsed = JSON.parse(clean);
-      document.getElementById('w-output').value = parsed.output || '';
-      document.getElementById('w-risk').value   = parsed.risk   || '';
-      document.getElementById('w-data').value   = parsed.data   || '';
-      document.getElementById('w-next').value   = parsed.next   || '';
-      showToast('success','✓ Claude AI 週報草稿已生成，請確認後送出');
-    } catch(e) {
-      // 解析失敗就直接貼原文
-      document.getElementById('w-output').value = text;
-      showToast('success','✓ 草稿已產生');
-    }
-
+    document.getElementById('w-output').value=approved.flatMap(r=>r.doneItems.map(d=>`【${r.name}】${d}`)).join('\n');
+    document.getElementById('w-risk').value=allRows.filter(r=>r.isRisk).map(r=>`【${r.name}】${r.exception}`).join('\n')||'本週無重大風險事項。';
+    document.getElementById('w-data').value=`本週填報：${allRows.length} 份\n已審批：${approved.length} 份\n工作天數：${data.workDays} 天`;
+    document.getElementById('w-next').value=approved.flatMap(r=>r.plans).slice(0,6).map((p,i)=>`${i+1}. ${p}`).join('\n');
+    showToast('success','✓ AI 草稿已產生，請確認後送出');
   } catch(e) {
-    showToast('error','生成失敗：'+e.message);
+    showToast('error','載入失敗：'+e.message);
   }
 }
 function copyWeekly(){
