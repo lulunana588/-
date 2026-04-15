@@ -1,0 +1,282 @@
+const SHEET_ID   = '1SacYR2Yev78hLv4esLjNkXYdhvZpXvErMIjiSUGBFY4';
+const SHEET_NAME = '日報紀錄';
+const MEMBERS    = ['Luna','妍妍','小菁','蕾蕾','GD','田田','荳荳'];
+
+const HEADERS = [
+  '日期','姓名',
+  '今日完成事項','完成項數','未完成事項','未完成項數',
+  '是否風險','例外說明',
+  '明日計劃1','明日計劃2','明日計劃3',
+  '審核狀態'
+];
+
+function initSheet() {
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sheet = ss.getSheetByName(SHEET_NAME);
+  if (!sheet) sheet = ss.insertSheet(SHEET_NAME);
+  if (sheet.getRange(1,1).getValue() === '') {
+    sheet.getRange(1,1,1,HEADERS.length).setValues([HEADERS]);
+    sheet.setFrozenRows(1);
+    const h = sheet.getRange(1,1,1,HEADERS.length);
+    h.setBackground('#1c2330');
+    h.setFontColor('#39d0a0');
+    h.setFontWeight('bold');
+  }
+  return sheet;
+}
+
+// 統一日期格式化（避免時區問題）
+function fmtDate(val) {
+  if (!val) return '';
+  // 已經是 yyyy-MM-dd 格式，直接返回
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
+  // Date 物件或其他格式
+  try {
+    const d = (val instanceof Date) ? val : new Date(val);
+    return Utilities.formatDate(d, 'Asia/Taipei', 'yyyy-MM-dd');
+  } catch(e) { return String(val).slice(0,10); }
+}
+
+// ── 接收日報（POST）
+function doPost(e) {
+  try {
+    const data  = JSON.parse(e.postData.contents);
+    const sheet = initSheet();
+    sheet.appendRow([
+      data.date        || '',
+      data.name        || '',
+      data.doneItems   || '',
+      parseInt(data.doneCount)   || 0,
+      data.undoneItems || '',
+      parseInt(data.undoneCount) || 0,
+      data.isRisk ? '⚠️ 是' : '無',
+      data.exceptionText || '',
+      data.plan1 || '',
+      data.plan2 || '',
+      data.plan3 || '',
+      '待審批'
+    ]);
+    if (data.isRisk) {
+      const rng = sheet.getRange(sheet.getLastRow(),1,1,HEADERS.length);
+    rng.setBackground('#fddcdc');
+    rng.setFontColor('#7a1a1a');
+    }
+    return resp({result:'success'});
+  } catch(err) {
+    return resp({result:'error', error:err.message});
+  }
+}
+
+// ── GET 路由
+function doGet(e) {
+  const p      = (e && e.parameter) ? e.parameter : {};
+  const action = p.action || 'daily';
+
+  try {
+    if (action === 'updateStatus') return updateStatus(p);
+    if (action === 'weekStats')    return resp(getWeekStats());
+    if (action === 'history')      return resp(getHistory(p));
+    return resp(getDaily(p.date || ''));   // 預設：指定日期日報
+  } catch(err) {
+    return resp({result:'error', error:err.message});
+  }
+}
+
+// ── 更新審核狀態
+function updateStatus(p) {
+  const sheet  = initSheet();
+  const rowNum = parseInt(p.id);
+  const status = p.status;
+  sheet.getRange(rowNum, 12).setValue(status);
+  const range = sheet.getRange(rowNum,1,1,HEADERS.length);
+  if (status === '✓ 已審批') {
+    range.setBackground('#c8f0dc');  // 淺綠底
+    range.setFontColor('#1a4a2a');   // 深綠字
+  } else if (status === '⚠ 標記異常') {
+    range.setBackground('#fddcdc');  // 淺紅底
+    range.setFontColor('#7a1a1a');   // 深紅字
+  }
+  return resp({result:'success'});
+}
+
+// ── 指定日期日報（預設今天）
+function getDaily(dateStr) {
+  const sheet   = initSheet();
+  const target  = dateStr || Utilities.formatDate(new Date(),'Asia/Taipei','yyyy-MM-dd');
+  const allData = sheet.getDataRange().getValues();
+  const rows    = [];
+
+  for (let i = 1; i < allData.length; i++) {
+    const r = allData[i];
+    if (!r[0]) continue;
+    // 支援多種日期格式比對
+    const rowDate = fmtDate(r[0]);
+    if (rowDate !== target) continue;
+    rows.push(makeRow(r, i+1));
+  }
+
+  const submitted = rows.map(r => r.name);
+  const missing   = MEMBERS.filter(m => !submitted.includes(m));
+  return {result:'success', date:target, rows, missing, total:MEMBERS.length};
+}
+
+// ── 本週統計
+function getWeekStats() {
+  const sheet   = initSheet();
+  const now     = new Date();
+  const nowTW   = new Date(now.toLocaleString('en-US',{timeZone:'Asia/Taipei'}));
+  const dayOfWk = nowTW.getDay() || 7;  // 1=Mon ... 7=Sun
+  const monday  = new Date(nowTW);
+  monday.setDate(nowTW.getDate() - dayOfWk + 1);
+  monday.setHours(0,0,0,0);
+  const workDays = Math.min(dayOfWk - 1, 5);
+
+  const allData = sheet.getDataRange().getValues();
+  const allRows = [];
+
+  for (let i = 1; i < allData.length; i++) {
+    const r = allData[i];
+    if (!r[0]) continue;
+    const d = new Date(fmtDate(r[0]));
+    if (isNaN(d) || d < monday) continue;
+    allRows.push(makeRow(r, i+1));
+  }
+
+  return {result:'success', allRows, workDays};
+}
+
+// ── 歷史查詢（日期範圍 + 姓名篩選）
+function getHistory(p) {
+  const sheet   = initSheet();
+  const from    = p.from || '';
+  const to      = p.to   || '';
+  const name    = p.name || '';
+  const allData = sheet.getDataRange().getValues();
+  const rows    = [];
+
+  for (let i = 1; i < allData.length; i++) {
+    const r    = allData[i];
+    if (!r[0]) continue;
+    const d    = fmtDate(r[0]);
+    if (from && d < from) continue;
+    if (to   && d > to)   continue;
+    if (name && r[1] !== name) continue;
+    rows.push(makeRow(r, i+1));
+  }
+
+  return {result:'success', rows};
+}
+
+// ── 共用：把一列資料轉成物件
+function makeRow(r, rowNum) {
+  return {
+    rowNum,
+    date:        fmtDate(r[0]),
+    name:        r[1]  || '',
+    doneItems:   r[2]  || '',
+    doneCount:   r[3]  || 0,
+    undoneItems: r[4]  || '',
+    undoneCount: r[5]  || 0,
+    isRisk:      String(r[6]).includes('是'),
+    exception:   r[7]  || '',
+    plan1:       r[8]  || '',
+    plan2:       r[9]  || '',
+    plan3:       r[10] || '',
+    status:      r[11] || '待審批',
+  };
+}
+
+// ── 每日摘要（定時觸發）
+function dailySummary() {
+  const result = getDaily('');
+  if (result.result !== 'success') return;
+  const ss = SpreadsheetApp.openById(SHEET_ID);
+  let sumSheet = ss.getSheetByName('每日摘要');
+  if (!sumSheet) {
+    sumSheet = ss.insertSheet('每日摘要');
+    sumSheet.getRange(1,1,1,6).setValues([['日期','填報人數','漏填名單','完成項合計','未完成項合計','風險筆數']]);
+    sumSheet.setFrozenRows(1);
+  }
+  const rows = result.rows;
+  sumSheet.appendRow([
+    result.date,
+    rows.length + ' / ' + MEMBERS.length,
+    result.missing.join('、') || '無',
+    rows.reduce((s,r)=>s+(parseInt(r.doneCount)||0),0),
+    rows.reduce((s,r)=>s+(parseInt(r.undoneCount)||0),0),
+    rows.filter(r=>r.isRisk).length
+  ]);
+}
+
+function resp(obj) {
+  return ContentService
+    .createTextOutput(JSON.stringify(obj))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── 一鍵修復所有列的格式（在 GAS 手動執行一次）────────────
+function fixAllFormatting() {
+  const sheet   = initSheet();
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return;
+
+  const cols = HEADERS.length;
+
+  // 先全部重設為白底黑字
+  const allRange = sheet.getRange(2, 1, lastRow - 1, cols);
+  allRange.setBackground('#ffffff');
+  allRange.setFontColor('#222222');
+  allRange.setFontFamily('Arial');
+  allRange.setFontSize(10);
+
+  // 再逐列按狀態上色
+  const data = sheet.getRange(2, 1, lastRow - 1, cols).getValues();
+  for (let i = 0; i < data.length; i++) {
+    const row    = i + 2;
+    const status = String(data[i][11] || '');
+    const isRisk = String(data[i][6]  || '').includes('是');
+    const range  = sheet.getRange(row, 1, 1, cols);
+
+    if (status === '✓ 已審批') {
+      range.setBackground('#d6f5e3');
+      range.setFontColor('#1a4a2a');
+    } else if (status === '⚠ 標記異常') {
+      range.setBackground('#fde8e8');
+      range.setFontColor('#7a1a1a');
+    } else if (isRisk) {
+      range.setBackground('#fff3cd');
+      range.setFontColor('#7a5000');
+    } else {
+      // 交替淺灰
+      range.setBackground(i % 2 === 0 ? '#f8f9fa' : '#ffffff');
+      range.setFontColor('#222222');
+    }
+  }
+
+  // 表頭保持深色
+  const hdr = sheet.getRange(1, 1, 1, cols);
+  hdr.setBackground('#1c2330');
+  hdr.setFontColor('#39d0a0');
+  hdr.setFontWeight('bold');
+
+  // 自動調整欄寬
+  sheet.autoResizeColumns(1, cols);
+  // 固定較寬的文字欄
+  sheet.setColumnWidth(1, 100);  // 日期
+  sheet.setColumnWidth(2, 70);   // 姓名
+  sheet.setColumnWidth(3, 400);  // 今日完成事項
+  sheet.setColumnWidth(4, 70);   // 完成項數
+  sheet.setColumnWidth(5, 300);  // 未完成事項
+  sheet.setColumnWidth(6, 70);   // 未完成項數
+  sheet.setColumnWidth(7, 70);   // 是否風險
+  sheet.setColumnWidth(8, 250);  // 例外說明
+  sheet.setColumnWidth(9, 200);  // 明日計劃1
+  sheet.setColumnWidth(10, 200); // 明日計劃2
+  sheet.setColumnWidth(11, 200); // 明日計劃3
+  sheet.setColumnWidth(12, 90);  // 審核狀態
+
+  // 所有資料列自動換行
+  sheet.getRange(2, 1, Math.max(lastRow-1,1), cols).setWrap(true);
+
+  Logger.log('格式修復完成，共處理 ' + (lastRow - 1) + ' 列');
+}
