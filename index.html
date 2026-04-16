@@ -841,8 +841,7 @@ async function renderDailyPage() {
   list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">載入中...</div>';
   try {
     const url = GAS_URL + '?action=daily&date=' + (selDate||'') + '&t=' + Date.now();
-    const res  = await fetch(url);
-    const data = await res.json();
+    const data = await fetchJsonp(url);
     if (data.result !== 'success') throw new Error(data.error);
     liveReports = data.rows.map(r => ({
       id:          r.rowNum,
@@ -923,13 +922,13 @@ function makeReportRow(r){
 function toggleRow(id){document.getElementById('row-'+id).classList.toggle('open');}
 async function approveReport(id){
   const r=liveReports.find(r=>r.id===id); if(!r)return;
-  await fetch(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('✓ 已審批'));
+  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('✓ 已審批'));
   showToast('success','✓ '+r.name+' 的日報已審批通過');
   renderDailyPage();
 }
 async function flagReport(id){
   const r=liveReports.find(r=>r.id===id); if(!r)return;
-  await fetch(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('⚠ 標記異常'));
+  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('⚠ 標記異常'));
   showToast('error','⚠ '+r.name+' 的日報已標記異常');
   renderDailyPage();
 }
@@ -1017,8 +1016,7 @@ async function loadHistory(){
   list.innerHTML = '<div style="color:var(--text3);font-size:13px;padding:20px;text-align:center;">載入中...</div>';
   try {
     const url = GAS_URL + '?action=history&from=' + from + '&to=' + (to||from) + '&name=' + encodeURIComponent(member) + '&t=' + Date.now();
-    const res  = await fetch(url);
-    const data = await res.json();
+    const data = await fetchJsonp(url);
     if (data.result !== 'success') throw new Error(data.error);
     const results = data.rows.map(r => ({
       id:          r.rowNum,
@@ -1083,6 +1081,29 @@ function showKanban(){
 
 function closeKanban(){
   document.getElementById('kanban-modal').classList.remove('show');
+}
+
+
+function fetchJsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    window[cbName] = (data) => {
+      delete window[cbName];
+      document.body.removeChild(script);
+      resolve(data);
+    };
+    script.onerror = () => {
+      delete window[cbName];
+      document.body.removeChild(script);
+      reject(new Error('Failed to fetch'));
+    };
+    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
+    document.body.appendChild(script);
+    setTimeout(() => {
+      if(window[cbName]){ delete window[cbName]; resolve({}); }
+    }, 10000);
+  });
 }
 
 function showToast(type,msg){
