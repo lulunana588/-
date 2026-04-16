@@ -721,10 +721,21 @@ async function submitReport() {
       await new Promise(r=>setTimeout(r,800));
       showFormStatus('success','✓ 日報已提交（示範模式）');
     } else {
-      const res=await fetch(GAS_URL,{method:'POST',body:JSON.stringify(payload)});
-      const data=await res.json();
-      if(data.result==='success') showFormStatus('success','✓ 日報已成功寫入 Google Sheets');
-      else throw new Error(data.error||'未知錯誤');
+      const encoded = encodeURIComponent(JSON.stringify(payload));
+      const submitUrl = GAS_URL + '?action=submit&data=' + encoded;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch(submitUrl, {signal: controller.signal});
+        clearTimeout(timeout);
+        const data = await res.json();
+        if(data.result==='success') showFormStatus('success','✓ 日報已成功寫入 Google Sheets');
+        else throw new Error(data.error||'未知錯誤');
+      } catch(fetchErr) {
+        clearTimeout(timeout);
+        if(fetchErr.name==='AbortError') showFormStatus('error','✗ 提交逾時，請重試');
+        else throw fetchErr;
+      }
     }
   } catch(e){showFormStatus('error','✗ 提交失敗：'+e.message);}
   btn.disabled=false;btn.textContent='提交日報';
