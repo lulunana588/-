@@ -664,8 +664,8 @@ function generateTG() {
   const date=document.getElementById('report-date').value;
   const done=getListValues('done-list');
   const undone=getListValues('undone-list');
-  const isRisk=document.getElementById('is-risk').checked;
-  const exc=document.getElementById('exception-text').value.trim();
+  const isRisk=false;
+  const exc='';
   const plans=getListValues('plan-list');
   let tg=`📋 日報｜${name}｜${date}\n${'─'.repeat(28)}\n\n✅ 今日完成（${done.length} 項）：\n`;
   tg+=done.length?done.map((d,i)=>`   ${i+1}. ${d}`).join('\n'):'   （未填）';
