@@ -721,9 +721,9 @@ async function submitReport() {
       await new Promise(r=>setTimeout(r,800));
       showFormStatus('success','✓ 日報已提交（示範模式）');
     } else {
-      const encoded = encodeURIComponent(JSON.stringify(payload));
-      const submitUrl = GAS_URL + '?action=submit&data=' + encoded;
-      const res = await fetch(submitUrl);
+      const form = new FormData();
+      Object.keys(payload).forEach(k => form.append(k, payload[k]));
+      const res = await fetch(GAS_URL, { method: 'POST', body: form });
       const result = await res.json();
       if(result.result === 'success') showFormStatus('success','✓ 日報已成功提交！');
       else throw new Error(result.error || '未知錯誤');
