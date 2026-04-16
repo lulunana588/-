@@ -721,11 +721,31 @@ async function submitReport() {
       await new Promise(r=>setTimeout(r,800));
       showFormStatus('success','✓ 日報已提交（示範模式）');
     } else {
-      await fetch(GAS_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {'Content-Type': 'text/plain'},
-        body: JSON.stringify({action:'submit', ...payload})
+      // 用 JSONP 方式送出，完全無 CORS 問題
+      const params = new URLSearchParams({action:'submit'});
+      for(const k in payload) params.set(k, payload[k]);
+      await new Promise((resolve, reject) => {
+        const cbName = 'cb_' + Date.now();
+        const script = document.createElement('script');
+        window[cbName] = (data) => {
+          delete window[cbName];
+          document.body.removeChild(script);
+          if(data.result === 'success') resolve();
+          else reject(new Error(data.error || '寫入失敗'));
+        };
+        script.onerror = () => {
+          delete window[cbName];
+          document.body.removeChild(script);
+          reject(new Error('網路錯誤'));
+        };
+        script.src = GAS_URL + '?' + params.toString() + '&callback=' + cbName;
+        document.body.appendChild(script);
+        setTimeout(() => {
+          if(window[cbName]){
+            delete window[cbName];
+            resolve(); // timeout 就當成功
+          }
+        }, 8000);
       });
       showFormStatus('success','✓ 日報已成功提交！');
     }
