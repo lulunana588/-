@@ -267,6 +267,32 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
 @media(max-width:700px){.stat-grid{grid-template-columns:repeat(2,1fr)};.topbar{overflow-x:auto};}
+
+/* ══ 週報看板 Modal ══ */
+#kanban-modal{display:none;position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);overflow-y:auto;padding:32px 16px;}
+#kanban-modal.show{display:block;}
+.kanban-wrap{max-width:960px;margin:0 auto;background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;}
+.kanban-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:16px;}
+.kanban-title{font-size:18px;font-weight:700;letter-spacing:-0.01em;}
+.kanban-date{font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.kanban-close{cursor:pointer;color:var(--text3);font-size:20px;transition:color 0.2s;}
+.kanban-close:hover{color:var(--red);}
+.kanban-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px;}
+.kanban-col{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.kanban-col-full{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}
+.kanban-col-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.kanban-col-icon{font-size:14px;}
+.kanban-col-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.08em;}
+.kanban-item{font-size:13px;color:var(--text2);padding:7px 10px;background:var(--surface);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--teal);line-height:1.5;}
+.kanban-item.risk{border-left-color:var(--red);background:var(--red-dim);}
+.kanban-item.plan{border-left-color:var(--blue);}
+.kanban-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;}
+.ks-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center;}
+.ks-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;margin-bottom:4px;}
+.ks-label{font-size:11px;color:var(--text3);}
+.kanban-print-btn{width:100%;margin-top:12px;background:var(--teal);color:#0d1117;border:none;border-radius:8px;font-size:14px;font-weight:700;padding:12px;cursor:pointer;font-family:'Noto Sans TC',sans-serif;transition:background 0.2s;}
+.kanban-print-btn:hover{background:#4de0b4;}
+@media(max-width:600px){.kanban-grid{grid-template-columns:1fr;}.kanban-stats{grid-template-columns:repeat(2,1fr);}}
 </style>
 </head>
 <body>
@@ -470,6 +496,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       <div class="action-row">
         <button class="btn btn-ghost" onclick="copyWeekly()">複製 TG 格式</button>
         <button class="btn btn-blue" onclick="switchTab('upload')">☁️ 上傳至雲端</button>
+        <button class="btn" style="background:#6c47d4;color:#fff;" onclick="showKanban()">📋 生成週報看板</button>
         <button class="btn btn-teal" onclick="showToast('success','✓ 週報已送出至 L3 主管')">✓ 確認送出</button>
       </div>
     </div>
@@ -543,6 +570,43 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
   </div>
   </div>
 
+
+<!-- ══ 週報看板 Modal ══ -->
+<div id="kanban-modal">
+  <div class="kanban-wrap" id="kanban-content">
+    <div class="kanban-header">
+      <div>
+        <div class="kanban-title">📋 團隊週報工作看板</div>
+        <div class="kanban-date" id="kanban-date"></div>
+      </div>
+      <div class="kanban-close" onclick="closeKanban()">✕</div>
+    </div>
+    <div class="kanban-stats">
+      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-submitted">—</div><div class="ks-label">今日填報人數</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-done">—</div><div class="ks-label">完成事項總計</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-approved">—</div><div class="ks-label">已審批份數</div></div>
+    </div>
+    <div class="kanban-col-full">
+      <div class="kanban-col-header"><span class="kanban-col-icon">✅</span><span class="kanban-col-title">本週團隊產出總結</span></div>
+      <div id="kb-output"></div>
+    </div>
+    <div class="kanban-grid">
+      <div class="kanban-col">
+        <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">下週計劃重點</span></div>
+        <div id="kb-next"></div>
+      </div>
+      <div class="kanban-col">
+        <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">團隊問題 & 風險</span></div>
+        <div id="kb-risk"></div>
+      </div>
+    </div>
+    <div class="kanban-col-full">
+      <div class="kanban-col-header"><span class="kanban-col-icon">📊</span><span class="kanban-col-title">人效數據 & 備註</span></div>
+      <div id="kb-data"></div>
+    </div>
+    <button class="kanban-print-btn" onclick="window.print()">🖨️ 列印 / 儲存 PDF</button>
+  </div>
+</div>
 </div><!-- end view-admin -->
 
 <div class="toast" id="toast"></div>
@@ -850,33 +914,25 @@ async function flagReport(id){
 async function generateWeekly(){
   showToast('success','⚡ 正在從雲端讀取資料...');
   try {
-    const res  = await fetch(GAS_URL + '?action=weekStats&t=' + Date.now());
-    const data = await res.json();
-    if(data.result !== 'success') throw new Error(data.error);
-    const allRows = (data.allRows || []).map(r => ({
-      name:      r.name,
-      status:    r.status === '✓ 已審批' ? 'approved' : 'pending',
-      doneItems: r.doneItems ? String(r.doneItems).split(' | ') : [],
-      isRisk:    r.isRisk,
-      exception: r.exception || '',
-      plans:     [r.plan1, r.plan2, r.plan3].filter(Boolean),
-    }));
-    const approved = allRows.filter(r=>r.status==='approved');
+    // 用已載入的 liveReports 直接產生，不需要額外 fetch
+    if(!liveReports || !liveReports.length){
+      showToast('error','請先到「日報」頁載入資料後再彙整');
+      return;
+    }
+    const approved = liveReports.filter(r=>r.status==='approved');
     if(!approved.length){ showToast('error','目前沒有已審批的日報，請先在日報頁審批'); return; }
 
-    // 自動產生週報草稿
     const doneList = [];
-    approved.forEach(r => r.doneItems.forEach(d => { if(d) doneList.push(`• ${r.name}：${d}`); }));
+    approved.forEach(r => (r.doneItems||[]).forEach(d => { if(d) doneList.push(`• ${r.name}：${d}`); }));
     const planList = [];
-    approved.forEach(r => r.plans.forEach(p => { if(p) planList.push(`• ${r.name}：${p}`); }));
-    const riskList = allRows.filter(r=>r.isRisk).map(r=>`• ${r.name}：${r.exception}`);
-    const totalDone = approved.reduce((s,r)=>s+r.doneItems.length,0);
-    const totalPossible = (MEMBERS.length) * (data.workDays||1);
-    const fillRate = totalPossible > 0 ? Math.round(allRows.length / totalPossible * 100) : 0;
+    approved.forEach(r => (r.plans||[]).forEach(p => { if(p) planList.push(`• ${r.name}：${p}`); }));
+    const riskList = liveReports.filter(r=>r.isRisk).map(r=>`• ${r.name}：${r.exception||''}`);
+    const totalDone = approved.reduce((s,r)=>s+(r.doneItems||[]).length,0);
+    const fillRate = MEMBERS.length > 0 ? Math.round(liveReports.length / MEMBERS.length * 100) : 0;
 
     document.getElementById('w-output').value = doneList.join('\n') || '（請手動填寫）';
     document.getElementById('w-risk').value   = riskList.length ? riskList.join('\n') : '本週無風險事項';
-    document.getElementById('w-data').value   = `• 本週填報率：${fillRate}%（${allRows.length} 份）\n• 已審批：${approved.length} 份\n• 總完成事項：${totalDone} 項`;
+    document.getElementById('w-data').value   = `• 今日填報率：${fillRate}%（${liveReports.length}/${MEMBERS.length} 人）\n• 已審批：${approved.length} 份\n• 總完成事項：${totalDone} 項`;
     document.getElementById('w-next').value   = planList.join('\n') || '（請手動填寫）';
     showToast('success','✓ 週報草稿已產生，請確認後送出');
   } catch(e) { showToast('error','生成失敗：'+e.message); }
@@ -895,7 +951,7 @@ async function renderDataTable(){
     const data = await res.json();
     if (data.result !== 'success') throw new Error(data.error);
     const allRows = data.allRows || [];
-    const stats = MEMBERS.filter(m => m !== 'Luna').map(name => {
+    const stats = MEMBERS.map(name => {
       const myRows   = allRows.filter(r => r.name === name);
       const days     = myRows.length;
       const done     = myRows.reduce((s,r) => s + (parseInt(r.doneCount)||0), 0);
@@ -966,6 +1022,44 @@ function doUpload(){
   if(fmt==='copy'){copyWeekly();return;}
   if(!sid){showToast('error','請填入 Google Sheet ID');return;}
   showToast('success','☁️ 上傳成功（示範模式）');
+}
+
+
+function showKanban(){
+  const output = document.getElementById('w-output').value.trim();
+  const risk   = document.getElementById('w-risk').value.trim();
+  const data   = document.getElementById('w-data').value.trim();
+  const next   = document.getElementById('w-next').value.trim();
+
+  if(!output){ showToast('error','請先點「AI 自動彙整」產生週報內容'); return; }
+
+  // 填入統計數字
+  const approved = liveReports.filter(r=>r.status==='approved');
+  const totalDone = liveReports.reduce((s,r)=>s+(r.doneItems||[]).length,0);
+  document.getElementById('kb-submitted').textContent = liveReports.length + ' / ' + MEMBERS.length;
+  document.getElementById('kb-done').textContent = totalDone;
+  document.getElementById('kb-approved').textContent = approved.length;
+
+  // 日期
+  document.getElementById('kanban-date').textContent = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+
+  // 填入內容（每行一個卡片）
+  function toCards(text, cls=''){
+    return text.split('\n').filter(l=>l.trim()).map(l=>
+      `<div class="kanban-item ${cls}">${l.replace(/^[•\-\d\.]+\s*/,'')}</div>`
+    ).join('');
+  }
+
+  document.getElementById('kb-output').innerHTML = toCards(output);
+  document.getElementById('kb-risk').innerHTML   = toCards(risk, 'risk');
+  document.getElementById('kb-data').innerHTML   = toCards(data);
+  document.getElementById('kb-next').innerHTML   = toCards(next, 'plan');
+
+  document.getElementById('kanban-modal').classList.add('show');
+}
+
+function closeKanban(){
+  document.getElementById('kanban-modal').classList.remove('show');
 }
 
 function showToast(type,msg){
