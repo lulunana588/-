@@ -672,7 +672,7 @@ function generateTG() {
   if(undone.length){tg+=`\n\n❌ 未完成（${undone.length} 項）：\n`;tg+=undone.map((d,i)=>`   ${i+1}. ${d}`).join('\n');}
   tg+=`\n\n`;
   if(isRisk||exc){tg+=`${isRisk?'⚠️ △ 風險':'📌 例外上報'}：\n   ${exc||'（已標記風險）'}\n\n`;}
-  else{tg+=`📌 例外上報：無\n\n`;}
+  // 無例外不顯示
   tg+=`📅 明日計劃：\n`;
   tg+=plans.length?plans.map((p,i)=>`   ${i+1}. ${p}`).join('\n'):'   （未填）';
   return tg;
