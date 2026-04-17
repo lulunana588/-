@@ -531,35 +531,77 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
   <div class="kanban-wrap" id="kanban-content">
     <div class="kanban-header">
       <div>
-        <div class="kanban-title">📋 團隊週報工作看板</div>
+        <div class="kanban-title">📋 行政組週報看板</div>
         <div class="kanban-date" id="kanban-date"></div>
       </div>
       <div class="kanban-close" onclick="closeKanban()">✕</div>
     </div>
-    <div class="kanban-stats">
-      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-submitted">—</div><div class="ks-label">本週填報總筆數</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-done">—</div><div class="ks-label">完成事項總計</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-approved">—</div><div class="ks-label">已審批份數</div></div>
+
+    <!-- 頂部 KPI 數字列 -->
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;">
+      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-total-done">—</div><div class="ks-label">完成事項總計</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-per-person">—</div><div class="ks-label">人均產出（件）</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-fill-rate">—</div><div class="ks-label">填報率</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-delay-rate">—</div><div class="ks-label">延誤率</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--red)" id="kb-risk-count">—</div><div class="ks-label">風險事項</div></div>
     </div>
-    <div class="kanban-col-full">
-      <div class="kanban-col-header"><span class="kanban-col-icon">✅</span><span class="kanban-col-title">本週團隊產出總結</span></div>
-      <div id="kb-output"></div>
-    </div>
-    <div class="kanban-grid">
-      <div class="kanban-col">
-        <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">下週計劃重點</span></div>
-        <div id="kb-next"></div>
+
+    <!-- ① 本組產出 -->
+    <div class="kanban-col-full" style="margin-bottom:12px;">
+      <div class="kanban-col-header">
+        <span class="kanban-col-icon">✅</span>
+        <span class="kanban-col-title">① 本組產出</span>
+        <span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;" id="kb-period">—</span>
       </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">主要產出類型</div>
+          <div id="kb-output-types"></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">代表性成果（前3件）</div>
+          <div id="kb-top3"></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">未完成事項</div>
+          <div id="kb-undone"></div>
+        </div>
+      </div>
+      <!-- 人員產出條形 -->
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+        <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:10px;">各人員完成項數</div>
+        <div id="kb-member-bars"></div>
+      </div>
+    </div>
+
+    <!-- ② 風險 & ③ 人效 並排 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div class="kanban-col">
-        <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">團隊問題 & 風險</span></div>
+        <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">② 風險 & 問題</span></div>
         <div id="kb-risk"></div>
       </div>
+      <div class="kanban-col">
+        <div class="kanban-col-header"><span class="kanban-col-icon">📊</span><span class="kanban-col-title">③ 人效數據</span></div>
+        <div id="kb-kpi"></div>
+      </div>
     </div>
+
+    <!-- ④ 下週預測 -->
     <div class="kanban-col-full">
-      <div class="kanban-col-header"><span class="kanban-col-icon">📊</span><span class="kanban-col-title">人效數據 & 備註</span></div>
-      <div id="kb-data"></div>
+      <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">④ 下週預測</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">下週計劃重點</div>
+          <div id="kb-next"></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">需要支援</div>
+          <div id="kb-support"></div>
+        </div>
+      </div>
     </div>
-    <button class="kanban-print-btn" onclick="window.print()">🖨️ 列印 / 儲存 PDF</button>
+
+    <button class="kanban-print-btn" onclick="window.print()" style="margin-top:16px;">🖨️ 列印 / 儲存 PDF</button>
   </div>
 </div>
 </div>
@@ -1014,27 +1056,137 @@ function doUpload(){
 
 function showKanban(){
   const output = document.getElementById('w-output').value.trim();
-  const risk   = document.getElementById('w-risk').value.trim();
-  const data   = document.getElementById('w-data').value.trim();
-  const next   = document.getElementById('w-next').value.trim();
   if(!output){ showToast('error','請先點「AI 自動彙整」產生週報內容'); return; }
 
-  const totalDone    = weeklyReports.reduce((s,r)=>s+(r.doneItems||[]).length,0);
-  const approvedCnt  = weeklyReports.filter(r=>r.status==='✓ 已審批').length;
-  document.getElementById('kb-submitted').textContent = weeklyReports.length;
-  document.getElementById('kb-done').textContent      = totalDone;
-  document.getElementById('kb-approved').textContent  = approvedCnt;
-  document.getElementById('kanban-date').textContent  = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  const reports = weeklyReports;
+  const MEMBERS_COUNT = MEMBERS.length;
 
-  function toCards(text, cls=''){
-    return text.split('\n').filter(l=>l.trim()).map(l=>
-      `<div class="kanban-item ${cls}">${l.replace(/^[•\-\d\.]+\s*/,'')}</div>`
-    ).join('');
+  // ── 基本統計 ──
+  const totalDone    = reports.reduce((s,r)=>s+(r.doneItems||[]).length,0);
+  const totalUndone  = reports.reduce((s,r)=>s+(r.undoneItems||[]).length,0);
+  const approvedCnt  = reports.filter(r=>r.status==='✓ 已審批').length;
+  const riskRows     = reports.filter(r=>r.isRisk);
+  const dates        = [...new Set(reports.map(r=>r.date))].sort();
+  const workDays     = dates.length || 1;
+  const possible     = MEMBERS_COUNT * workDays;
+  const fillRate     = possible > 0 ? Math.round(reports.length/possible*100) : 0;
+  const delayRate    = reports.length > 0 ? Math.round(totalUndone/reports.length*100) : 0;
+  const perPerson    = MEMBERS_COUNT > 0 ? (totalDone/MEMBERS_COUNT).toFixed(1) : '—';
+
+  // ── 填頂部數字 ──
+  document.getElementById('kb-total-done').textContent  = totalDone;
+  document.getElementById('kb-per-person').textContent  = perPerson;
+  document.getElementById('kb-fill-rate').textContent   = fillRate + '%';
+  document.getElementById('kb-delay-rate').textContent  = delayRate + '%';
+  document.getElementById('kb-risk-count').textContent  = riskRows.length;
+  document.getElementById('kanban-date').textContent    = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
+  document.getElementById('kb-period').textContent      = (dates[0]||'') + ' ～ ' + (dates[dates.length-1]||'');
+
+  // ── 產出類型分類 ──
+  const keywords = {
+    '行政協調':['行政','會議','協調','出勤','審核','公告','通知','安排'],
+    '採購/財務':['採購','請款','發票','報銷','費用','金額','支出','繳費','電費','租金'],
+    '資產/設備':['設備','資產','門禁','磁扣','庫存','盤點','維修','清點','入庫'],
+    '系統/AI':['AI','系統','GAS','Script','自動','機器人','機器','Claude','部署','GitHub'],
+    '客服/前台':['前台','客戶','接待','電話','信件','回覆','處理'],
+  };
+  const allDone = reports.flatMap(r=>r.doneItems||[]);
+  const typeCounts = {};
+  allDone.forEach(d=>{
+    for(const [type, kws] of Object.entries(keywords)){
+      if(kws.some(k=>d.includes(k))){ typeCounts[type]=(typeCounts[type]||0)+1; break; }
+    }
+  });
+  const typeEl = document.getElementById('kb-output-types');
+  typeEl.innerHTML = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <span style="font-size:12px;color:var(--text2);">${t}</span>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);font-weight:600;">${c} 件</span>
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text3);">無法分類</div>';
+
+  // ── 代表性成果前3 ──
+  const top3 = allDone.filter(d=>d.length>10).slice(0,3);
+  document.getElementById('kb-top3').innerHTML = top3.map(d=>
+    `<div class="kanban-item" style="font-size:12px;margin-bottom:5px;">${d.slice(0,40)}${d.length>40?'…':''}</div>`
+  ).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
+
+  // ── 未完成事項 ──
+  const allUndone = reports.flatMap(r=>(r.undoneItems||[]).map(u=>({name:r.name,text:u})));
+  document.getElementById('kb-undone').innerHTML = allUndone.length
+    ? allUndone.slice(0,5).map(u=>`<div class="kanban-item risk" style="font-size:12px;margin-bottom:5px;"><b>${u.name}</b>：${u.text.slice(0,35)}${u.text.length>35?'…':''}</div>`).join('')
+    : '<div style="font-size:12px;color:var(--teal);">✓ 本週無未完成事項</div>';
+
+  // ── 各人員完成條形 ──
+  const memberStats = MEMBERS.map(name=>{
+    const rows = reports.filter(r=>r.name===name);
+    return { name, done: rows.reduce((s,r)=>s+(r.doneItems||[]).length,0) };
+  });
+  const maxDone = Math.max(...memberStats.map(m=>m.done), 1);
+  document.getElementById('kb-member-bars').innerHTML = memberStats.map(m=>`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="font-size:12px;color:var(--text2);width:36px;flex-shrink:0;">${m.name}</span>
+      <div style="flex:1;background:var(--surface3);border-radius:3px;height:16px;overflow:hidden;">
+        <div style="width:${Math.round(m.done/maxDone*100)}%;background:var(--teal);height:100%;border-radius:3px;transition:width 0.5s;"></div>
+      </div>
+      <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);width:24px;text-align:right;">${m.done}</span>
+    </div>`).join('');
+
+  // ── 風險 ──
+  const riskEl = document.getElementById('kb-risk');
+  if(riskRows.length){
+    riskEl.innerHTML = riskRows.map(r=>`
+      <div class="kanban-item risk" style="margin-bottom:6px;">
+        <div style="font-size:12px;font-weight:700;color:var(--red);">${r.name}（${r.date}）</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:3px;">${r.exception||'已標記風險'}</div>
+      </div>`).join('');
+  } else {
+    riskEl.innerHTML = '<div style="font-size:13px;color:var(--teal);padding:8px;">✓ 本週無風險事項</div>';
   }
-  document.getElementById('kb-output').innerHTML = toCards(output);
-  document.getElementById('kb-risk').innerHTML   = toCards(risk, 'risk');
-  document.getElementById('kb-data').innerHTML   = toCards(data);
-  document.getElementById('kb-next').innerHTML   = toCards(next, 'plan');
+
+  // ── 人效數據 ──
+  const abnormal = MEMBERS.filter(name=>{
+    const rows = reports.filter(r=>r.name===name);
+    return rows.length < workDays * 0.6;
+  });
+  document.getElementById('kb-kpi').innerHTML = `
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
+        <span style="font-size:12px;color:var(--text2);">任務完成率</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone > 0 ? Math.round(totalDone/(totalDone+totalUndone)*100) : 100}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
+        <span style="font-size:12px;color:var(--text2);">填報率</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
+        <span style="font-size:12px;color:var(--text2);">延誤率</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
+        <span style="font-size:12px;color:var(--text2);">人均產出</span>
+        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span>
+      </div>
+      <div style="padding:7px 10px;background:var(--surface);border-radius:5px;">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">異常人員</div>
+        <div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length ? abnormal.join('、')+'（填報不足）' : '✓ 無異常'}</div>
+      </div>
+    </div>`;
+
+  // ── 下週計劃 ──
+  const latestDate = dates[dates.length-1]||'';
+  const planItems = reports.filter(r=>r.date===latestDate).flatMap(r=>
+    (r.plans||[]).map(p=>({name:r.name,plan:p}))
+  );
+  document.getElementById('kb-next').innerHTML = planItems.slice(0,6).map(p=>
+    `<div class="kanban-item plan" style="font-size:12px;margin-bottom:5px;"><b>${p.name}</b>：${p.plan.slice(0,40)}${p.plan.length>40?'…':''}</div>`
+  ).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
+
+  // ── 需要支援（從週報文字欄萃取）──
+  const riskText = document.getElementById('w-risk').value;
+  document.getElementById('kb-support').innerHTML = riskText && riskText !== '本週無風險事項'
+    ? `<div class="kanban-item" style="font-size:12px;color:var(--amber);">${riskText.slice(0,120)}${riskText.length>120?'…':''}</div>`
+    : '<div style="font-size:12px;color:var(--teal);">✓ 本週無需額外支援</div>';
+
   document.getElementById('kanban-modal').classList.add('show');
 }
 
