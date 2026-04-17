@@ -721,9 +721,12 @@ async function submitReport() {
       await new Promise(r=>setTimeout(r,800));
       showFormStatus('success','✓ 日報已提交（示範模式）');
     } else {
-      const params = new URLSearchParams({action:'submit'});
-      for(const k in payload) params.set(k, String(payload[k]));
-      await fetchJsonp(GAS_URL + '?' + params.toString());
+      await fetch(GAS_URL + '?action=submit', {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {'Content-Type': 'text/plain'},
+        body: JSON.stringify(payload)
+      });
       showFormStatus('success','✓ 日報已成功提交！');
     }
   } catch(e){showFormStatus('error','✗ 提交失敗：'+e.message);}
