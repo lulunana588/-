@@ -601,7 +601,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       </div>
     </div>
 
-    <button class="kanban-print-btn" onclick="window.print()" style="margin-top:16px;">🖨️ 列印 / 儲存 PDF</button>
+    <button class="kanban-print-btn" onclick="exportKanban()" style="margin-top:16px;">⬇️ 匯出週報看板 HTML</button>
   </div>
 </div>
 </div>
@@ -1192,6 +1192,58 @@ function showKanban(){
 
 function closeKanban(){
   document.getElementById('kanban-modal').classList.remove('show');
+}
+
+function exportKanban(){
+  const content = document.getElementById('kanban-content').innerHTML;
+  const dateStr = new Date().toLocaleDateString('zh-TW').replace(/\//g,'-');
+  const html = `<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>行政組週報看板 ${dateStr}</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
+:root{
+  --bg:#0d1117;--surface:#161b22;--surface2:#1c2330;--surface3:#202c3a;
+  --border:#2a3441;--border2:#3d4f63;
+  --text:#e6edf3;--text2:#8b9ab0;--text3:#5a6a7e;
+  --teal:#39d0a0;--teal-dim:rgba(57,208,160,0.15);
+  --blue:#4a9eff;--red:#f85149;--red-dim:rgba(248,81,73,0.12);
+  --amber:#d29922;
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);padding:32px;}
+.kanban-wrap{max-width:960px;margin:0 auto;background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;}
+.kanban-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:16px;}
+.kanban-title{font-size:18px;font-weight:700;}
+.kanban-date{font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
+.kanban-close{display:none;}
+.kanban-col{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;}
+.kanban-col-full{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}
+.kanban-col-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+.kanban-col-icon{font-size:14px;}
+.kanban-col-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.08em;}
+.kanban-item{font-size:13px;color:var(--text2);padding:7px 10px;background:var(--surface);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--teal);line-height:1.5;}
+.kanban-item.risk{border-left-color:var(--red);background:var(--red-dim);}
+.kanban-item.plan{border-left-color:var(--blue);}
+.ks-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center;}
+.ks-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;margin-bottom:4px;}
+.ks-label{font-size:11px;color:var(--text3);}
+.kanban-print-btn{display:none;}
+</style>
+</head>
+<body>
+<div class="kanban-wrap">${content}</div>
+</body>
+</html>`;
+  const blob = new Blob([html], {type:'text/html;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '行政組週報看板_' + dateStr + '.html';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  showToast('success','✓ 已匯出 HTML 檔案');
 }
 
 function fetchJsonp(url) {
