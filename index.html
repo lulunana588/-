@@ -865,6 +865,9 @@ async function generateWeekly() {
       isRisk:      r.isRisk === '是' || r.isRisk === true,
       exception:   r.exception || '',
       status:      r.status || '',
+      agentCount:  r.agentCount  || '',
+      agentSaving: r.agentSaving || '',
+      agentShare:  r.agentShare  || '',
     }));
 
     if (!weeklyReports.length) {
@@ -903,11 +906,17 @@ async function generateWeekly() {
       doneList.join('\n') || '（請手動填寫）';
     document.getElementById('w-risk').value =
       riskList.length ? riskList.join('\n') : '本週無風險事項';
+    const agentList = weeklyReports
+      .filter(r => r.agentCount || r.agentSaving || r.agentShare)
+      .map(r => '• ' + r.name + '（' + r.date + '）｜使用：' + (r.agentCount||'—') + '｜省時：' + (r.agentSaving||'—') + '｜學習分享：' + (r.agentShare||'—'));
+
     document.getElementById('w-data').value =
       '• 統計期間：' + from + ' ～ ' + to + '\n' +
       '• 本週填報率：' + fillRate + '%（' + totalRows + ' 份 / ' + possible + ' 份）\n' +
       '• 已審批：' + approvedCnt + ' 份\n' +
-      '• 總完成事項：' + totalDone + ' 項';
+      '• 總完成事項：' + totalDone + ' 項\n\n' +
+      '📊 Agent 使用數據：\n' +
+      (agentList.length ? agentList.join('\n') : '• 本週無 Agent 數據填報');
     document.getElementById('w-next').value =
       planList.join('\n') || '（請手動填寫）';
 
