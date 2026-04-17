@@ -332,12 +332,12 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       <div class="card-num" style="background:rgba(248,81,73,0.12);border-color:rgba(248,81,73,0.3);">
         <span style="color:var(--red);">③</span>
       </div>
-      <div class="card-title">未完成事項</div>
+      <div class="card-title">未完成事项</div>
       <span class="card-hint">無則免填</span>
     </div>
     <div id="undone-list"></div>
     <button class="add-row-btn" type="button" onclick="addUndoneItem()"
-      style="border-color:rgba(248,81,73,0.3);">＋ 新增未完成事項</button>
+      style="border-color:rgba(248,81,73,0.3);">＋ 新增未完成事项</button>
   </div>
 
   <div class="card">
@@ -428,7 +428,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
     <div class="stat-grid">
       <div class="stat-card"><div class="stat-label">今日填報</div><div class="stat-val" style="color:var(--teal)" id="s-submitted">— / 7</div><div class="stat-hint">人</div></div>
       <div class="stat-card"><div class="stat-label">待審批</div><div class="stat-val" style="color:var(--amber)" id="s-pending">—</div><div class="stat-hint">份</div></div>
-      <div class="stat-card"><div class="stat-label">已審批</div><div class="stat-val" style="color:var(--teal)" id="s-approved">—</div><div class="stat-hint">份</div></div>
+      <div class="stat-card"><div class="stat-label">已审批</div><div class="stat-val" style="color:var(--teal)" id="s-approved">—</div><div class="stat-hint">份</div></div>
       <div class="stat-card"><div class="stat-label">風險標記</div><div class="stat-val" style="color:var(--red)" id="s-risk">—</div><div class="stat-hint">筆</div></div>
     </div>
     <div id="report-list"></div>
@@ -450,9 +450,9 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
     </div>
     <div class="weekly-editor">
       <div class="weekly-section"><div class="weekly-section-label">✅ 本週團隊產出總結</div><textarea id="w-output" placeholder="AI 自動彙整，或手動填寫..."></textarea></div>
-      <div class="weekly-section"><div class="weekly-section-label">⚠️ 團隊問題 & 風險</div><textarea id="w-risk" placeholder="本週風險事項、待解決問題..."></textarea></div>
+      <div class="weekly-section"><div class="weekly-section-label">⚠️ 團隊問題 & 風險</div><textarea id="w-risk" placeholder="本週风险事项、待解決問題..."></textarea></div>
       <div class="weekly-section"><div class="weekly-section-label">📊 人效數據 & 備註</div><textarea id="w-data" placeholder="完成率、異常說明..."></textarea></div>
-      <div class="weekly-section"><div class="weekly-section-label">📅 下週計劃重點</div><textarea id="w-next" placeholder="下週團隊核心任務..."></textarea></div>
+      <div class="weekly-section"><div class="weekly-section-label">📅 下周计划重点</div><textarea id="w-next" placeholder="下週團隊核心任務..."></textarea></div>
       <div class="action-row">
         <button class="btn btn-ghost" onclick="copyWeekly()">複製 TG 格式</button>
         <button class="btn btn-blue" onclick="switchTab('upload')">☁️ 上傳至雲端</button>
@@ -467,8 +467,8 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
   <div class="page-inner">
     <div class="sec-head"><div class="sec-title">填報數據總覽</div></div>
     <div class="stat-grid" style="grid-template-columns:repeat(3,1fr);">
-      <div class="stat-card"><div class="stat-label">本週填報率</div><div class="stat-val" style="color:var(--teal)" id="d-fillrate">—</div><div class="stat-hint" id="d-fillhint">— 份</div></div>
-      <div class="stat-card"><div class="stat-label">本週風險事項</div><div class="stat-val" style="color:var(--red)" id="d-risk">—</div><div class="stat-hint">筆</div></div>
+      <div class="stat-card"><div class="stat-label">本週填报率</div><div class="stat-val" style="color:var(--teal)" id="d-fillrate">—</div><div class="stat-hint" id="d-fillhint">— 份</div></div>
+      <div class="stat-card"><div class="stat-label">本週风险事项</div><div class="stat-val" style="color:var(--red)" id="d-risk">—</div><div class="stat-hint">筆</div></div>
       <div class="stat-card"><div class="stat-label">平均完成項</div><div class="stat-val" style="color:var(--blue)" id="d-avg">—</div><div class="stat-hint">項 / 人 / 日</div></div>
     </div>
     <div class="a-card" style="padding:0;overflow:hidden;">
@@ -531,7 +531,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
   <div class="kanban-wrap" id="kanban-content">
     <div class="kanban-header">
       <div>
-        <div class="kanban-title">📋 行政組週報看板</div>
+        <div class="kanban-title">📋 综合部团队周报</div>
         <div class="kanban-date" id="kanban-date"></div>
       </div>
       <div class="kanban-close" onclick="closeKanban()">✕</div>
@@ -539,23 +539,23 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 
     <!-- 頂部 KPI 數字列 -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;">
-      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-total-done">—</div><div class="ks-label">完成事項總計</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-per-person">—</div><div class="ks-label">人均產出（件）</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-fill-rate">—</div><div class="ks-label">填報率</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-delay-rate">—</div><div class="ks-label">延誤率</div></div>
-      <div class="ks-card"><div class="ks-val" style="color:var(--red)" id="kb-risk-count">—</div><div class="ks-label">風險事項</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-total-done">—</div><div class="ks-label">完成事项总计</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-per-person">—</div><div class="ks-label">人均产出（件）</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-fill-rate">—</div><div class="ks-label">填报率</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-delay-rate">—</div><div class="ks-label">延误率</div></div>
+      <div class="ks-card"><div class="ks-val" style="color:var(--red)" id="kb-risk-count">—</div><div class="ks-label">风险事项</div></div>
     </div>
 
-    <!-- ① 本組產出 -->
+    <!-- ① 本组产出 -->
     <div class="kanban-col-full" style="margin-bottom:12px;">
       <div class="kanban-col-header">
         <span class="kanban-col-icon">✅</span>
-        <span class="kanban-col-title">① 本組產出</span>
+        <span class="kanban-col-title">① 本组产出</span>
         <span style="margin-left:auto;font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;" id="kb-period">—</span>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
-          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">主要產出類型</div>
+          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">主要产出类型</div>
           <div id="kb-output-types"></div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
@@ -563,13 +563,13 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
           <div id="kb-top3"></div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
-          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">未完成事項</div>
+          <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:8px;">未完成事项</div>
           <div id="kb-undone"></div>
         </div>
       </div>
       <!-- 人員產出條形 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
-        <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:10px;">各人員完成項數</div>
+        <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:10px;">各人员完成项数</div>
         <div id="kb-member-bars"></div>
       </div>
     </div>
@@ -577,21 +577,21 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
     <!-- ② 風險 & ③ 人效 並排 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div class="kanban-col">
-        <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">② 風險 & 問題</span></div>
+        <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">② 风险 & 问题</span></div>
         <div id="kb-risk"></div>
       </div>
       <div class="kanban-col">
-        <div class="kanban-col-header"><span class="kanban-col-icon">📊</span><span class="kanban-col-title">③ 人效數據</span></div>
+        <div class="kanban-col-header"><span class="kanban-col-icon">📊</span><span class="kanban-col-title">③ 人效数据</span></div>
         <div id="kb-kpi"></div>
       </div>
     </div>
 
-    <!-- ④ 下週預測 -->
+    <!-- ④ 下周预测 -->
     <div class="kanban-col-full">
-      <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">④ 下週預測</span></div>
+      <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">④ 下周预测</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">下週計劃重點</div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:8px;">下周计划重点</div>
           <div id="kb-next"></div>
         </div>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
@@ -601,7 +601,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       </div>
     </div>
 
-    <button class="kanban-print-btn" onclick="exportKanban()" style="margin-top:16px;">⬇️ 匯出週報看板 HTML</button>
+    <button class="kanban-print-btn" onclick="exportKanban()" style="margin-top:16px;">⬇️ 导出周报看板 HTML</button>
   </div>
 </div>
 </div>
@@ -648,7 +648,7 @@ function getListValues(listId) {
   return Array.from(document.querySelectorAll(`#${listId} input`)).map(i=>i.value.trim()).filter(Boolean);
 }
 function addDoneItem()   { makeRow('done-list','完成了什麼事？（可量化）'); }
-function addUndoneItem() { makeRow('undone-list','未完成事項及原因'); }
+function addUndoneItem() { makeRow('undone-list','未完成事项及原因'); }
 function addPlanItem()   { makeRow('plan-list','明日計劃（含預期完成量）'); }
 
 addDoneItem(); addDoneItem(); addDoneItem();
@@ -794,13 +794,15 @@ async function renderDailyPage() {
     liveReports = (data.rows || []).map(r => ({
       id:          r.rowNum,
       name:        r.name,
+      date:        r.date || '',
       time:        r.submittedAt ? String(r.submittedAt).replace(/.*(\d{2}:\d{2}).*/, '$1') : '--:--',
-      status:      r.status === '✓ 已審批' ? 'approved' : r.status === '⚠ 標記異常' ? 'flagged' : 'pending',
+      status:      r.status === '✓ 已审批' ? 'approved' : r.status === '⚠ 标记异常' ? 'flagged' : 'pending',
       doneItems:   r.doneItems ? String(r.doneItems).split(' | ') : [],
       undoneItems: r.undoneItems ? String(r.undoneItems).split(' | ') : [],
       isRisk:      r.isRisk === '是' || r.isRisk === true,
       exception:   r.exception || '',
       plans:       [r.plan1, r.plan2, r.plan3].filter(Boolean),
+      approveNote: r.approveNote || '',
     }));
     missingToday = data.missing || [];
   } catch(e) {
@@ -831,38 +833,38 @@ function makeReportRow(r){
   const div=document.createElement('div');
   div.className='report-row '+(r.isRisk?'risk':r.status);
   div.id='row-'+r.id;
-  const chips={pending:'<span class="status-chip chip-pending">待審批</span>',approved:'<span class="status-chip chip-approved">✓ 已審批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已標記</span>'};
+  const chips={pending:'<span class="status-chip chip-pending">待审批</span>',approved:'<span class="status-chip chip-approved">✓ 已审批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已标记</span>'};
   div.innerHTML=`
     <div class="report-head" onclick="toggleRow(${r.id})">
       <div class="member-avatar">${r.name[0]}</div>
       <div class="report-meta">
         <div class="report-name">${r.name}</div>
-        <div class="report-time">${r.time !== '--:--' ? r.time : r.date || new Date().toLocaleDateString('zh-TW')}</div>
+        <div class="report-time">${r.date || new Date().toLocaleDateString('zh-TW')}</div>
       </div>
       <div class="report-counts">
         <span class="count-pill pill-done">✅ ${r.doneItems.length}</span>
         ${r.undoneItems.length?`<span class="count-pill pill-undone">❌ ${r.undoneItems.length}</span>`:''}
-        ${r.isRisk?'<span class="count-pill pill-undone">△ 風險</span>':''}
+        ${r.isRisk?'<span class="count-pill pill-undone">△ 风险</span>':''}
       </div>
       ${chips[r.status]||''}
       <span class="chevron">▼</span>
     </div>
     <div class="report-body">
       <div class="report-section">
-        <div class="rs-label">今日完成事項</div>
+        <div class="rs-label">今日完成事项</div>
         <div class="rs-items">${r.doneItems.map((d,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${d}</div>`).join('')}</div>
       </div>
-      ${r.undoneItems.length?`<div class="report-section"><div class="rs-label">未完成事項</div><div class="rs-items">${r.undoneItems.map((d,i)=>`<div class="rs-item" style="border-left:2px solid var(--red)"><span class="num">${i+1}</span>${d}</div>`).join('')}</div></div>`:''}
-      ${r.exception?`<div class="report-section"><div class="rs-label">${r.isRisk?'⚠️ 風險說明':'📌 例外說明'}</div><div class="rs-item" style="${r.isRisk?'background:var(--red-dim);border-left:2px solid var(--red);':''}">${r.exception}</div></div>`:''}
+      ${r.undoneItems.length?`<div class="report-section"><div class="rs-label">未完成事项</div><div class="rs-items">${r.undoneItems.map((d,i)=>`<div class="rs-item" style="border-left:2px solid var(--red)"><span class="num">${i+1}</span>${d}</div>`).join('')}</div></div>`:''}
       <div class="report-section">
-        <div class="rs-label">明日計劃</div>
+        <div class="rs-label">明日计划</div>
         <div class="rs-items">${r.plans.map((p,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${p}</div>`).join('')}</div>
       </div>
-      <div class="approve-bar">
-        <div class="approve-note"><textarea placeholder="審批備註（選填）..." id="note-${r.id}"></textarea></div>
-        <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 標記異常</button>
-        <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 審批通過</button>
-      </div>
+      ${r.approveNote?`<div class="report-section"><div class="rs-label" style="color:var(--teal);">📝 组长审批备注</div><div class="rs-item" style="background:var(--teal-dim);border-left:2px solid var(--teal);color:var(--teal);">${r.approveNote}</div></div>`:''}
+      ${r.status==='pending'?`<div class="approve-bar">
+        <div class="approve-note"><textarea placeholder="审批备注（选填）..." id="note-${r.id}"></textarea></div>
+        <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 标记异常</button>
+        <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 审批通过</button>
+      </div>`:`<div style="padding:10px 0 4px;font-size:12px;color:var(--text3);">── 此份日报已处理 ──</div>`}
     </div>`;
   return div;
 }
@@ -870,14 +872,18 @@ function makeReportRow(r){
 function toggleRow(id){document.getElementById('row-'+id).classList.toggle('open');}
 async function approveReport(id){
   const r=liveReports.find(r=>r.id===id); if(!r)return;
-  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('✓ 已審批'));
-  showToast('success','✓ '+r.name+' 的日報已審批通過');
+  const noteEl=document.getElementById('note-'+id);
+  const note=noteEl?noteEl.value.trim():'';
+  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('✓ 已审批')+'&note='+encodeURIComponent(note));
+  showToast('success','✓ '+r.name+' 的日报已审批通过');
   renderDailyPage();
 }
 async function flagReport(id){
   const r=liveReports.find(r=>r.id===id); if(!r)return;
-  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('⚠ 標記異常'));
-  showToast('error','⚠ '+r.name+' 的日報已標記異常');
+  const noteEl=document.getElementById('note-'+id);
+  const note=noteEl?noteEl.value.trim():'';
+  await fetchJsonp(GAS_URL+'?action=updateStatus&id='+id+'&status='+encodeURIComponent('⚠ 标记异常')+'&note='+encodeURIComponent(note));
+  showToast('error','⚠ '+r.name+' 的日报已标记异常');
   renderDailyPage();
 }
 
@@ -910,6 +916,7 @@ async function generateWeekly() {
       agentCount:  r.agentCount  || '',
       agentSaving: r.agentSaving || '',
       agentShare:  r.agentShare  || '',
+      approveNote: r.approveNote || '',
     }));
 
     if (!weeklyReports.length) {
@@ -930,14 +937,14 @@ async function generateWeekly() {
       if (p) planList.push('• ' + r.name + '：' + p);
     }));
 
-    // 風險事項
+    // 风险事项
     const riskList = weeklyReports
       .filter(r => r.isRisk)
       .map(r => '• ' + r.name + '（' + r.date + '）：' + (r.exception || '已標記風險'));
 
     // 統計
     const totalRows    = weeklyReports.length;
-    const approvedCnt  = weeklyReports.filter(r => r.status === '✓ 已審批').length;
+    const approvedCnt  = weeklyReports.filter(r => r.status === '✓ 已审批').length;
     const totalDone    = weeklyReports.reduce((s, r) => s + (r.doneItems || []).length, 0);
     const days         = Math.round((new Date(to) - new Date(from)) / 86400000) + 1;
     const workDays     = Math.min(5, days);
@@ -947,15 +954,15 @@ async function generateWeekly() {
     document.getElementById('w-output').value =
       doneList.join('\n') || '（請手動填寫）';
     document.getElementById('w-risk').value =
-      riskList.length ? riskList.join('\n') : '本週無風險事項';
+      riskList.length ? riskList.join('\n') : '本週無风险事项';
     const agentList = weeklyReports
       .filter(r => r.agentCount || r.agentSaving || r.agentShare)
       .map(r => '• ' + r.name + '（' + r.date + '）｜使用：' + (r.agentCount||'—') + '｜省時：' + (r.agentSaving||'—') + '｜學習分享：' + (r.agentShare||'—'));
 
     document.getElementById('w-data').value =
       '• 統計期間：' + from + ' ～ ' + to + '\n' +
-      '• 本週填報率：' + fillRate + '%（' + totalRows + ' 份 / ' + possible + ' 份）\n' +
-      '• 已審批：' + approvedCnt + ' 份\n' +
+      '• 本週填报率：' + fillRate + '%（' + totalRows + ' 份 / ' + possible + ' 份）\n' +
+      '• 已审批：' + approvedCnt + ' 份\n' +
       '• 總完成事項：' + totalDone + ' 項\n\n' +
       '📊 Agent 使用數據：\n' +
       (agentList.length ? agentList.join('\n') : '• 本週無 Agent 數據填報');
@@ -969,7 +976,7 @@ async function generateWeekly() {
 }
 
 function copyWeekly(){
-  const txt=['📅 行政組週報','═'.repeat(30),'','【本週產出】',document.getElementById('w-output').value,'','【問題與風險】',document.getElementById('w-risk').value,'','【人效數據】',document.getElementById('w-data').value,'','【下週計劃】',document.getElementById('w-next').value].join('\n');
+  const txt=['📅 综合部周报','═'.repeat(30),'','【本週產出】',document.getElementById('w-output').value,'','【問題與風險】',document.getElementById('w-risk').value,'','【人效數據】',document.getElementById('w-data').value,'','【下週計劃】',document.getElementById('w-next').value].join('\n');
   navigator.clipboard.writeText(txt).then(()=>showToast('success','✓ 已複製至剪貼簿'));
 }
 
@@ -1031,7 +1038,7 @@ async function loadHistory(){
       name:        r.name,
       date:        r.date || '',
       time:        '--:--',
-      status:      r.status === '✓ 已審批' ? 'approved' : r.status === '⚠ 標記異常' ? 'flagged' : 'pending',
+      status:      r.status === '✓ 已审批' ? 'approved' : r.status === '⚠ 標記異常' ? 'flagged' : 'pending',
       doneItems:   r.doneItems ? String(r.doneItems).split(' | ') : [],
       undoneItems: r.undoneItems ? String(r.undoneItems).split(' | ') : [],
       isRisk:      r.isRisk === '是' || r.isRisk === true,
@@ -1064,7 +1071,7 @@ function showKanban(){
   // ── 基本統計 ──
   const totalDone    = reports.reduce((s,r)=>s+(r.doneItems||[]).length,0);
   const totalUndone  = reports.reduce((s,r)=>s+(r.undoneItems||[]).length,0);
-  const approvedCnt  = reports.filter(r=>r.status==='✓ 已審批').length;
+  const approvedCnt  = reports.filter(r=>r.status==='✓ 已审批').length;
   const riskRows     = reports.filter(r=>r.isRisk);
   const dates        = [...new Set(reports.map(r=>r.date))].sort();
   const workDays     = dates.length || 1;
@@ -1084,10 +1091,10 @@ function showKanban(){
 
   // ── 產出類型分類 ──
   const keywords = {
-    '行政協調':['行政','會議','協調','出勤','審核','公告','通知','安排'],
-    '採購/財務':['採購','請款','發票','報銷','費用','金額','支出','繳費','電費','租金'],
-    '資產/設備':['設備','資產','門禁','磁扣','庫存','盤點','維修','清點','入庫'],
-    '系統/AI':['AI','系統','GAS','Script','自動','機器人','機器','Claude','部署','GitHub'],
+    '行政协调':['行政','會議','協調','出勤','審核','公告','通知','安排'],
+    '采购/财务':['採購','請款','發票','報銷','費用','金額','支出','繳費','電費','租金'],
+    '资产/设备':['設備','資產','門禁','磁扣','庫存','盤點','維修','清點','入庫'],
+    '系统/AI':['AI','系統','GAS','Script','自動','機器人','機器','Claude','部署','GitHub'],
     '客服/前台':['前台','客戶','接待','電話','信件','回覆','處理'],
   };
   const allDone = reports.flatMap(r=>r.doneItems||[]);
@@ -1102,7 +1109,7 @@ function showKanban(){
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <span style="font-size:12px;color:var(--text2);">${t}</span>
       <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);font-weight:600;">${c} 件</span>
-    </div>`).join('') || '<div style="font-size:12px;color:var(--text3);">無法分類</div>';
+    </div>`).join('') || '<div style="font-size:12px;color:var(--text3);">无法分类</div>';
 
   // ── 代表性成果前3 ──
   const top3 = allDone.filter(d=>d.length>10).slice(0,3);
@@ -1110,11 +1117,11 @@ function showKanban(){
     `<div class="kanban-item" style="font-size:12px;margin-bottom:5px;">${d.slice(0,40)}${d.length>40?'…':''}</div>`
   ).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
 
-  // ── 未完成事項 ──
+  // ── 未完成事项 ──
   const allUndone = reports.flatMap(r=>(r.undoneItems||[]).map(u=>({name:r.name,text:u})));
   document.getElementById('kb-undone').innerHTML = allUndone.length
     ? allUndone.slice(0,5).map(u=>`<div class="kanban-item risk" style="font-size:12px;margin-bottom:5px;"><b>${u.name}</b>：${u.text.slice(0,35)}${u.text.length>35?'…':''}</div>`).join('')
-    : '<div style="font-size:12px;color:var(--teal);">✓ 本週無未完成事項</div>';
+    : '<div style="font-size:12px;color:var(--teal);">✓ 本週無未完成事项</div>';
 
   // ── 各人員完成條形 ──
   const memberStats = MEMBERS.map(name=>{
@@ -1137,10 +1144,22 @@ function showKanban(){
     riskEl.innerHTML = riskRows.map(r=>`
       <div class="kanban-item risk" style="margin-bottom:6px;">
         <div style="font-size:12px;font-weight:700;color:var(--red);">${r.name}（${r.date}）</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:3px;">${r.exception||'已標記風險'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-top:3px;">${r.exception||'已标记风险'}</div>
       </div>`).join('');
   } else {
-    riskEl.innerHTML = '<div style="font-size:13px;color:var(--teal);padding:8px;">✓ 本週無風險事項</div>';
+    riskEl.innerHTML = '<div style="font-size:13px;color:var(--teal);padding:8px;">✓ 本周无风险事项</div>';
+  }
+
+  // ── 组长审批备注 ──
+  const notedRows = reports.filter(r=>r.approveNote);
+  if(notedRows.length){
+    const noteHtml = notedRows.map(r=>`
+      <div style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--teal);">
+        <div style="font-size:11px;color:var(--teal);margin-bottom:3px;">📝 ${r.name}（${r.date}）</div>
+        <div style="font-size:12px;color:var(--text2);">${r.approveNote}</div>
+      </div>`).join('');
+    // 加在风险区块后面
+    riskEl.innerHTML += '<div style="margin-top:10px;font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:6px;">组长审批备注</div>' + noteHtml;
   }
 
   // ── 人效數據 ──
@@ -1151,24 +1170,24 @@ function showKanban(){
   document.getElementById('kb-kpi').innerHTML = `
     <div style="display:flex;flex-direction:column;gap:8px;">
       <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">任務完成率</span>
+        <span style="font-size:12px;color:var(--text2);">任务完成率</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone > 0 ? Math.round(totalDone/(totalDone+totalUndone)*100) : 100}%</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">填報率</span>
+        <span style="font-size:12px;color:var(--text2);">填报率</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">延誤率</span>
+        <span style="font-size:12px;color:var(--text2);">延误率</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span>
       </div>
       <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">人均產出</span>
+        <span style="font-size:12px;color:var(--text2);">人均产出</span>
         <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span>
       </div>
       <div style="padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">異常人員</div>
-        <div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length ? abnormal.join('、')+'（填報不足）' : '✓ 無異常'}</div>
+        <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">异常人员</div>
+        <div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length ? abnormal.join('、')+'（填报不足）' : '✓ 无异常'}</div>
       </div>
     </div>`;
 
@@ -1183,9 +1202,9 @@ function showKanban(){
 
   // ── 需要支援（從週報文字欄萃取）──
   const riskText = document.getElementById('w-risk').value;
-  document.getElementById('kb-support').innerHTML = riskText && riskText !== '本週無風險事項'
+  document.getElementById('kb-support').innerHTML = riskText && riskText !== '本週無风险事项'
     ? `<div class="kanban-item" style="font-size:12px;color:var(--amber);">${riskText.slice(0,120)}${riskText.length>120?'…':''}</div>`
-    : '<div style="font-size:12px;color:var(--teal);">✓ 本週無需額外支援</div>';
+    : '<div style="font-size:12px;color:var(--teal);">✓ 本周无需额外支援</div>';
 
   document.getElementById('kanban-modal').classList.add('show');
 }
@@ -1201,7 +1220,7 @@ function exportKanban(){
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>行政組週報看板 ${dateStr}</title>
+<title>综合部团队周报 ${dateStr}</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
 :root{
@@ -1240,7 +1259,7 @@ body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text
   const blob = new Blob([html], {type:'text/html;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = '行政組週報看板_' + dateStr + '.html';
+  a.download = '综合部团队周报_' + dateStr + '.html';
   a.click();
   URL.revokeObjectURL(a.href);
   showToast('success','✓ 已匯出 HTML 檔案');
