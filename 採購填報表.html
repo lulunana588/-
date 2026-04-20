@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>採購填報表</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #7c5cfc;
+    --success: #34d399;
+    --warn: #fbbf24;
+    --err: #f87171;
+    --text: #e2e8f0;
+    --muted: #64748b;
+    --label: #94a3b8;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 40px 16px 60px;
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 680px;
+  }
+
+  /* Header */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 32px;
+  }
+  .header-icon {
+    width: 42px; height: 42px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .header-title { font-size: 22px; font-weight: 600; letter-spacing: 0.02em; }
+  .header-sub { font-size: 12px; color: var(--muted); font-family: 'JetBrains Mono', monospace; margin-top: 3px; }
+
+  /* Card */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 28px;
+    margin-bottom: 20px;
+  }
+  .card-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  /* Grid */
+  .grid { display: grid; gap: 16px; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+  @media (max-width: 480px) {
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+  }
+
+  /* Field */
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--label);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .field label .req { color: var(--err); font-size: 10px; }
+
+  input, select, textarea {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 14px;
+    padding: 10px 13px;
+    width: 100%;
+    transition: border-color 0.18s, box-shadow 0.18s;
+    outline: none;
+    -webkit-appearance: none;
+  }
+  input:focus, select:focus, textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(79,142,247,0.12);
+  }
+  select { cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%2364748b' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+  textarea { resize: vertical; min-height: 80px; }
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; }
+
+  /* Amount fields */
+  .amount-wrap { position: relative; }
+  .amount-wrap input { padding-left: 32px; }
+  .amount-prefix {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 13px; font-family: 'JetBrains Mono', monospace;
+    pointer-events: none;
+  }
+
+  /* Custom option input */
+  .custom-input { display: none; margin-top: 8px; }
+  .custom-input.show { display: block; }
+
+  /* Submit */
+  .submit-btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-family: 'Noto Sans TC', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: 0.04em;
+    transition: opacity 0.2s, transform 0.1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .submit-btn:hover:not(:disabled) { opacity: 0.88; }
+  .submit-btn:active:not(:disabled) { transform: scale(0.99); }
+  .submit-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Toast */
+  .toast {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 18px;
+    border-radius: 10px;
+    font-size: 14px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    border: 1px solid;
+    animation: slideIn 0.25s ease;
+  }
+  .toast.show { display: flex; }
+  .toast.success { background: rgba(52,211,153,0.1); border-color: rgba(52,211,153,0.3); color: var(--success); }
+  .toast.error { background: rgba(248,113,113,0.1); border-color: rgba(248,113,113,0.3); color: var(--err); }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Spinner */
+  .spinner { width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+  .spinner.show { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Item rows */
+  .row-header {
+    display: flex;
+    gap: 10px;
+    padding: 0 0 8px 36px;
+    margin-bottom: 4px;
+  }
+  .rh-cell {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .rh-cell .req { color: var(--err); font-size: 9px; }
+
+  .item-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border);
+  }
+  .row-num {
+    width: 26px; height: 26px; min-width: 26px;
+    background: var(--border);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    margin-top: 10px;
+  }
+  .row-fields {
+    flex: 1;
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+  .row-fields > div { display: flex; flex-direction: column; gap: 6px; }
+  .row-fields .amount-wrap { position: relative; }
+  .row-fields .amount-wrap input { padding-left: 28px; }
+  .row-fields .amount-prefix {
+    position: absolute; left: 10px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); font-size: 12px; pointer-events: none;
+    font-family: 'JetBrains Mono', monospace;
+  }
+
+  @media (max-width: 600px) {
+    .row-header { display: none; }
+    .row-fields { flex-wrap: wrap; }
+    .row-fields > div { flex: 1 1 calc(50% - 10px) !important; }
+  }
+
+  /* Config notice */
+  .config-notice {
+    background: rgba(251,191,36,0.08);
+    border: 1px solid rgba(251,191,36,0.25);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 20px;
+    font-size: 12px;
+    color: var(--warn);
+    display: flex; gap: 10px; align-items: flex-start;
+  }
+  .config-notice code {
+    font-family: 'JetBrains Mono', monospace;
+    background: rgba(251,191,36,0.15);
+    padding: 1px 5px; border-radius: 4px;
+    font-size: 11px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="header">
+    <div class="header-icon">🛒</div>
+    <div>
+      <div class="header-title">採購填報表</div>
+      <div class="header-sub">PROCUREMENT · RECORD FORM</div>
+    </div>
+  </div>
+
+  <!-- Config notice: visible until GAS_URL is set -->
+  <div class="config-notice" id="configNotice">
+    ⚠️ &nbsp;請先將 <code>GAS_URL</code> 替換為你部署的 Apps Script 網址，再發給組員使用。
+  </div>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <form id="procForm" autocomplete="off">
+
+    <!-- 基本資訊 -->
+    <div class="card">
+      <div class="card-title">基本資訊</div>
+      <div class="grid grid-2">
+        <div class="field">
+          <label>日期 <span class="req">*</span></label>
+          <input type="date" id="日期" required>
+        </div>
+        <div class="field">
+          <label>公司 / 辦公室 <span class="req">*</span></label>
+          <input type="text" id="公司" placeholder="請輸入公司或辦公室名稱" required>
+        </div>
+      </div>
+    </div>
+
+    <!-- 品項 · 商家 · 金額（三列） -->
+    <div class="card">
+      <div class="card-title">品項 · 商家 · 金額</div>
+
+      <!-- 表頭 -->
+      <div class="row-header">
+        <div class="rh-cell" style="flex:1.2">品項類別 <span class="req">*</span></div>
+        <div class="rh-cell" style="flex:1.2">商家 <span class="req">*</span></div>
+        <div class="rh-cell" style="flex:1">預算</div>
+        <div class="rh-cell" style="flex:1">實際金額 <span class="req">*</span></div>
+      </div>
+
+      <!-- 第 1 列 -->
+      <div class="item-row" id="row1">
+        <div class="row-num">1</div>
+        <div class="row-fields">
+          <div style="flex:1.2">
+            <select class="品項Sel" onchange="toggleRowCustom(this)" required>
+              <option value="">— 請選擇 —</option>
+              <option>清潔用品</option>
+              <option>零食</option>
+              <option>文具</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="品項Custom custom-input" placeholder="請輸入品項">
+          </div>
+          <div style="flex:1.2">
+            <select class="商家Sel" required>
+              <option value="">— 請選擇 —</option>
+              <option>PC HOME</option>
+              <option>總務倉庫</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="商家Custom custom-input" placeholder="請輸入商家">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="預算" min="0" placeholder="0">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="實際金額" min="0" placeholder="0" required>
+          </div>
+        </div>
+      </div>
+
+      <!-- 第 2 列 -->
+      <div class="item-row" id="row2">
+        <div class="row-num">2</div>
+        <div class="row-fields">
+          <div style="flex:1.2">
+            <select class="品項Sel" onchange="toggleRowCustom(this)">
+              <option value="">— 請選擇 —</option>
+              <option>清潔用品</option>
+              <option>零食</option>
+              <option>文具</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="品項Custom custom-input" placeholder="請輸入品項">
+          </div>
+          <div style="flex:1.2">
+            <select class="商家Sel">
+              <option value="">— 請選擇 —</option>
+              <option>PC HOME</option>
+              <option>總務倉庫</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="商家Custom custom-input" placeholder="請輸入商家">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="預算" min="0" placeholder="0">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="實際金額" min="0" placeholder="0">
+          </div>
+        </div>
+      </div>
+
+      <!-- 第 3 列 -->
+      <div class="item-row" id="row3">
+        <div class="row-num">3</div>
+        <div class="row-fields">
+          <div style="flex:1.2">
+            <select class="品項Sel" onchange="toggleRowCustom(this)">
+              <option value="">— 請選擇 —</option>
+              <option>清潔用品</option>
+              <option>零食</option>
+              <option>文具</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="品項Custom custom-input" placeholder="請輸入品項">
+          </div>
+          <div style="flex:1.2">
+            <select class="商家Sel">
+              <option value="">— 請選擇 —</option>
+              <option>PC HOME</option>
+              <option>總務倉庫</option>
+              <option value="__other__">其他</option>
+            </select>
+            <input type="text" class="商家Custom custom-input" placeholder="請輸入商家">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="預算" min="0" placeholder="0">
+          </div>
+          <div style="flex:1" class="amount-wrap">
+            <span class="amount-prefix">$</span>
+            <input type="number" class="實際金額" min="0" placeholder="0">
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <button type="submit" class="submit-btn" id="submitBtn">
+      <div class="spinner" id="spinner"></div>
+      <span id="btnText">✓ &nbsp;送出採購紀錄</span>
+    </button>
+
+  </form>
+</div>
+
+<script>
+  // ── 設定區：部署 GAS 後貼上 Web App URL ──
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbyRoTOj7kkn6NDSRXjJu1R71xbMBOibH9_0N5ZqF9y4DZe5FLBFnv16xZ_s6RdMgqYnjg/exec';
+  // ─────────────────────────────────────────
+
+  // 預設今天
+  document.getElementById('日期').value = new Date().toISOString().slice(0,10);
+
+  // 品項「其他」展開自訂欄
+  function toggleRowCustom(sel) {
+    const customInput = sel.closest('div').querySelector('.品項Custom');
+    if (!customInput) return;
+    if (sel.value === '__other__') {
+      customInput.classList.add('show');
+      customInput.required = true;
+      customInput.focus();
+    } else {
+      customInput.classList.remove('show');
+      customInput.required = false;
+      customInput.value = '';
+    }
+  }
+
+  // 商家「其他」展開（商家Sel onchange 綁定）
+  document.querySelectorAll('.商家Sel').forEach(sel => {
+    sel.addEventListener('change', function() {
+      const custom = this.closest('div').querySelector('.商家Custom');
+      if (!custom) return;
+      if (this.value === '__other__') {
+        custom.classList.add('show'); custom.required = true; custom.focus();
+      } else {
+        custom.classList.remove('show'); custom.required = false; custom.value = '';
+      }
+    });
+  });
+
+  // 隱藏 notice 若 URL 已設
+  if (GAS_URL !== 'YOUR_GAS_WEBAPP_URL_HERE') {
+    document.getElementById('configNotice').style.display = 'none';
+  }
+
+  function showToast(type, msg) {
+    const t = document.getElementById('toast');
+    t.className = 'toast show ' + type;
+    t.innerHTML = (type === 'success' ? '✅' : '❌') + ' &nbsp;' + msg;
+    setTimeout(() => t.classList.remove('show'), 5000);
+  }
+
+  function getSelVal(container, selClass, customClass) {
+    const sel = container.querySelector(selClass);
+    if (!sel) return '';
+    if (sel.value === '__other__') {
+      return container.querySelector(customClass)?.value || '';
+    }
+    return sel.value;
+  }
+
+  document.getElementById('procForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+
+    if (GAS_URL === 'YOUR_GAS_WEBAPP_URL_HERE') {
+      showToast('error', '請先設定 GAS_URL，再送出表單');
+      return;
+    }
+
+    const 日期 = document.getElementById('日期').value;
+    const 公司 = document.getElementById('公司').value;
+    const rows = [];
+
+    document.querySelectorAll('.item-row').forEach(row => {
+      const 品項Sel = row.querySelector('.品項Sel');
+      const 品項 = 品項Sel?.value === '__other__'
+        ? row.querySelector('.品項Custom')?.value || ''
+        : 品項Sel?.value || '';
+      const 商家Sel = row.querySelector('.商家Sel');
+      const 商家 = 商家Sel?.value === '__other__'
+        ? row.querySelector('.商家Custom')?.value || ''
+        : 商家Sel?.value || '';
+      const 預算 = row.querySelector('.預算')?.value || 0;
+      const 實際 = row.querySelector('.實際金額')?.value || '';
+
+      // 只送有品項的列
+      if (品項 && 品項 !== '') {
+        rows.push({ 日期, 公司, 品項, 商家, 預算: Number(預算), 實際金額: Number(實際) });
+      }
+    });
+
+    if (rows.length === 0) {
+      showToast('error', '請至少填寫一筆品項'); return;
+    }
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    document.getElementById('spinner').classList.add('show');
+    document.getElementById('btnText').textContent = '送出中…';
+
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows })
+      });
+      showToast('success', `已送出 ${rows.length} 筆採購紀錄！`);
+      const today = document.getElementById('日期').value;
+      document.getElementById('procForm').reset();
+      document.getElementById('日期').value = today;
+      document.querySelectorAll('.custom-input').forEach(el => el.classList.remove('show'));
+    } catch(err) {
+      showToast('error', '送出失敗：' + err.message);
+    } finally {
+      btn.disabled = false;
+      document.getElementById('spinner').classList.remove('show');
+      document.getElementById('btnText').textContent = '✓ \u2003送出採購紀錄';
+    }
+  });
+</script>
+</body>
+</html>
