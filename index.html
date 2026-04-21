@@ -15,6 +15,7 @@
   --blue:#4a9eff; --blue-dim:rgba(74,158,255,0.12);
   --red:#f85149; --red-dim:rgba(248,81,73,0.12);
   --amber:#d29922; --amber-dim:rgba(210,153,34,0.12);
+  --purple:#9b7ff0; --purple-dim:rgba(155,127,240,0.12);
   --r:8px; --rlg:12px;
 }
 *{box-sizing:border-box;margin:0;padding:0;}
@@ -170,6 +171,106 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 .missing-label{font-size:12px;color:var(--amber);font-weight:600;white-space:nowrap;}
 .missing-names{font-size:13px;color:var(--text2);}
 
+/* ══ 缺勤管理區塊 ══ */
+.absence-panel {
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--rlg);
+  padding:18px 20px;margin-bottom:16px;
+}
+.absence-panel-header {
+  display:flex;align-items:center;gap:10px;margin-bottom:14px;
+  padding-bottom:12px;border-bottom:1px solid var(--border);
+}
+.absence-panel-title {
+  font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px;
+}
+.absence-panel-hint {
+  margin-left:auto;font-size:11px;color:var(--text3);
+  font-family:'JetBrains Mono',monospace;
+}
+.absence-grid {
+  display:grid;grid-template-columns:1fr 1fr;gap:8px;
+}
+.absence-member-card {
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:10px 14px;transition:all 0.2s;background:var(--surface2);
+}
+.absence-member-card.absent {
+  border-color:rgba(210,153,34,0.4);background:var(--amber-dim);
+}
+.absence-member-top {
+  display:flex;align-items:center;gap:10px;
+}
+.absence-cb {
+  width:16px;height:16px;accent-color:var(--teal);cursor:pointer;flex-shrink:0;
+}
+.absence-name {
+  font-size:13px;font-weight:500;flex:1;
+}
+.absent-badge {
+  font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;
+  background:rgba(210,153,34,0.25);color:var(--amber);
+  border:1px solid rgba(210,153,34,0.4);border-radius:4px;
+  padding:1px 7px;letter-spacing:0.05em;
+}
+.absence-fields {
+  margin-top:10px;padding-top:10px;border-top:1px solid rgba(210,153,34,0.2);
+  display:none;
+}
+.absence-member-card.absent .absence-fields { display:block; }
+.absence-row {
+  display:flex;align-items:center;gap:8px;margin-bottom:7px;
+  font-size:12px;color:var(--text2);
+}
+.absence-row:last-child { margin-bottom:0; }
+.absence-row label {
+  font-size:12px;color:var(--text2);margin-bottom:0;width:30px;flex-shrink:0;
+}
+.absence-num-input {
+  width:56px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text);font-size:13px;font-family:'JetBrains Mono',monospace;
+  padding:4px 8px;outline:none;transition:border-color 0.15s;
+}
+.absence-num-input:focus { border-color:var(--amber); }
+.absence-unit-btn {
+  padding:4px 10px;border-radius:5px;font-size:12px;cursor:pointer;
+  border:1px solid var(--border2);background:transparent;color:var(--text3);
+  transition:all 0.15s;font-family:'Noto Sans TC',sans-serif;
+}
+.absence-unit-btn.active {
+  background:var(--amber-dim);border-color:rgba(210,153,34,0.5);color:var(--amber);font-weight:600;
+}
+.absence-reason-select {
+  flex:1;background:var(--surface);border:1px solid var(--border2);border-radius:5px;
+  color:var(--text2);font-size:12px;padding:4px 8px;outline:none;
+  transition:border-color 0.15s;-webkit-appearance:none;
+}
+.absence-reason-select:focus { border-color:var(--amber); }
+
+/* ══ 缺勤日報 Row ══ */
+.report-row.absent-row {
+  border-left:3px solid var(--amber);
+  opacity:0.92;
+}
+.chip-absent {
+  background:var(--amber-dim);color:var(--amber);
+  border:1px solid rgba(210,153,34,0.35);
+  font-size:11px;padding:3px 10px;border-radius:20px;
+  font-family:'JetBrains Mono',monospace;white-space:nowrap;
+}
+.absence-detail-row {
+  padding:10px 16px 14px;border-top:1px solid var(--border);
+  display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+}
+.absence-detail-tag {
+  display:inline-flex;align-items:center;gap:5px;
+  background:var(--amber-dim);border:1px solid rgba(210,153,34,0.3);
+  border-radius:6px;padding:5px 12px;font-size:13px;color:var(--amber);
+}
+.absence-detail-tag .adt-label {
+  font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;margin-right:4px;
+}
+
+/* ══ 既有樣式 ══ */
 .report-row{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px;overflow:hidden;transition:border-color 0.2s;}
 .report-row:hover{border-color:var(--border2);}
 .report-row.risk{border-left:3px solid var(--red);}
@@ -179,6 +280,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 
 .report-head{display:flex;align-items:center;gap:12px;padding:12px 16px;cursor:pointer;}
 .member-avatar{width:32px;height:32px;border-radius:8px;background:var(--surface3);border:1px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:var(--teal);flex-shrink:0;}
+.member-avatar.absent-av{color:var(--amber);}
 .report-meta{flex:1;min-width:0;}
 .report-name{font-size:14px;font-weight:600;}
 .report-time{font-size:11px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
@@ -237,7 +339,7 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 ::-webkit-scrollbar{width:6px;height:6px;}
 ::-webkit-scrollbar-track{background:transparent;}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px;}
-@media(max-width:700px){.stat-grid{grid-template-columns:repeat(2,1fr)};.topbar{overflow-x:auto};}
+@media(max-width:700px){.stat-grid{grid-template-columns:repeat(2,1fr)};.topbar{overflow-x:auto};.absence-grid{grid-template-columns:1fr};}
 
 #kanban-modal{display:none;position:fixed;inset:0;z-index:9990;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);overflow-y:auto;padding:32px 16px;}
 #kanban-modal.show{display:block;}
@@ -421,6 +523,19 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
         <button class="btn btn-ghost" onclick="renderDailyPage()" style="padding:6px 12px;font-size:12px;">重新載入</button>
       </div>
     </div>
+
+    <!-- ══ 在崗成員 / 缺勤管理 ══ -->
+    <div class="absence-panel">
+      <div class="absence-panel-header">
+        <span style="font-size:16px;">👥</span>
+        <div class="absence-panel-title">在崗成員</div>
+        <div class="absence-panel-hint">取消勾選後可填寫缺勤資訊</div>
+      </div>
+      <div class="absence-grid" id="absence-grid">
+        <!-- JS 動態渲染 -->
+      </div>
+    </div>
+
     <div class="missing-bar" id="missing-bar">
       <span class="missing-label">⚠ 尚未填報</span>
       <span class="missing-names" id="missing-names"></span>
@@ -536,8 +651,6 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       </div>
       <div class="kanban-close" onclick="closeKanban()">✕</div>
     </div>
-
-    <!-- 頂部 KPI 數字列 -->
     <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px;">
       <div class="ks-card"><div class="ks-val" style="color:var(--teal)" id="kb-total-done">—</div><div class="ks-label">完成事项总计</div></div>
       <div class="ks-card"><div class="ks-val" style="color:var(--blue)" id="kb-per-person">—</div><div class="ks-label">人均产出（件）</div></div>
@@ -545,8 +658,6 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       <div class="ks-card"><div class="ks-val" style="color:var(--amber)" id="kb-delay-rate">—</div><div class="ks-label">延误率</div></div>
       <div class="ks-card"><div class="ks-val" style="color:var(--red)" id="kb-risk-count">—</div><div class="ks-label">风险事项</div></div>
     </div>
-
-    <!-- ① 本组产出 -->
     <div class="kanban-col-full" style="margin-bottom:12px;">
       <div class="kanban-col-header">
         <span class="kanban-col-icon">✅</span>
@@ -567,14 +678,11 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
           <div id="kb-undone"></div>
         </div>
       </div>
-      <!-- 人員產出條形 -->
       <div style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;">
         <div style="font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:10px;">各人员完成项数</div>
         <div id="kb-member-bars"></div>
       </div>
     </div>
-
-    <!-- ② 風險 & ③ 人效 並排 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div class="kanban-col">
         <div class="kanban-col-header"><span class="kanban-col-icon">⚠️</span><span class="kanban-col-title">② 风险 & 问题</span></div>
@@ -585,8 +693,6 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
         <div id="kb-kpi"></div>
       </div>
     </div>
-
-    <!-- ④ 下周预测 -->
     <div class="kanban-col-full">
       <div class="kanban-col-header"><span class="kanban-col-icon">📅</span><span class="kanban-col-title">④ 下周预测</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
@@ -600,7 +706,6 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
         </div>
       </div>
     </div>
-
     <button class="kanban-print-btn" onclick="exportKanban()" style="margin-top:16px;">⬇️ 导出周报看板 HTML</button>
   </div>
 </div>
@@ -612,6 +717,202 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
 const GAS_URL  = 'https://script.google.com/macros/s/AKfycbxdWeSmyFwUXKBsubeMscHNEHqlLGxBS9ep3A7iYBdLBtj8HnMew1XxDZpp410YMqL5gA/exec';
 const MEMBERS  = ['Luna','妍妍','小菁','蕾蕾','GD','田田','荳荳'];
 const ADMIN_PW = 'luna2026';
+
+// ══ 假別選項 ══
+const LEAVE_REASONS = ['病假','事假','特休','年假','公假','婚假','喪假','補休','其他'];
+
+// ══ 缺勤資料（當日，頁面記憶體儲存）══
+// 格式: { '荳荳': { days: 1, unit: '天', reason: '病假' }, ... }
+let absenceData = {};
+
+// ══ 渲染缺勤成員清單 ══
+function renderAbsenceGrid() {
+  const grid = document.getElementById('absence-grid');
+  grid.innerHTML = '';
+  MEMBERS.forEach(name => {
+    const isAbsent = !!absenceData[name];
+    const ab = absenceData[name] || { days: 1, unit: '天', reason: '病假' };
+
+    const card = document.createElement('div');
+    card.className = 'absence-member-card' + (isAbsent ? ' absent' : '');
+    card.id = 'ab-card-' + name;
+
+    card.innerHTML = `
+      <div class="absence-member-top">
+        <input class="absence-cb" type="checkbox" id="ab-cb-${name}"
+          ${isAbsent ? '' : 'checked'}
+          onchange="toggleAbsence('${name}', this.checked)">
+        <label for="ab-cb-${name}" class="absence-name" style="cursor:pointer;margin-bottom:0;">${name}</label>
+        ${isAbsent ? '<span class="absent-badge">缺勤</span>' : ''}
+      </div>
+      <div class="absence-fields" id="ab-fields-${name}">
+        <div class="absence-row">
+          <label>天數</label>
+          <input class="absence-num-input" type="number" min="0.5" max="30" step="0.5"
+            value="${ab.days}" id="ab-days-${name}"
+            onchange="updateAbsence('${name}')">
+          <button class="absence-unit-btn ${ab.unit==='天'?'active':''}" id="ab-btn-day-${name}"
+            onclick="setUnit('${name}','天')">天</button>
+          <button class="absence-unit-btn ${ab.unit==='小時'?'active':''}" id="ab-btn-hr-${name}"
+            onclick="setUnit('${name}','小時')">小時</button>
+        </div>
+        <div class="absence-row">
+          <label>原因</label>
+          <select class="absence-reason-select" id="ab-reason-${name}"
+            onchange="updateAbsence('${name}')">
+            ${LEAVE_REASONS.map(r => `<option ${r===ab.reason?'selected':''}>${r}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+
+async function toggleAbsence(name, checked) {
+  const card = document.getElementById('ab-card-' + name);
+  const selDate = document.getElementById('daily-date-picker').value || new Date().toISOString().slice(0,10);
+
+  if (!checked) {
+    // 勾掉 = 缺勤
+    absenceData[name] = { days: 1, unit: '天', reason: '病假' };
+    card.classList.add('absent');
+    const top = card.querySelector('.absence-member-top');
+    if (!top.querySelector('.absent-badge')) {
+      const badge = document.createElement('span');
+      badge.className = 'absent-badge';
+      badge.textContent = '缺勤';
+      top.appendChild(badge);
+    }
+    // 寫入 GAS
+    const leaveType = absenceData[name].reason + ' ' + absenceData[name].days + absenceData[name].unit;
+    try {
+      await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate +
+        '&name=' + encodeURIComponent(name) +
+        '&leaveType=' + encodeURIComponent(leaveType));
+      showToast('success', '✓ ' + name + ' 缺勤已登記至後台');
+    } catch(e) { showToast('error', '缺勤寫入失敗：' + e.message); }
+  } else {
+    // 勾選 = 取消缺勤
+    delete absenceData[name];
+    card.classList.remove('absent');
+    const badge = card.querySelector('.absent-badge');
+    if (badge) badge.remove();
+    // 通知 GAS 取消
+    try {
+      await fetchJsonp(GAS_URL + '?action=cancelAbsence&date=' + selDate +
+        '&name=' + encodeURIComponent(name));
+      showToast('success', '✓ ' + name + ' 缺勤已取消');
+    } catch(e) { showToast('error', '取消失敗：' + e.message); }
+  }
+  renderAbsenceGrid();
+  refreshReportListWithAbsence();
+}
+
+function setUnit(name, unit) {
+  if (absenceData[name]) {
+    absenceData[name].unit = unit;
+    document.getElementById('ab-btn-day-' + name).classList.toggle('active', unit === '天');
+    document.getElementById('ab-btn-hr-'  + name).classList.toggle('active', unit === '小時');
+    updateAbsence(name);
+  }
+}
+
+async function updateAbsence(name) {
+  if (!absenceData[name]) return;
+  absenceData[name].days   = parseFloat(document.getElementById('ab-days-'  + name).value) || 1;
+  absenceData[name].reason = document.getElementById('ab-reason-' + name).value;
+  // 同步更新 GAS
+  const selDate = document.getElementById('daily-date-picker').value || new Date().toISOString().slice(0,10);
+  const leaveType = absenceData[name].reason + ' ' + absenceData[name].days + absenceData[name].unit;
+  try {
+    await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate +
+      '&name=' + encodeURIComponent(name) +
+      '&leaveType=' + encodeURIComponent(leaveType));
+    refreshReportListWithAbsence();
+  } catch(e) { showToast('error', '更新失敗：' + e.message); }
+}
+
+// ══ 在日報列表追加缺勤 row ══
+function refreshReportListWithAbsence() {
+  // 移除既有缺勤 row
+  document.querySelectorAll('.absent-row').forEach(el => el.remove());
+  // 取得已提交的成員名單
+  const submittedNames = liveReports.map(r => r.name);
+  // 補上缺勤成員（不在提交名單中）
+  Object.keys(absenceData).forEach(name => {
+    if (!submittedNames.includes(name)) {
+      const abRow = makeAbsenceRow(name, absenceData[name]);
+      document.getElementById('report-list').appendChild(abRow);
+    }
+  });
+  // 更新「尚未填報」欄（排除已登記缺勤者）
+  updateMissingBar();
+}
+
+function updateMissingBar() {
+  const submittedNames = liveReports.map(r => r.name);
+  const absentNames    = Object.keys(absenceData);
+  // 尚未填報 = 不在提交名單、也不在缺勤名單
+  const realMissing = missingToday.filter(n => !absentNames.includes(n));
+  const mb = document.getElementById('missing-bar');
+  const mn = document.getElementById('missing-names');
+  if (realMissing.length) {
+    mb.style.display = 'flex';
+    mn.textContent = realMissing.join('、') + ' 尚未提交';
+  } else {
+    mb.style.display = 'none';
+  }
+}
+
+// ══ 缺勤 Row ══
+function makeAbsenceRow(name, ab) {
+  const div = document.createElement('div');
+  div.className = 'report-row absent-row';
+  div.id = 'absent-row-' + name;
+
+  const unitLabel = ab.unit === '小時' ? ab.days + ' 小時' : ab.days + ' 天';
+
+  div.innerHTML = `
+    <div class="report-head" onclick="this.closest('.report-row').classList.toggle('open')">
+      <div class="member-avatar absent-av">${name[0]}</div>
+      <div class="report-meta">
+        <div class="report-name">${name}</div>
+        <div class="report-time">今日缺勤 · ${ab.reason} ${unitLabel}</div>
+      </div>
+      <div class="report-counts">
+        <span class="count-pill" style="background:var(--amber-dim);color:var(--amber);">
+          🏖 ${ab.reason}
+        </span>
+      </div>
+      <span class="chip-absent">缺勤</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="report-body">
+      <div class="absence-detail-row">
+        <div class="absence-detail-tag">
+          <span class="adt-label">假別</span>${ab.reason}
+        </div>
+        <div class="absence-detail-tag">
+          <span class="adt-label">時長</span>${unitLabel}
+        </div>
+        <div style="flex:1;"></div>
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;"
+          onclick="editAbsenceEntry('${name}')">✏️ 修改</button>
+      </div>
+      <div style="padding:0 16px 6px;font-size:12px;color:var(--text3);">── 缺勤登記由組長手動記錄，不計入日報審批 ──</div>
+    </div>`;
+  return div;
+}
+
+function editAbsenceEntry(name) {
+  // 捲動到缺勤面板並 highlight
+  const card = document.getElementById('ab-card-' + name);
+  if (card) {
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.outline = '2px solid var(--amber)';
+    setTimeout(() => { card.style.outline = ''; }, 2000);
+  }
+}
 
 // ══ 工具：計算週一~週日 ══
 function getWeekRange(offset = 0) {
@@ -759,6 +1060,8 @@ function enterAdmin(){
   document.getElementById('admin-date').textContent=d;
   const picker = document.getElementById('daily-date-picker');
   if (picker) picker.value = new Date().toISOString().slice(0,10);
+  // 初始化缺勤面板
+  renderAbsenceGrid();
   renderDailyPage();
   renderDataTable();
 }
@@ -791,7 +1094,16 @@ async function renderDailyPage() {
     const url = GAS_URL + '?action=daily&date=' + (selDate||'') + '&t=' + Date.now();
     const data = await fetchJsonp(url);
     if (data.result !== 'success') throw new Error(data.error);
-    liveReports = (data.rows || []).map(r => ({
+    const allRows = data.rows || [];
+    // 缺勤列：自動同步到 absenceData 讓面板反映 Sheet 現況
+    allRows.filter(r => r.leaveType).forEach(r => {
+      const match = r.leaveType.match(/^(.+?)\s+([\d.]+)(天|小時)$/);
+      absenceData[r.name] = match
+        ? { days: parseFloat(match[2]), unit: match[3], reason: match[1] }
+        : { days: 1, unit: '天', reason: r.leaveType };
+    });
+    // 正常日報（非缺勤）
+    liveReports = allRows.filter(r => !r.leaveType).map(r => ({
       id:          r.rowNum,
       name:        r.name,
       date:        r.date || '',
@@ -809,10 +1121,10 @@ async function renderDailyPage() {
     list.innerHTML = '<div style="color:var(--red);padding:24px;text-align:center;font-size:13px;">⚠ 無法連接後台：' + e.message + '<br><br>請確認 GAS 已重新部署</div>';
     return;
   }
-  const mn = document.getElementById('missing-names');
-  const mb = document.getElementById('missing-bar');
-  if (missingToday.length) { mb.style.display='flex'; mn.textContent=missingToday.join('、')+' 尚未提交'; }
-  else mb.style.display = 'none';
+
+  // 更新「尚未填報」欄（排除已登記缺勤者）
+  updateMissingBar();
+
   const pending  = liveReports.filter(r=>r.status==='pending').length;
   const approved = liveReports.filter(r=>r.status==='approved').length;
   const risks    = liveReports.filter(r=>r.isRisk).length;
@@ -821,19 +1133,26 @@ async function renderDailyPage() {
   document.getElementById('s-approved').textContent  = approved;
   document.getElementById('s-risk').textContent      = risks;
   document.getElementById('badge-pending').textContent = pending;
+
   list.innerHTML = '';
-  if (!liveReports.length) {
+
+  if (!liveReports.length && !Object.keys(absenceData).length) {
     list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">今日尚無人提交日報</div>';
-    return;
+  } else {
+    liveReports.forEach(r => list.appendChild(makeReportRow(r)));
   }
-  liveReports.forEach(r => list.appendChild(makeReportRow(r)));
+
+  // 補上缺勤 row
+  refreshReportListWithAbsence();
 }
 
 function makeReportRow(r){
   const div=document.createElement('div');
   div.className='report-row '+(r.isRisk?'risk':r.status);
   div.id='row-'+r.id;
+  const isAbsenceRow = r.doneItems && r.doneItems[0] && r.doneItems[0].startsWith('（缺勤）');
   const chips={pending:'<span class="status-chip chip-pending">待审批</span>',approved:'<span class="status-chip chip-approved">✓ 已审批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已标记</span>'};
+  if (isAbsenceRow) return makeAbsenceRowFromReport(r);
   div.innerHTML=`
     <div class="report-head" onclick="toggleRow(${r.id})">
       <div class="member-avatar">${r.name[0]}</div>
@@ -860,13 +1179,19 @@ function makeReportRow(r){
         <div class="rs-items">${r.plans.map((p,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${p}</div>`).join('')}</div>
       </div>
       ${r.approveNote?`<div class="report-section"><div class="rs-label" style="color:var(--teal);">📝 组长审批备注</div><div class="rs-item" style="background:var(--teal-dim);border-left:2px solid var(--teal);color:var(--teal);">${r.approveNote}</div></div>`:''}
-      ${r.status==='pending'?`<div class="approve-bar">
+      ${(r.status==='pending'&&r.doneItems[0]!=='（缺勤）')?`<div class="approve-bar">
         <div class="approve-note"><textarea placeholder="审批备注（选填）..." id="note-${r.id}"></textarea></div>
         <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 标记异常</button>
         <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 审批通过</button>
-      </div>`:`<div style="padding:10px 0 4px;font-size:12px;color:var(--text3);">── 此份日报已处理 ──</div>`}
+      </div>`:r.doneItems[0]==='（缺勤）'?`<div style="padding:10px 0 4px;font-size:12px;color:var(--amber);">── 缺勤紀錄，無需審批 ──</div>`:`<div style="padding:10px 0 4px;font-size:12px;color:var(--text3);">── 此份日报已处理 ──</div>`}
     </div>`;
   return div;
+}
+
+// 把 GAS 回傳的缺勤列轉成缺勤卡片（leaveType 從 absenceData 取）
+function makeAbsenceRowFromReport(r) {
+  const ab = absenceData[r.name] || { days: 1, unit: '天', reason: '缺勤' };
+  return makeAbsenceRow(r.name, ab);
 }
 
 function toggleRow(id){document.getElementById('row-'+id).classList.toggle('open');}
@@ -887,10 +1212,6 @@ async function flagReport(id){
   renderDailyPage();
 }
 
-// ══════════════════════════════════════
-// 週報彙整 ── 直接從 GAS 撈整週，不依賴 liveReports
-// ══════════════════════════════════════
-// 用來在 kanban 顯示的週報資料暫存
 let weeklyReports = [];
 
 async function generateWeekly() {
@@ -899,11 +1220,9 @@ async function generateWeekly() {
     const rangeOpt = document.getElementById('weekly-range').value;
     const offset   = rangeOpt === 'last' ? -1 : 0;
     const { from, to } = getWeekRange(offset);
-
     const url  = GAS_URL + '?action=history&from=' + from + '&to=' + to + '&name=&t=' + Date.now();
     const data = await fetchJsonp(url);
     if (data.result !== 'success') throw new Error(data.error || '讀取失敗');
-
     weeklyReports = (data.rows || []).map(r => ({
       name:        r.name,
       date:        r.date,
@@ -918,31 +1237,17 @@ async function generateWeekly() {
       agentShare:  r.agentShare  || '',
       approveNote: r.approveNote || '',
     }));
-
-    if (!weeklyReports.length) {
-      showToast('error', '本週查無日報資料（' + from + ' ～ ' + to + '）');
-      return;
-    }
-
-    // 完成事項（依日期+姓名排列）
+    if (!weeklyReports.length) { showToast('error', '本週查無日報資料（' + from + ' ～ ' + to + '）'); return; }
     const doneList = [];
     weeklyReports.forEach(r => (r.doneItems || []).forEach(d => {
       if (d) doneList.push('• ' + r.name + '（' + r.date + '）：' + d);
     }));
-
-    // 下週計劃（只取最新日期那天）
     const latestDate = [...new Set(weeklyReports.map(r => r.date))].sort().reverse()[0];
     const planList = [];
     weeklyReports.filter(r => r.date === latestDate).forEach(r => (r.plans || []).forEach(p => {
       if (p) planList.push('• ' + r.name + '：' + p);
     }));
-
-    // 风险事项
-    const riskList = weeklyReports
-      .filter(r => r.isRisk)
-      .map(r => '• ' + r.name + '（' + r.date + '）：' + (r.exception || '已標記風險'));
-
-    // 統計
+    const riskList = weeklyReports.filter(r => r.isRisk).map(r => '• ' + r.name + '（' + r.date + '）：' + (r.exception || '已標記風險'));
     const totalRows    = weeklyReports.length;
     const approvedCnt  = weeklyReports.filter(r => r.status === '✓ 已审批').length;
     const totalDone    = weeklyReports.reduce((s, r) => s + (r.doneItems || []).length, 0);
@@ -950,15 +1255,10 @@ async function generateWeekly() {
     const workDays     = Math.min(5, days);
     const possible     = MEMBERS.length * workDays;
     const fillRate     = possible > 0 ? Math.round(totalRows / possible * 100) : 0;
-
-    document.getElementById('w-output').value =
-      doneList.join('\n') || '（請手動填寫）';
-    document.getElementById('w-risk').value =
-      riskList.length ? riskList.join('\n') : '本週無风险事项';
-    const agentList = weeklyReports
-      .filter(r => r.agentCount || r.agentSaving || r.agentShare)
+    document.getElementById('w-output').value = doneList.join('\n') || '（請手動填寫）';
+    document.getElementById('w-risk').value   = riskList.length ? riskList.join('\n') : '本週無风险事项';
+    const agentList = weeklyReports.filter(r => r.agentCount || r.agentSaving || r.agentShare)
       .map(r => '• ' + r.name + '（' + r.date + '）｜使用：' + (r.agentCount||'—') + '｜省時：' + (r.agentSaving||'—') + '｜學習分享：' + (r.agentShare||'—'));
-
     document.getElementById('w-data').value =
       '• 統計期間：' + from + ' ～ ' + to + '\n' +
       '• 本週填报率：' + fillRate + '%（' + totalRows + ' 份 / ' + possible + ' 份）\n' +
@@ -966,13 +1266,9 @@ async function generateWeekly() {
       '• 總完成事項：' + totalDone + ' 項\n\n' +
       '📊 Agent 使用數據：\n' +
       (agentList.length ? agentList.join('\n') : '• 本週無 Agent 數據填報');
-    document.getElementById('w-next').value =
-      planList.join('\n') || '（請手動填寫）';
-
+    document.getElementById('w-next').value = planList.join('\n') || '（請手動填寫）';
     showToast('success', '✓ ' + from + '～' + to + ' 彙整完成（共 ' + totalRows + ' 筆）');
-  } catch (e) {
-    showToast('error', '生成失敗：' + e.message);
-  }
+  } catch (e) { showToast('error', '生成失敗：' + e.message); }
 }
 
 function copyWeekly(){
@@ -1064,11 +1360,8 @@ function doUpload(){
 function showKanban(){
   const output = document.getElementById('w-output').value.trim();
   if(!output){ showToast('error','請先點「AI 自動彙整」產生週報內容'); return; }
-
   const reports = weeklyReports;
   const MEMBERS_COUNT = MEMBERS.length;
-
-  // ── 基本統計 ──
   const totalDone    = reports.reduce((s,r)=>s+(r.doneItems||[]).length,0);
   const totalUndone  = reports.reduce((s,r)=>s+(r.undoneItems||[]).length,0);
   const approvedCnt  = reports.filter(r=>r.status==='✓ 已审批').length;
@@ -1079,8 +1372,6 @@ function showKanban(){
   const fillRate     = possible > 0 ? Math.round(reports.length/possible*100) : 0;
   const delayRate    = reports.length > 0 ? Math.round(totalUndone/reports.length*100) : 0;
   const perPerson    = MEMBERS_COUNT > 0 ? (totalDone/MEMBERS_COUNT).toFixed(1) : '—';
-
-  // ── 填頂部數字 ──
   document.getElementById('kb-total-done').textContent  = totalDone;
   document.getElementById('kb-per-person').textContent  = perPerson;
   document.getElementById('kb-fill-rate').textContent   = fillRate + '%';
@@ -1088,8 +1379,6 @@ function showKanban(){
   document.getElementById('kb-risk-count').textContent  = riskRows.length;
   document.getElementById('kanban-date').textContent    = new Date().toLocaleDateString('zh-TW',{year:'numeric',month:'long',day:'numeric',weekday:'short'});
   document.getElementById('kb-period').textContent      = (dates[0]||'') + ' ～ ' + (dates[dates.length-1]||'');
-
-  // ── 產出類型分類 ──
   const keywords = {
     '行政协调':['行政','會議','協調','出勤','審核','公告','通知','安排'],
     '采购/财务':['採購','請款','發票','報銷','費用','金額','支出','繳費','電費','租金'],
@@ -1099,163 +1388,52 @@ function showKanban(){
   };
   const allDone = reports.flatMap(r=>r.doneItems||[]);
   const typeCounts = {};
-  allDone.forEach(d=>{
-    for(const [type, kws] of Object.entries(keywords)){
-      if(kws.some(k=>d.includes(k))){ typeCounts[type]=(typeCounts[type]||0)+1; break; }
-    }
-  });
+  allDone.forEach(d=>{ for(const [type,kws] of Object.entries(keywords)){ if(kws.some(k=>d.includes(k))){ typeCounts[type]=(typeCounts[type]||0)+1; break; } } });
   const typeEl = document.getElementById('kb-output-types');
   typeEl.innerHTML = Object.entries(typeCounts).sort((a,b)=>b[1]-a[1]).map(([t,c])=>`
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
       <span style="font-size:12px;color:var(--text2);">${t}</span>
       <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);font-weight:600;">${c} 件</span>
     </div>`).join('') || '<div style="font-size:12px;color:var(--text3);">无法分类</div>';
-
-  // ── 代表性成果前3 ──
   const top3 = allDone.filter(d=>d.length>10).slice(0,3);
-  document.getElementById('kb-top3').innerHTML = top3.map(d=>
-    `<div class="kanban-item" style="font-size:12px;margin-bottom:5px;">${d.slice(0,40)}${d.length>40?'…':''}</div>`
-  ).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
-
-  // ── 未完成事项 ──
+  document.getElementById('kb-top3').innerHTML = top3.map(d=>`<div class="kanban-item" style="font-size:12px;margin-bottom:5px;">${d.slice(0,40)}${d.length>40?'…':''}</div>`).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
   const allUndone = reports.flatMap(r=>(r.undoneItems||[]).map(u=>({name:r.name,text:u})));
   document.getElementById('kb-undone').innerHTML = allUndone.length
     ? allUndone.slice(0,5).map(u=>`<div class="kanban-item risk" style="font-size:12px;margin-bottom:5px;"><b>${u.name}</b>：${u.text.slice(0,35)}${u.text.length>35?'…':''}</div>`).join('')
     : '<div style="font-size:12px;color:var(--teal);">✓ 本週無未完成事项</div>';
-
-  // ── 各人員完成條形 ──
-  const memberStats = MEMBERS.map(name=>{
-    const rows = reports.filter(r=>r.name===name);
-    return { name, done: rows.reduce((s,r)=>s+(r.doneItems||[]).length,0) };
-  });
+  const memberStats = MEMBERS.map(name=>{ const rows=reports.filter(r=>r.name===name); return{name,done:rows.reduce((s,r)=>s+(r.doneItems||[]).length,0)}; });
   const maxDone = Math.max(...memberStats.map(m=>m.done), 1);
   document.getElementById('kb-member-bars').innerHTML = memberStats.map(m=>`
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
       <span style="font-size:12px;color:var(--text2);width:36px;flex-shrink:0;">${m.name}</span>
       <div style="flex:1;background:var(--surface3);border-radius:3px;height:16px;overflow:hidden;">
-        <div style="width:${Math.round(m.done/maxDone*100)}%;background:var(--teal);height:100%;border-radius:3px;transition:width 0.5s;"></div>
+        <div style="width:${Math.round(m.done/maxDone*100)}%;background:var(--teal);height:100%;border-radius:3px;"></div>
       </div>
       <span style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--teal);width:24px;text-align:right;">${m.done}</span>
     </div>`).join('');
-
-  // ── 風險 ──
   const riskEl = document.getElementById('kb-risk');
-  if(riskRows.length){
-    riskEl.innerHTML = riskRows.map(r=>`
-      <div class="kanban-item risk" style="margin-bottom:6px;">
-        <div style="font-size:12px;font-weight:700;color:var(--red);">${r.name}（${r.date}）</div>
-        <div style="font-size:12px;color:var(--text2);margin-top:3px;">${r.exception||'已标记风险'}</div>
-      </div>`).join('');
-  } else {
-    riskEl.innerHTML = '<div style="font-size:13px;color:var(--teal);padding:8px;">✓ 本周无风险事项</div>';
-  }
-
-  // ── 组长审批备注 ──
+  if(riskRows.length){ riskEl.innerHTML = riskRows.map(r=>`<div class="kanban-item risk" style="margin-bottom:6px;"><div style="font-size:12px;font-weight:700;color:var(--red);">${r.name}（${r.date}）</div><div style="font-size:12px;color:var(--text2);margin-top:3px;">${r.exception||'已标记风险'}</div></div>`).join(''); }
+  else { riskEl.innerHTML = '<div style="font-size:13px;color:var(--teal);padding:8px;">✓ 本周无风险事项</div>'; }
   const notedRows = reports.filter(r=>r.approveNote);
-  if(notedRows.length){
-    const noteHtml = notedRows.map(r=>`
-      <div style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--teal);">
-        <div style="font-size:11px;color:var(--teal);margin-bottom:3px;">📝 ${r.name}（${r.date}）</div>
-        <div style="font-size:12px;color:var(--text2);">${r.approveNote}</div>
-      </div>`).join('');
-    // 加在风险区块后面
-    riskEl.innerHTML += '<div style="margin-top:10px;font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:6px;">组长审批备注</div>' + noteHtml;
-  }
-
-  // ── 人效數據 ──
-  const abnormal = MEMBERS.filter(name=>{
-    const rows = reports.filter(r=>r.name===name);
-    return rows.length < workDays * 0.6;
-  });
-  document.getElementById('kb-kpi').innerHTML = `
-    <div style="display:flex;flex-direction:column;gap:8px;">
-      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">任务完成率</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone > 0 ? Math.round(totalDone/(totalDone+totalUndone)*100) : 100}%</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">填报率</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">延误率</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <span style="font-size:12px;color:var(--text2);">人均产出</span>
-        <span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span>
-      </div>
-      <div style="padding:7px 10px;background:var(--surface);border-radius:5px;">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:5px;">异常人员</div>
-        <div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length ? abnormal.join('、')+'（填报不足）' : '✓ 无异常'}</div>
-      </div>
-    </div>`;
-
-  // ── 下週計劃 ──
+  if(notedRows.length){ const noteHtml = notedRows.map(r=>`<div style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--teal);"><div style="font-size:11px;color:var(--teal);margin-bottom:3px;">📝 ${r.name}（${r.date}）</div><div style="font-size:12px;color:var(--text2);">${r.approveNote}</div></div>`).join(''); riskEl.innerHTML += '<div style="margin-top:10px;font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:6px;">组长审批备注</div>' + noteHtml; }
+  const abnormal = MEMBERS.filter(name=>{ const rows=reports.filter(r=>r.name===name); return rows.length<workDays*0.6; });
+  document.getElementById('kb-kpi').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">任务完成率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone>0?Math.round(totalDone/(totalDone+totalUndone)*100):100}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">填报率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">延误率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">人均产出</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span></div><div style="padding:7px 10px;background:var(--surface);border-radius:5px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">异常人员</div><div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length?abnormal.join('、')+'（填报不足）':'✓ 无异常'}</div></div></div>`;
   const latestDate = dates[dates.length-1]||'';
-  const planItems = reports.filter(r=>r.date===latestDate).flatMap(r=>
-    (r.plans||[]).map(p=>({name:r.name,plan:p}))
-  );
-  document.getElementById('kb-next').innerHTML = planItems.slice(0,6).map(p=>
-    `<div class="kanban-item plan" style="font-size:12px;margin-bottom:5px;"><b>${p.name}</b>：${p.plan.slice(0,40)}${p.plan.length>40?'…':''}</div>`
-  ).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
-
-  // ── 需要支援（從週報文字欄萃取）──
+  const planItems = reports.filter(r=>r.date===latestDate).flatMap(r=>(r.plans||[]).map(p=>({name:r.name,plan:p})));
+  document.getElementById('kb-next').innerHTML = planItems.slice(0,6).map(p=>`<div class="kanban-item plan" style="font-size:12px;margin-bottom:5px;"><b>${p.name}</b>：${p.plan.slice(0,40)}${p.plan.length>40?'…':''}</div>`).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
   const riskText = document.getElementById('w-risk').value;
   document.getElementById('kb-support').innerHTML = riskText && riskText !== '本週無风险事项'
     ? `<div class="kanban-item" style="font-size:12px;color:var(--amber);">${riskText.slice(0,120)}${riskText.length>120?'…':''}</div>`
     : '<div style="font-size:12px;color:var(--teal);">✓ 本周无需额外支援</div>';
-
   document.getElementById('kanban-modal').classList.add('show');
 }
 
-function closeKanban(){
-  document.getElementById('kanban-modal').classList.remove('show');
-}
+function closeKanban(){ document.getElementById('kanban-modal').classList.remove('show'); }
 
 function exportKanban(){
   const content = document.getElementById('kanban-content').innerHTML;
   const dateStr = new Date().toLocaleDateString('zh-TW').replace(/\//g,'-');
-  const html = `<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-<meta charset="UTF-8">
-<title>综合部团队周报 ${dateStr}</title>
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');
-:root{
-  --bg:#0d1117;--surface:#161b22;--surface2:#1c2330;--surface3:#202c3a;
-  --border:#2a3441;--border2:#3d4f63;
-  --text:#e6edf3;--text2:#8b9ab0;--text3:#5a6a7e;
-  --teal:#39d0a0;--teal-dim:rgba(57,208,160,0.15);
-  --blue:#4a9eff;--red:#f85149;--red-dim:rgba(248,81,73,0.12);
-  --amber:#d29922;
-}
-*{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);padding:32px;}
-.kanban-wrap{max-width:960px;margin:0 auto;background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;}
-.kanban-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:16px;}
-.kanban-title{font-size:18px;font-weight:700;}
-.kanban-date{font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;}
-.kanban-close{display:none;}
-.kanban-col{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;}
-.kanban-col-full{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}
-.kanban-col-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
-.kanban-col-icon{font-size:14px;}
-.kanban-col-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.08em;}
-.kanban-item{font-size:13px;color:var(--text2);padding:7px 10px;background:var(--surface);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--teal);line-height:1.5;}
-.kanban-item.risk{border-left-color:var(--red);background:var(--red-dim);}
-.kanban-item.plan{border-left-color:var(--blue);}
-.ks-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center;}
-.ks-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;margin-bottom:4px;}
-.ks-label{font-size:11px;color:var(--text3);}
-.kanban-print-btn{display:none;}
-</style>
-</head>
-<body>
-<div class="kanban-wrap">${content}</div>
-</body>
-</html>`;
+  const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><title>综合部团队周报 ${dateStr}</title><style>@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@400;500&display=swap');:root{--bg:#0d1117;--surface:#161b22;--surface2:#1c2330;--surface3:#202c3a;--border:#2a3441;--border2:#3d4f63;--text:#e6edf3;--text2:#8b9ab0;--text3:#5a6a7e;--teal:#39d0a0;--teal-dim:rgba(57,208,160,0.15);--blue:#4a9eff;--red:#f85149;--red-dim:rgba(248,81,73,0.12);--amber:#d29922;}*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text);padding:32px;}.kanban-wrap{max-width:960px;margin:0 auto;background:var(--surface);border:1px solid var(--border2);border-radius:16px;padding:28px;}.kanban-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;border-bottom:1px solid var(--border);padding-bottom:16px;}.kanban-title{font-size:18px;font-weight:700;}.kanban-date{font-size:12px;color:var(--text3);font-family:'JetBrains Mono',monospace;}.kanban-close{display:none;}.kanban-col{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;}.kanban-col-full{background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}.kanban-col-header{display:flex;align-items:center;gap:8px;margin-bottom:12px;}.kanban-col-icon{font-size:14px;}.kanban-col-title{font-size:12px;font-weight:700;color:var(--text2);letter-spacing:0.08em;}.kanban-item{font-size:13px;color:var(--text2);padding:7px 10px;background:var(--surface);border-radius:6px;margin-bottom:6px;border-left:3px solid var(--teal);line-height:1.5;}.kanban-item.risk{border-left-color:var(--red);background:var(--red-dim);}.kanban-item.plan{border-left-color:var(--blue);}.ks-card{background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:12px 14px;text-align:center;}.ks-val{font-family:'JetBrains Mono',monospace;font-size:22px;font-weight:600;margin-bottom:4px;}.ks-label{font-size:11px;color:var(--text3);}.kanban-print-btn{display:none;}</style></head><body><div class="kanban-wrap">${content}</div></body></html>`;
   const blob = new Blob([html], {type:'text/html;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1269,21 +1447,11 @@ function fetchJsonp(url) {
   return new Promise((resolve, reject) => {
     const cbName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const script = document.createElement('script');
-    window[cbName] = (data) => {
-      delete window[cbName];
-      document.body.removeChild(script);
-      resolve(data);
-    };
-    script.onerror = () => {
-      delete window[cbName];
-      document.body.removeChild(script);
-      reject(new Error('Failed to fetch'));
-    };
+    window[cbName] = (data) => { delete window[cbName]; document.body.removeChild(script); resolve(data); };
+    script.onerror = () => { delete window[cbName]; document.body.removeChild(script); reject(new Error('Failed to fetch')); };
     script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cbName;
     document.body.appendChild(script);
-    setTimeout(() => {
-      if(window[cbName]){ delete window[cbName]; resolve({}); }
-    }, 10000);
+    setTimeout(() => { if(window[cbName]){ delete window[cbName]; resolve({}); } }, 10000);
   });
 }
 
