@@ -43,6 +43,7 @@ body{font-family:'Noto Sans TC',sans-serif;background:var(--bg);color:var(--text
 .lock-input:focus{border-color:var(--teal);}
 .lock-input.shake{animation:shake 0.3s ease;}
 @keyframes shake{0%,100%{transform:translateX(0);}25%{transform:translateX(-8px);}75%{transform:translateX(8px)};}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
 .lock-btn {
   margin-top:14px;width:100%;background:var(--teal);color:#0d1117;border:none;
   border-radius:var(--r);font-size:14px;font-weight:700;padding:12px;cursor:pointer;
@@ -1417,10 +1418,22 @@ function showKanban(){
   const notedRows = reports.filter(r=>r.approveNote);
   if(notedRows.length){ const noteHtml = notedRows.map(r=>`<div style="margin-bottom:6px;padding:8px 10px;background:var(--surface);border-radius:6px;border-left:3px solid var(--teal);"><div style="font-size:11px;color:var(--teal);margin-bottom:3px;">📝 ${r.name}（${r.date}）</div><div style="font-size:12px;color:var(--text2);">${r.approveNote}</div></div>`).join(''); riskEl.innerHTML += '<div style="margin-top:10px;font-size:10px;color:var(--text3);letter-spacing:0.08em;margin-bottom:6px;">组长审批备注</div>' + noteHtml; }
   const abnormal = MEMBERS.filter(name=>{ const rows=reports.filter(r=>r.name===name); return rows.length<workDays*0.6; });
-  document.getElementById('kb-kpi').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">任务完成率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone>0?Math.round(totalDone/(totalDone+totalUndone)*100):100}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">填报率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">延误率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">人均产出</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span></div><div style="padding:7px 10px;background:var(--surface);border-radius:5px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">异常人员</div><div style="font-size:12px;color:${abnormal.length?'var(--red)':'var(--teal)'};">${abnormal.length?abnormal.join('、')+'（填报不足）':'✓ 无异常'}</div></div></div>`;
+  document.getElementById('kb-kpi').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">任务完成率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone>0?Math.round(totalDone/(totalDone+totalUndone)*100):100}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">填报率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">延误率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">人均产出</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span></div><div style="padding:7px 10px;background:var(--surface);border-radius:5px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">缺勤人員</div><div style="font-size:12px;color:${Object.keys(absenceData).length?'var(--amber)':'var(--teal)'};">${Object.keys(absenceData).length?Object.entries(absenceData).map(([n,a])=>n+'（'+a.reason+' '+a.days+a.unit+'）').join('、'):'✓ 本週無缺勤'}</div></div></div>`;
   const latestDate = dates[dates.length-1]||'';
-  const planItems = reports.filter(r=>r.date===latestDate).flatMap(r=>(r.plans||[]).map(p=>({name:r.name,plan:p})));
-  document.getElementById('kb-next').innerHTML = planItems.slice(0,6).map(p=>`<div class="kanban-item plan" style="font-size:12px;margin-bottom:5px;"><b>${p.name}</b>：${p.plan.slice(0,40)}${p.plan.length>40?'…':''}</div>`).join('') || '<div style="font-size:12px;color:var(--text3);">—</div>';
+  // 下周計劃：按人分組，每人顯示編號事項
+  const planByMember = {};
+  reports.filter(r=>r.date===latestDate).forEach(r=>{
+    const ps = (r.plans||[]).filter(Boolean);
+    if(ps.length) planByMember[r.name] = ps;
+  });
+  const planHtml = Object.entries(planByMember).map(([name, ps])=>`
+    <div style="margin-bottom:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--text);margin-bottom:4px;padding-left:2px;">${name}</div>
+      ${ps.map((p,i)=>`<div class="kanban-item plan" style="font-size:12px;margin-bottom:4px;border-left-width:2px;">
+        <span style="font-family:'JetBrains Mono',monospace;color:var(--blue);font-size:11px;margin-right:5px;">${i+1}.</span>${p.slice(0,45)}${p.length>45?'…':''}
+      </div>`).join('')}
+    </div>`).join('');
+  document.getElementById('kb-next').innerHTML = planHtml || '<div style="font-size:12px;color:var(--text3);">—</div>';
   const riskText = document.getElementById('w-risk').value;
   document.getElementById('kb-support').innerHTML = riskText && riskText !== '本週無风险事项'
     ? `<div class="kanban-item" style="font-size:12px;color:var(--amber);">${riskText.slice(0,120)}${riskText.length>120?'…':''}</div>`
