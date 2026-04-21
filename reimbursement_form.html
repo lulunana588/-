@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>費用報銷填報</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #F7F6F2; --surface: #FFFFFF; --surface2: #F1EFE8;
+    --border: #E0DDD4; --border2: #CBC8BE;
+    --text: #1A1917; --text2: #6B6860; --text3: #A8A59E; --accent: #1A1917;
+    --success-bg: #EAF3DE; --success-border: #9FC465; --success-text: #3B6D11;
+    --danger-bg: #FCEBEB; --danger-border: #F7C1C1; --danger-text: #A32D2D;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  body { font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:2.5rem 1rem; }
+  .wrap { width:100%; max-width:520px; }
+
+  .header { margin-bottom:1.75rem; }
+  .header h1 { font-size:20px; font-weight:600; letter-spacing:-0.3px; }
+  .header p  { font-size:13px; color:var(--text2); margin-top:4px; }
+
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:2rem; }
+
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .field { margin-bottom:1.1rem; }
+  .field label { display:block; font-size:11px; font-weight:700; color:var(--text2); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.6px; }
+  .field input {
+    width:100%; padding:10px 12px; border:1px solid var(--border);
+    border-radius:var(--radius-sm); background:var(--surface); color:var(--text);
+    font-size:14px; font-family:inherit; transition:border-color 0.15s;
+  }
+  .field input:focus { outline:none; border-color:var(--border2); box-shadow:0 0 0 3px rgba(26,25,23,0.06); }
+
+  /* Checkbox list */
+  .checkbox-list { display:flex; flex-direction:column; gap:6px; }
+  .checkbox-item {
+    display:flex; align-items:center; gap:10px;
+    padding:9px 12px;
+    border:1px solid var(--border);
+    border-radius:var(--radius-sm);
+    cursor:pointer;
+    transition:all 0.12s;
+    user-select:none;
+  }
+  .checkbox-item:hover { border-color:var(--border2); background:var(--surface2); }
+  .checkbox-item.checked { border-color:#1A1917; background:#F7F6F2; }
+  .checkbox-item input[type="checkbox"] { display:none; }
+  .check-box {
+    width:16px; height:16px; border:1.5px solid var(--border2);
+    border-radius:4px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center;
+    transition:all 0.12s;
+  }
+  .checkbox-item.checked .check-box {
+    background:var(--accent); border-color:var(--accent);
+  }
+  .check-box::after {
+    content:''; display:none;
+    width:9px; height:5px;
+    border-left:2px solid #fff; border-bottom:2px solid #fff;
+    transform:rotate(-45deg) translateY(-1px);
+  }
+  .checkbox-item.checked .check-box::after { display:block; }
+  .check-label { font-size:14px; color:var(--text); }
+
+  /* 自訂新增列 */
+  .add-item-row {
+    display:flex; gap:8px; margin-top:6px;
+  }
+  .add-item-row input {
+    flex:1; padding:9px 12px;
+    border:1px dashed var(--border2);
+    border-radius:var(--radius-sm);
+    background:var(--surface); color:var(--text);
+    font-size:14px; font-family:inherit;
+    transition:border-color 0.15s;
+  }
+  .add-item-row input:focus { outline:none; border-color:var(--border2); border-style:solid; box-shadow:0 0 0 3px rgba(26,25,23,0.06); }
+  .add-item-row input::placeholder { color:var(--text3); }
+  .btn-add {
+    padding:9px 14px; border:1px solid var(--border2);
+    border-radius:var(--radius-sm); background:var(--surface2);
+    color:var(--text2); font-size:13px; font-weight:600;
+    cursor:pointer; font-family:inherit; white-space:nowrap;
+    transition:all 0.12s;
+  }
+  .btn-add:hover { background:var(--border); color:var(--text); }
+
+  /* Upload */
+  .upload-zone { border:1.5px dashed var(--border2); border-radius:var(--radius-sm); padding:1.75rem 1rem; text-align:center; cursor:pointer; transition:all 0.15s; position:relative; background:var(--bg); }
+  .file-list-item {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:7px 12px; margin-top:6px;
+    background:var(--success-bg); border:1px solid var(--success-border);
+    border-radius:var(--radius-sm); font-size:13px; color:var(--success-text);
+  }
+  .file-list-item span { font-weight:600; }
+  .btn-remove { background:none; border:none; cursor:pointer; color:var(--success-text); font-size:14px; padding:0 2px; line-height:1; opacity:0.6; }
+  .btn-remove:hover { opacity:1; }
+  .upload-zone.has-file { border-color:var(--success-border); background:var(--success-bg); border-style:solid; }
+  .file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+  .upload-icon { width:38px; height:38px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; margin:0 auto 10px; font-size:16px; }
+  .upload-text { font-size:13px; font-weight:500; margin-bottom:3px; }
+  .upload-hint { font-size:12px; color:var(--text3); }
+  .file-name   { font-size:13px; color:var(--success-text); font-weight:600; margin-top:8px; }
+
+  .btn-submit { width:100%; padding:12px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); font-size:14px; font-weight:600; cursor:pointer; margin-top:1.25rem; font-family:inherit; transition:opacity 0.15s; }
+  .btn-submit:hover { opacity:0.85; }
+  .btn-submit:disabled { opacity:0.35; cursor:not-allowed; }
+
+  .alert { border-radius:var(--radius-sm); padding:11px 16px; font-size:13px; margin-top:1rem; display:none; font-weight:500; }
+  .alert-success { background:var(--success-bg); border:1px solid var(--success-border); color:var(--success-text); }
+  .alert-danger  { background:var(--danger-bg);  border:1px solid var(--danger-border);  color:var(--danger-text);  }
+
+  .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  @media(max-width:440px) { .row2 { grid-template-columns:1fr; } .card { padding:1.25rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <h1>費用報銷填報</h1>
+    <p>填寫後資料將直接同步至報銷統計表</p>
+  </div>
+
+  <div class="card">
+    <div class="row2">
+      <div class="field"><label>員編</label><input type="text" id="emp-id" placeholder="例：XS5876" maxlength="10"></div>
+      <div class="field"><label>花名</label><input type="text" id="emp-name" placeholder="例：肯尼" maxlength="10"></div>
+    </div>
+
+    <div class="field">
+      <label>報銷項目（可複選）</label>
+      <div class="checkbox-list" id="item-list">
+        <!-- 預設三項 -->
+      </div>
+      <div class="add-item-row">
+        <input type="text" id="custom-input" placeholder="自行新增項目…" maxlength="20" onkeydown="if(event.key==='Enter')addItem()">
+        <button class="btn-add" onclick="addItem()">＋ 新增</button>
+      </div>
+    </div>
+
+    <div class="field">
+      <label>備註說明（選填）</label>
+      <input type="text" id="note" placeholder="例：2025年1月份訂閱費">
+    </div>
+
+    <div class="field">
+      <label>報銷憑證</label>
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" class="file-input" id="file-input" accept="image/*,application/pdf" multiple onchange="handleFile(event)">
+        <div class="upload-icon">↑</div>
+        <div class="upload-text">點擊或拖曳上傳憑證</div>
+        <div class="upload-hint">支援 JPG、PNG、PDF，可多選，每檔最大 5MB</div>
+      </div>
+      <div id="file-list"></div>
+    </div>
+
+    <button class="btn-submit" id="submit-btn" onclick="submitForm()">提交申請</button>
+    <div class="alert alert-success" id="success-msg"></div>
+    <div class="alert alert-danger"  id="error-msg"></div>
+  </div>
+</div>
+
+<script>
+  // ★ 貼上你的 GAS Web App URL
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzduWHxyoBRmvyrfuAQQZ9vf9IUKjsWuXcmuJRowv-BaonJBXucxR-jeskGlFrvkQcOZw/exec';
+
+  // 預設項目
+  const DEFAULT_ITEMS = ['VPS', 'Claude'];
+  let items = [...DEFAULT_ITEMS];
+
+  function renderItems() {
+    const list = document.getElementById('item-list');
+    list.innerHTML = items.map(name => `
+      <label class="checkbox-item" onclick="toggleCheck(this)">
+        <input type="checkbox" value="${name}">
+        <span class="check-box"></span>
+        <span class="check-label">${name}</span>
+      </label>
+    `).join('');
+  }
+
+  function toggleCheck(el) {
+    const cb = el.querySelector('input[type="checkbox"]');
+    cb.checked = !cb.checked;
+    el.classList.toggle('checked', cb.checked);
+  }
+
+  function addItem() {
+    const input = document.getElementById('custom-input');
+    const val = input.value.trim();
+    if (!val) return;
+    if (items.includes(val)) { input.value=''; return; }
+    items.push(val);
+    renderItems();
+    input.value = '';
+    // 自動勾選剛新增的
+    const all = document.querySelectorAll('.checkbox-item');
+    const last = all[all.length - 1];
+    last.querySelector('input').checked = true;
+    last.classList.add('checked');
+  }
+
+  function getSelected() {
+    return [...document.querySelectorAll('.checkbox-item input:checked')].map(el => el.value);
+  }
+
+  // 上傳（多檔）
+  let filesData = []; // [{name, type, data}]
+
+  const zone = document.getElementById('upload-zone');
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor='#1A1917'; });
+  zone.addEventListener('dragleave', () => { zone.style.borderColor=''; });
+  zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.style.borderColor='';
+    addFiles(e.dataTransfer.files);
+  });
+
+  function handleFile(e) { addFiles(e.target.files); e.target.value=''; }
+
+  function addFiles(fileList) {
+    [...fileList].forEach(file => {
+      if (file.size > 5*1024*1024) { alert(`${file.name} 超過 5MB，略過`); return; }
+      if (filesData.find(f => f.name===file.name)) return; // 不重複
+      const reader = new FileReader();
+      reader.onload = ev => {
+        filesData.push({ name: file.name, type: file.type, data: ev.target.result });
+        renderFileList();
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function removeFile(name) {
+    filesData = filesData.filter(f => f.name !== name);
+    renderFileList();
+  }
+
+  function renderFileList() {
+    const el = document.getElementById('file-list');
+    if (!filesData.length) { el.innerHTML=''; return; }
+    el.innerHTML = filesData.map(f => `
+      <div class="file-list-item">
+        <span>✓ ${f.name}</span>
+        <button class="btn-remove" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">✕</button>
+      </div>`).join('');
+  }
+
+  async function submitForm() {
+    const empId    = document.getElementById('emp-id').value.trim();
+    const empName  = document.getElementById('emp-name').value.trim();
+    const selected = getSelected();
+    const note     = document.getElementById('note').value.trim();
+
+    if (!empId || !empName)     { showAlert('err','請填寫員編與花名'); return; }
+    if (!selected.length)       { showAlert('err','請至少選擇一個報銷項目'); return; }
+
+    const btn = document.getElementById('submit-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner"></span>提交中…';
+
+    try {
+      await fetch(GAS_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        body: JSON.stringify({
+          empId, empName,
+          itemType: selected.join('、'),
+          note, files: filesData,
+          time: new Date().toLocaleString('zh-TW', { hour12: false })
+        })
+      });
+      // no-cors 無法讀取回應，送出即視為成功
+      showAlert('ok', '✓ 申請已成功提交，資料已同步至報銷統計表');
+      resetForm();
+    } catch (err) {
+      showAlert('err', '提交失敗：' + err.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = '提交申請';
+  }
+
+  function resetForm() {
+    ['emp-id','emp-name','note'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('file-input').value='';
+    filesData = [];
+    renderFileList();
+    items = [...DEFAULT_ITEMS];
+    renderItems();
+  }
+
+  function showAlert(type, msg) {
+    const s=document.getElementById('success-msg');
+    const e=document.getElementById('error-msg');
+    s.style.display='none'; e.style.display='none';
+    if (type==='ok') { s.textContent=msg; s.style.display='block'; setTimeout(()=>s.style.display='none',5000); }
+    else             { e.textContent=msg; e.style.display='block'; setTimeout(()=>e.style.display='none',6000); }
+  }
+
+  // 初始化
+  renderItems();
+</script>
+</body>
+</html>
