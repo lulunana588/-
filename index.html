@@ -1104,7 +1104,7 @@ async function renderDailyPage() {
         : { days: 1, unit: '天', reason: r.leaveType };
     });
     // 正常日報（非缺勤）
-    liveReports = allRows.filter(r => !r.leaveType).map(r => ({
+    liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤').map(r => ({
       id:          r.rowNum,
       name:        r.name,
       date:        r.date || '',
@@ -1151,7 +1151,7 @@ function makeReportRow(r){
   const div=document.createElement('div');
   div.className='report-row '+(r.isRisk?'risk':r.status);
   div.id='row-'+r.id;
-  const isAbsenceRow = r.doneItems && r.doneItems[0] && r.doneItems[0].startsWith('（缺勤）');
+  const isAbsenceRow = r.status === '缺勤' || (r.doneItems && r.doneItems[0] && r.doneItems[0].includes('缺勤'));
   const chips={pending:'<span class="status-chip chip-pending">待审批</span>',approved:'<span class="status-chip chip-approved">✓ 已审批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已标记</span>'};
   if (isAbsenceRow) return makeAbsenceRowFromReport(r);
   div.innerHTML=`
@@ -1180,7 +1180,7 @@ function makeReportRow(r){
         <div class="rs-items">${r.plans.map((p,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${p}</div>`).join('')}</div>
       </div>
       ${r.approveNote?`<div class="report-section"><div class="rs-label" style="color:var(--teal);">📝 组长审批备注</div><div class="rs-item" style="background:var(--teal-dim);border-left:2px solid var(--teal);color:var(--teal);">${r.approveNote}</div></div>`:''}
-      ${(r.status==='pending'&&r.doneItems[0]!=='（缺勤）')?`<div class="approve-bar">
+      ${(r.status==='pending'&&r.status!=='缺勤'&&!(r.doneItems[0]&&r.doneItems[0].includes('缺勤')))?`<div class="approve-bar">
         <div class="approve-note"><textarea placeholder="审批备注（选填）..." id="note-${r.id}"></textarea></div>
         <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 标记异常</button>
         <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 审批通过</button>
