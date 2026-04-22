@@ -1104,7 +1104,7 @@ async function renderDailyPage() {
         : { days: 1, unit: '天', reason: r.leaveType };
     });
     // 正常日報（非缺勤）
-    liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤').map(r => ({
+    liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤' && !String(r.doneItems).includes('缺勤')).map(r => ({
       id:          r.rowNum,
       name:        r.name,
       date:        r.date || '',
@@ -1189,9 +1189,18 @@ function makeReportRow(r){
   return div;
 }
 
-// 把 GAS 回傳的缺勤列轉成缺勤卡片（leaveType 從 absenceData 取）
+// 把 GAS 回傳的缺勤列轉成缺勤卡片
 function makeAbsenceRowFromReport(r) {
-  const ab = absenceData[r.name] || { days: 1, unit: '天', reason: '缺勤' };
+  // 優先用 absenceData，其次解析 doneItems，最後用 leaveType
+  let ab = absenceData[r.name];
+  if (!ab) {
+    // 從 doneItems 解析，例："（缺勤）特休 1天"
+    const raw = r.leaveType || String(r.doneItems[0]||'').replace('（缺勤）','').trim();
+    const match = raw.match(/^(.+?)\s+([\d.]+)(天|小時)$/);
+    ab = match
+      ? { days: parseFloat(match[2]), unit: match[3], reason: match[1] }
+      : { days: 1, unit: '天', reason: raw || '缺勤' };
+  }
   return makeAbsenceRow(r.name, ab);
 }
 
