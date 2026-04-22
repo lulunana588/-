@@ -525,16 +525,13 @@ hr{border:none;border-top:1px solid var(--border);margin:20px 0;}
       </div>
     </div>
 
-    <!-- ══ 在崗成員 / 缺勤管理 ══ -->
     <div class="absence-panel">
       <div class="absence-panel-header">
         <span style="font-size:16px;">👥</span>
         <div class="absence-panel-title">在崗成員</div>
         <div class="absence-panel-hint">取消勾選後可填寫缺勤資訊</div>
       </div>
-      <div class="absence-grid" id="absence-grid">
-        <!-- JS 動態渲染 -->
-      </div>
+      <div class="absence-grid" id="absence-grid"></div>
     </div>
 
     <div class="missing-bar" id="missing-bar">
@@ -719,25 +716,18 @@ const GAS_URL  = 'https://script.google.com/macros/s/AKfycbxdWeSmyFwUXKBsubeMscH
 const MEMBERS  = ['Luna','妍妍','小菁','蕾蕾','GD','田田','荳荳'];
 const ADMIN_PW = 'luna2026';
 
-// ══ 假別選項 ══
 const LEAVE_REASONS = ['病假','事假','特休','年假','公假','婚假','喪假','補休','其他'];
-
-// ══ 缺勤資料（當日，頁面記憶體儲存）══
-// 格式: { '荳荳': { days: 1, unit: '天', reason: '病假' }, ... }
 let absenceData = {};
 
-// ══ 渲染缺勤成員清單 ══
 function renderAbsenceGrid() {
   const grid = document.getElementById('absence-grid');
   grid.innerHTML = '';
   MEMBERS.forEach(name => {
     const isAbsent = !!absenceData[name];
     const ab = absenceData[name] || { days: 1, unit: '天', reason: '病假' };
-
     const card = document.createElement('div');
     card.className = 'absence-member-card' + (isAbsent ? ' absent' : '');
     card.id = 'ab-card-' + name;
-
     card.innerHTML = `
       <div class="absence-member-top">
         <input class="absence-cb" type="checkbox" id="ab-cb-${name}"
@@ -750,8 +740,7 @@ function renderAbsenceGrid() {
         <div class="absence-row">
           <label>天數</label>
           <input class="absence-num-input" type="number" min="0.5" max="30" step="0.5"
-            value="${ab.days}" id="ab-days-${name}"
-            onchange="updateAbsence('${name}')">
+            value="${ab.days}" id="ab-days-${name}" onchange="updateAbsence('${name}')">
           <button class="absence-unit-btn ${ab.unit==='天'?'active':''}" id="ab-btn-day-${name}"
             onclick="setUnit('${name}','天')">天</button>
           <button class="absence-unit-btn ${ab.unit==='小時'?'active':''}" id="ab-btn-hr-${name}"
@@ -759,8 +748,7 @@ function renderAbsenceGrid() {
         </div>
         <div class="absence-row">
           <label>原因</label>
-          <select class="absence-reason-select" id="ab-reason-${name}"
-            onchange="updateAbsence('${name}')">
+          <select class="absence-reason-select" id="ab-reason-${name}" onchange="updateAbsence('${name}')">
             ${LEAVE_REASONS.map(r => `<option ${r===ab.reason?'selected':''}>${r}</option>`).join('')}
           </select>
         </div>
@@ -772,9 +760,7 @@ function renderAbsenceGrid() {
 async function toggleAbsence(name, checked) {
   const card = document.getElementById('ab-card-' + name);
   const selDate = document.getElementById('daily-date-picker').value || new Date().toISOString().slice(0,10);
-
   if (!checked) {
-    // 勾掉 = 缺勤
     absenceData[name] = { days: 1, unit: '天', reason: '病假' };
     card.classList.add('absent');
     const top = card.querySelector('.absence-member-top');
@@ -784,24 +770,18 @@ async function toggleAbsence(name, checked) {
       badge.textContent = '缺勤';
       top.appendChild(badge);
     }
-    // 寫入 GAS
     const leaveType = absenceData[name].reason + ' ' + absenceData[name].days + absenceData[name].unit;
     try {
-      await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate +
-        '&name=' + encodeURIComponent(name) +
-        '&leaveType=' + encodeURIComponent(leaveType));
+      await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate + '&name=' + encodeURIComponent(name) + '&leaveType=' + encodeURIComponent(leaveType));
       showToast('success', '✓ ' + name + ' 缺勤已登記至後台');
     } catch(e) { showToast('error', '缺勤寫入失敗：' + e.message); }
   } else {
-    // 勾選 = 取消缺勤
     delete absenceData[name];
     card.classList.remove('absent');
     const badge = card.querySelector('.absent-badge');
     if (badge) badge.remove();
-    // 通知 GAS 取消
     try {
-      await fetchJsonp(GAS_URL + '?action=cancelAbsence&date=' + selDate +
-        '&name=' + encodeURIComponent(name));
+      await fetchJsonp(GAS_URL + '?action=cancelAbsence&date=' + selDate + '&name=' + encodeURIComponent(name));
       showToast('success', '✓ ' + name + ' 缺勤已取消');
     } catch(e) { showToast('error', '取消失敗：' + e.message); }
   }
@@ -822,38 +802,29 @@ async function updateAbsence(name) {
   if (!absenceData[name]) return;
   absenceData[name].days   = parseFloat(document.getElementById('ab-days-'  + name).value) || 1;
   absenceData[name].reason = document.getElementById('ab-reason-' + name).value;
-  // 同步更新 GAS
   const selDate = document.getElementById('daily-date-picker').value || new Date().toISOString().slice(0,10);
   const leaveType = absenceData[name].reason + ' ' + absenceData[name].days + absenceData[name].unit;
   try {
-    await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate +
-      '&name=' + encodeURIComponent(name) +
-      '&leaveType=' + encodeURIComponent(leaveType));
+    await fetchJsonp(GAS_URL + '?action=submitAbsence&date=' + selDate + '&name=' + encodeURIComponent(name) + '&leaveType=' + encodeURIComponent(leaveType));
     refreshReportListWithAbsence();
   } catch(e) { showToast('error', '更新失敗：' + e.message); }
 }
 
-// ══ 在日報列表追加缺勤 row ══
 function refreshReportListWithAbsence() {
-  // 移除既有缺勤 row
   document.querySelectorAll('.absent-row').forEach(el => el.remove());
-  // 取得已提交的成員名單
   const submittedNames = liveReports.map(r => r.name);
-  // 補上缺勤成員（不在提交名單中）
   Object.keys(absenceData).forEach(name => {
     if (!submittedNames.includes(name)) {
       const abRow = makeAbsenceRow(name, absenceData[name]);
       document.getElementById('report-list').appendChild(abRow);
     }
   });
-  // 更新「尚未填報」欄（排除已登記缺勤者）
   updateMissingBar();
 }
 
 function updateMissingBar() {
   const submittedNames = liveReports.map(r => r.name);
   const absentNames    = Object.keys(absenceData);
-  // 尚未填報 = 不在提交名單、也不在缺勤名單
   const realMissing = missingToday.filter(n => !absentNames.includes(n));
   const mb = document.getElementById('missing-bar');
   const mn = document.getElementById('missing-names');
@@ -865,14 +836,11 @@ function updateMissingBar() {
   }
 }
 
-// ══ 缺勤 Row ══
 function makeAbsenceRow(name, ab) {
   const div = document.createElement('div');
   div.className = 'report-row absent-row';
   div.id = 'absent-row-' + name;
-
   const unitLabel = ab.unit === '小時' ? ab.days + ' 小時' : ab.days + ' 天';
-
   div.innerHTML = `
     <div class="report-head" onclick="this.closest('.report-row').classList.toggle('open')">
       <div class="member-avatar absent-av">${name[0]}</div>
@@ -881,24 +849,17 @@ function makeAbsenceRow(name, ab) {
         <div class="report-time">今日缺勤 · ${ab.reason} ${unitLabel}</div>
       </div>
       <div class="report-counts">
-        <span class="count-pill" style="background:var(--amber-dim);color:var(--amber);">
-          🏖 ${ab.reason}
-        </span>
+        <span class="count-pill" style="background:var(--amber-dim);color:var(--amber);">🏖 ${ab.reason}</span>
       </div>
       <span class="chip-absent">缺勤</span>
       <span class="chevron">▼</span>
     </div>
     <div class="report-body">
       <div class="absence-detail-row">
-        <div class="absence-detail-tag">
-          <span class="adt-label">假別</span>${ab.reason}
-        </div>
-        <div class="absence-detail-tag">
-          <span class="adt-label">時長</span>${unitLabel}
-        </div>
+        <div class="absence-detail-tag"><span class="adt-label">假別</span>${ab.reason}</div>
+        <div class="absence-detail-tag"><span class="adt-label">時長</span>${unitLabel}</div>
         <div style="flex:1;"></div>
-        <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;"
-          onclick="editAbsenceEntry('${name}')">✏️ 修改</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;" onclick="editAbsenceEntry('${name}')">✏️ 修改</button>
       </div>
       <div style="padding:0 16px 6px;font-size:12px;color:var(--text3);">── 缺勤登記由組長手動記錄，不計入日報審批 ──</div>
     </div>`;
@@ -906,7 +867,6 @@ function makeAbsenceRow(name, ab) {
 }
 
 function editAbsenceEntry(name) {
-  // 捲動到缺勤面板並 highlight
   const card = document.getElementById('ab-card-' + name);
   if (card) {
     card.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -915,7 +875,6 @@ function editAbsenceEntry(name) {
   }
 }
 
-// ══ 工具：計算週一~週日 ══
 function getWeekRange(offset = 0) {
   const now = new Date();
   now.setDate(now.getDate() + offset * 7);
@@ -928,7 +887,6 @@ function getWeekRange(offset = 0) {
   return { from: fmt(monday), to: fmt(friday) };
 }
 
-// ══ 日報表初始化 ══
 const todayDate = new Date();
 document.getElementById('report-date').value = todayDate.toISOString().slice(0,10);
 
@@ -987,18 +945,12 @@ async function submitReport() {
   btn.disabled=true;btn.textContent='提交中...';
   const undone=getListValues('undone-list');
   const payload={
-    name,
-    date: document.getElementById('report-date').value,
-    doneItems: done.join(' | '),
-    doneCount: done.length,
-    undoneItems: undone.join(' | '),
-    undoneCount: undone.length,
-    isRisk: false,
-    exceptionText: '',
+    name, date: document.getElementById('report-date').value,
+    doneItems: done.join(' | '), doneCount: done.length,
+    undoneItems: undone.join(' | '), undoneCount: undone.length,
+    isRisk: false, exceptionText: '',
     planItems: plans.join(' | '),
-    plan1: plans[0]||'',
-    plan2: plans[1]||'',
-    plan3: plans[2]||'',
+    plan1: plans[0]||'', plan2: plans[1]||'', plan3: plans[2]||'',
     agentCount:  document.getElementById('agent-count').value||'',
     agentSaving: document.getElementById('agent-value').value||'',
     agentShare:  document.getElementById('agent-learn').value||'',
@@ -1007,8 +959,7 @@ async function submitReport() {
   document.getElementById('tg-preview').textContent=generateTG();
   try {
     await fetch(GAS_URL + '?action=submit', {
-      method: 'POST',
-      mode: 'no-cors',
+      method: 'POST', mode: 'no-cors',
       headers: {'Content-Type': 'text/plain'},
       body: JSON.stringify(payload)
     });
@@ -1020,14 +971,12 @@ function showFormStatus(type,msg){
   const el=document.getElementById('status-msg');el.className='status-msg '+type;el.textContent=msg;
 }
 
-// ══ 隱藏入口 ══
 let tapCount=0, tapTimer=null;
 (function(){
   const el = document.getElementById('admin-trigger');
   if(!el) return;
   function triggerAdmin(e){
-    e.preventDefault();
-    tapCount++;
+    e.preventDefault(); tapCount++;
     clearTimeout(tapTimer);
     tapTimer = setTimeout(()=>{ tapCount=0; }, 3000);
     if(tapCount >= 5){ tapCount = 0; openLock(); }
@@ -1061,7 +1010,6 @@ function enterAdmin(){
   document.getElementById('admin-date').textContent=d;
   const picker = document.getElementById('daily-date-picker');
   if (picker) picker.value = new Date().toISOString().slice(0,10);
-  // 初始化缺勤面板
   renderAbsenceGrid();
   renderDailyPage();
   renderDataTable();
@@ -1096,15 +1044,14 @@ async function renderDailyPage() {
     const data = await fetchJsonp(url);
     if (data.result !== 'success') throw new Error(data.error);
     const allRows = data.rows || [];
-    // 缺勤列：自動同步到 absenceData 讓面板反映 Sheet 現況
     allRows.filter(r => r.leaveType).forEach(r => {
       const match = r.leaveType.match(/^(.+?)\s+([\d.]+)(天|小時)$/);
       absenceData[r.name] = match
         ? { days: parseFloat(match[2]), unit: match[3], reason: match[1] }
         : { days: 1, unit: '天', reason: r.leaveType };
     });
-    // 正常日報（非缺勤）
-   liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤' && !String(r.doneItems).startsWith('（缺勤）')).map(r => ({
+    // ★ 修正：用 startsWith('（缺勤）') 取代 includes('缺勤')，避免誤判內容含「缺勤」字樣的正常日報
+    liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤' && !String(r.doneItems).startsWith('（缺勤）')).map(r => ({
       id:          r.rowNum,
       name:        r.name,
       date:        r.date || '',
@@ -1123,7 +1070,6 @@ async function renderDailyPage() {
     return;
   }
 
-  // 更新「尚未填報」欄（排除已登記缺勤者）
   updateMissingBar();
 
   const pending  = liveReports.filter(r=>r.status==='pending').length;
@@ -1136,14 +1082,11 @@ async function renderDailyPage() {
   document.getElementById('badge-pending').textContent = pending;
 
   list.innerHTML = '';
-
   if (!liveReports.length && !Object.keys(absenceData).length) {
     list.innerHTML = '<div style="color:var(--text3);padding:24px;text-align:center;font-size:13px;">今日尚無人提交日報</div>';
   } else {
     liveReports.forEach(r => list.appendChild(makeReportRow(r)));
   }
-
-  // 補上缺勤 row
   refreshReportListWithAbsence();
 }
 
@@ -1151,7 +1094,8 @@ function makeReportRow(r){
   const div=document.createElement('div');
   div.className='report-row '+(r.isRisk?'risk':r.status);
   div.id='row-'+r.id;
-  const isAbsenceRow = r.status === '缺勤' || (r.doneItems && r.doneItems[0] && r.doneItems[0].includes('缺勤'));
+  // ★ 修正：用 startsWith('（缺勤）') 取代 includes('缺勤')
+  const isAbsenceRow = r.status === '缺勤' || (r.doneItems && r.doneItems[0] && r.doneItems[0].startsWith('（缺勤）'));
   const chips={pending:'<span class="status-chip chip-pending">待审批</span>',approved:'<span class="status-chip chip-approved">✓ 已审批</span>',flagged:'<span class="status-chip chip-flagged">⚠ 已标记</span>'};
   if (isAbsenceRow) return makeAbsenceRowFromReport(r);
   div.innerHTML=`
@@ -1180,21 +1124,18 @@ function makeReportRow(r){
         <div class="rs-items">${r.plans.map((p,i)=>`<div class="rs-item"><span class="num">${i+1}</span>${p}</div>`).join('')}</div>
       </div>
       ${r.approveNote?`<div class="report-section"><div class="rs-label" style="color:var(--teal);">📝 组长审批备注</div><div class="rs-item" style="background:var(--teal-dim);border-left:2px solid var(--teal);color:var(--teal);">${r.approveNote}</div></div>`:''}
-      ${(r.status==='pending'&&r.status!=='缺勤'&&!(r.doneItems[0]&&r.doneItems[0].includes('缺勤')))?`<div class="approve-bar">
+      ${(r.status==='pending' && !(r.doneItems[0] && r.doneItems[0].startsWith('（缺勤）')))?`<div class="approve-bar">
         <div class="approve-note"><textarea placeholder="审批备注（选填）..." id="note-${r.id}"></textarea></div>
         <button class="btn btn-red" onclick="flagReport(${r.id})">⚠ 标记异常</button>
         <button class="btn btn-teal" onclick="approveReport(${r.id})">✓ 审批通过</button>
-      </div>`:r.doneItems[0]==='（缺勤）'?`<div style="padding:10px 0 4px;font-size:12px;color:var(--amber);">── 缺勤紀錄，無需審批 ──</div>`:`<div style="padding:10px 0 4px;font-size:12px;color:var(--text3);">── 此份日报已处理 ──</div>`}
+      </div>`:`<div style="padding:10px 0 4px;font-size:12px;color:var(--text3);">── 此份日报已处理 ──</div>`}
     </div>`;
   return div;
 }
 
-// 把 GAS 回傳的缺勤列轉成缺勤卡片
 function makeAbsenceRowFromReport(r) {
-  // 優先用 absenceData，其次解析 doneItems，最後用 leaveType
   let ab = absenceData[r.name];
   if (!ab) {
-    // 從 doneItems 解析，例："（缺勤）特休 1天"
     const raw = r.leaveType || String(r.doneItems[0]||'').replace('（缺勤）','').trim();
     const match = raw.match(/^(.+?)\s+([\d.]+)(天|小時)$/);
     ab = match
@@ -1429,7 +1370,6 @@ function showKanban(){
   const abnormal = MEMBERS.filter(name=>{ const rows=reports.filter(r=>r.name===name); return rows.length<workDays*0.6; });
   document.getElementById('kb-kpi').innerHTML = `<div style="display:flex;flex-direction:column;gap:8px;"><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">任务完成率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--teal);font-weight:700;">${totalDone>0?Math.round(totalDone/(totalDone+totalUndone)*100):100}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">填报率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${fillRate>=80?'var(--teal)':'var(--amber)'};font-weight:700;">${fillRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">延误率</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:${delayRate>20?'var(--red)':'var(--teal)'};font-weight:700;">${delayRate}%</span></div><div style="display:flex;justify-content:space-between;padding:7px 10px;background:var(--surface);border-radius:5px;"><span style="font-size:12px;color:var(--text2);">人均产出</span><span style="font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--blue);font-weight:700;">${perPerson} 件</span></div><div style="padding:7px 10px;background:var(--surface);border-radius:5px;"><div style="font-size:12px;color:var(--text2);margin-bottom:5px;">缺勤人員</div><div style="font-size:12px;color:${Object.keys(absenceData).length?'var(--amber)':'var(--teal)'};">${Object.keys(absenceData).length?Object.entries(absenceData).map(([n,a])=>n+'（'+a.reason+' '+a.days+a.unit+'）').join('、'):'✓ 本週無缺勤'}</div></div></div>`;
   const latestDate = dates[dates.length-1]||'';
-  // 下周計劃：按人分組，每人顯示編號事項
   const planByMember = {};
   reports.filter(r=>r.date===latestDate).forEach(r=>{
     const ps = (r.plans||[]).filter(Boolean);
