@@ -1104,7 +1104,7 @@ async function renderDailyPage() {
         : { days: 1, unit: '天', reason: r.leaveType };
     });
     // 正常日報（非缺勤）
-    liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤' && !String(r.doneItems).includes('缺勤')).map(r => ({
+   liveReports = allRows.filter(r => !r.leaveType && r.status !== '缺勤' && !String(r.doneItems).startsWith('（缺勤）')).map(r => ({
       id:          r.rowNum,
       name:        r.name,
       date:        r.date || '',
