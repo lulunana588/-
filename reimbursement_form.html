@@ -4,306 +4,346 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>費用報銷填報</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  :root {
-    --bg: #F7F6F2; --surface: #FFFFFF; --surface2: #F1EFE8;
-    --border: #E0DDD4; --border2: #CBC8BE;
-    --text: #1A1917; --text2: #6B6860; --text3: #A8A59E; --accent: #1A1917;
-    --success-bg: #EAF3DE; --success-border: #9FC465; --success-text: #3B6D11;
-    --danger-bg: #FCEBEB; --danger-border: #F7C1C1; --danger-text: #A32D2D;
-    --radius: 10px; --radius-sm: 6px;
-  }
-  body { font-family:'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif; background:var(--bg); color:var(--text); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:2.5rem 1rem; }
-  .wrap { width:100%; max-width:520px; }
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --black:#0A0A0A; --black2:#111111; --black3:#1A1A1A;
+  --gold:#C9A84C; --gold2:#E2C47A; --gold3:#A07830; --gold-dim:rgba(201,168,76,0.10);
+  --white:#F5F0E8; --white2:#C8C0B0; --white3:#7A7268;
+  --border:rgba(201,168,76,0.22); --radius:2px;
+}
+body { font-family:'Noto Sans TC',sans-serif; background:var(--black); color:var(--white); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:3rem 1rem 4rem; position:relative; overflow-x:hidden; }
+body::before { content:''; position:fixed; inset:0; background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(201,168,76,0.06) 0%,transparent 70%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(201,168,76,0.025) 39px,rgba(201,168,76,0.025) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(201,168,76,0.025) 39px,rgba(201,168,76,0.025) 40px); pointer-events:none; z-index:0; }
+.wrap { width:100%; max-width:560px; position:relative; z-index:1; animation:fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
 
-  .header { margin-bottom:1.75rem; }
-  .header h1 { font-size:20px; font-weight:600; letter-spacing:-0.3px; }
-  .header p  { font-size:13px; color:var(--text2); margin-top:4px; }
+.header { text-align:center; margin-bottom:2.5rem; padding-bottom:2rem; position:relative; }
+.header::after { content:''; position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:60px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); }
+.header-eyebrow { font-size:10px; letter-spacing:4px; color:var(--gold); font-family:'Cormorant Garamond',serif; margin-bottom:10px; text-transform:uppercase; }
+.header h1 { font-family:'Cormorant Garamond',serif; font-size:34px; font-weight:400; letter-spacing:1px; color:var(--white); line-height:1.2; }
+.header h1 em { color:var(--gold); font-style:normal; }
+.header p { font-size:12px; color:var(--white3); margin-top:10px; letter-spacing:0.5px; font-weight:300; }
 
-  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:2rem; }
+.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; position:relative; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
+.card::before,.card::after { content:''; position:absolute; width:16px; height:16px; border-color:var(--gold); border-style:solid; }
+.card::before { top:-1px; left:-1px; border-width:1px 0 0 1px; }
+.card::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; }
 
-  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
-  .field { margin-bottom:1.1rem; }
-  .field label { display:block; font-size:11px; font-weight:700; color:var(--text2); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.6px; }
-  .field input {
-    width:100%; padding:10px 12px; border:1px solid var(--border);
-    border-radius:var(--radius-sm); background:var(--surface); color:var(--text);
-    font-size:14px; font-family:inherit; transition:border-color 0.15s;
-  }
-  .field input:focus { outline:none; border-color:var(--border2); box-shadow:0 0 0 3px rgba(26,25,23,0.06); }
+.section-label { display:flex; align-items:center; gap:10px; margin:1.75rem 0 1.1rem; font-size:9px; letter-spacing:3px; text-transform:uppercase; color:var(--gold); font-weight:500; }
+.section-label::before { content:''; flex:0 0 20px; height:1px; background:var(--gold); opacity:0.6; }
+.section-label::after  { content:''; flex:1; height:1px; background:linear-gradient(90deg,rgba(201,168,76,0.4),transparent); }
+.section-label:first-child { margin-top:0; }
 
-  /* Checkbox list */
-  .checkbox-list { display:flex; flex-direction:column; gap:6px; }
-  .checkbox-item {
-    display:flex; align-items:center; gap:10px;
-    padding:9px 12px;
-    border:1px solid var(--border);
-    border-radius:var(--radius-sm);
-    cursor:pointer;
-    transition:all 0.12s;
-    user-select:none;
-  }
-  .checkbox-item:hover { border-color:var(--border2); background:var(--surface2); }
-  .checkbox-item.checked { border-color:#1A1917; background:#F7F6F2; }
-  .checkbox-item input[type="checkbox"] { display:none; }
-  .check-box {
-    width:16px; height:16px; border:1.5px solid var(--border2);
-    border-radius:4px; flex-shrink:0;
-    display:flex; align-items:center; justify-content:center;
-    transition:all 0.12s;
-  }
-  .checkbox-item.checked .check-box {
-    background:var(--accent); border-color:var(--accent);
-  }
-  .check-box::after {
-    content:''; display:none;
-    width:9px; height:5px;
-    border-left:2px solid #fff; border-bottom:2px solid #fff;
-    transform:rotate(-45deg) translateY(-1px);
-  }
-  .checkbox-item.checked .check-box::after { display:block; }
-  .check-label { font-size:14px; color:var(--text); }
+.row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.amount-row { display:grid; grid-template-columns:120px 1fr; gap:10px; }
+.field { margin-bottom:1rem; }
+.field label { display:block; font-size:10px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:var(--white3); margin-bottom:8px; }
+.field input,.field select { width:100%; padding:11px 14px; background:var(--black3); border:1px solid rgba(201,168,76,0.18); color:var(--white); font-size:14px; font-family:'Noto Sans TC',sans-serif; font-weight:300; border-radius:var(--radius); outline:none; appearance:none; -webkit-appearance:none; transition:border-color 0.2s,box-shadow 0.2s,background 0.2s; }
+.field select { background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23C9A84C' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; cursor:pointer; }
+.field select option { background:#1A1A1A; color:var(--white); }
+.field input::placeholder { color:rgba(120,112,100,0.55); }
+.field input:focus,.field select:focus { border-color:var(--gold3); background:#1E1E1E; box-shadow:0 0 0 3px rgba(201,168,76,0.07),inset 0 1px 2px rgba(0,0,0,0.4); }
 
-  /* 自訂新增列 */
-  .add-item-row {
-    display:flex; gap:8px; margin-top:6px;
-  }
-  .add-item-row input {
-    flex:1; padding:9px 12px;
-    border:1px dashed var(--border2);
-    border-radius:var(--radius-sm);
-    background:var(--surface); color:var(--text);
-    font-size:14px; font-family:inherit;
-    transition:border-color 0.15s;
-  }
-  .add-item-row input:focus { outline:none; border-color:var(--border2); border-style:solid; box-shadow:0 0 0 3px rgba(26,25,23,0.06); }
-  .add-item-row input::placeholder { color:var(--text3); }
-  .btn-add {
-    padding:9px 14px; border:1px solid var(--border2);
-    border-radius:var(--radius-sm); background:var(--surface2);
-    color:var(--text2); font-size:13px; font-weight:600;
-    cursor:pointer; font-family:inherit; white-space:nowrap;
-    transition:all 0.12s;
-  }
-  .btn-add:hover { background:var(--border); color:var(--text); }
+.checkbox-list { display:flex; flex-direction:column; gap:6px; }
+.checkbox-item { display:flex; align-items:center; gap:12px; padding:10px 14px; border:1px solid rgba(201,168,76,0.14); background:var(--black3); cursor:pointer; border-radius:var(--radius); transition:all 0.15s; user-select:none; position:relative; overflow:hidden; }
+.checkbox-item::before { content:''; position:absolute; left:0; top:0; bottom:0; width:0; background:linear-gradient(90deg,rgba(201,168,76,0.07),transparent); transition:width 0.2s; }
+.checkbox-item:hover::before { width:100%; }
+.checkbox-item:hover { border-color:rgba(201,168,76,0.32); }
+.checkbox-item.checked { border-color:rgba(201,168,76,0.45); background:rgba(201,168,76,0.05); }
+.checkbox-item input[type="checkbox"] { display:none; }
+.check-box { width:16px; height:16px; border:1px solid rgba(201,168,76,0.4); border-radius:2px; flex-shrink:0; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.checkbox-item.checked .check-box { background:var(--gold3); border-color:var(--gold); box-shadow:0 0 8px rgba(201,168,76,0.25); }
+.check-box::after { content:''; display:none; width:8px; height:4px; border-left:1.5px solid #000; border-bottom:1.5px solid #000; transform:rotate(-45deg) translateY(-1px); }
+.checkbox-item.checked .check-box::after { display:block; }
+.check-label { font-size:13px; color:var(--white2); font-weight:300; position:relative; }
+.checkbox-item.checked .check-label { color:var(--white); }
 
-  /* Upload */
-  .upload-zone { border:1.5px dashed var(--border2); border-radius:var(--radius-sm); padding:1.75rem 1rem; text-align:center; cursor:pointer; transition:all 0.15s; position:relative; background:var(--bg); }
-  .file-list-item {
-    display:flex; align-items:center; justify-content:space-between;
-    padding:7px 12px; margin-top:6px;
-    background:var(--success-bg); border:1px solid var(--success-border);
-    border-radius:var(--radius-sm); font-size:13px; color:var(--success-text);
-  }
-  .file-list-item span { font-weight:600; }
-  .btn-remove { background:none; border:none; cursor:pointer; color:var(--success-text); font-size:14px; padding:0 2px; line-height:1; opacity:0.6; }
-  .btn-remove:hover { opacity:1; }
-  .upload-zone.has-file { border-color:var(--success-border); background:var(--success-bg); border-style:solid; }
-  .file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
-  .upload-icon { width:38px; height:38px; border-radius:50%; background:var(--surface); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; margin:0 auto 10px; font-size:16px; }
-  .upload-text { font-size:13px; font-weight:500; margin-bottom:3px; }
-  .upload-hint { font-size:12px; color:var(--text3); }
-  .file-name   { font-size:13px; color:var(--success-text); font-weight:600; margin-top:8px; }
+.add-item-row { display:flex; gap:8px; margin-top:8px; }
+.add-item-row input { flex:1; padding:10px 13px; background:var(--black3); border:1px dashed rgba(201,168,76,0.22); color:var(--white); font-family:'Noto Sans TC',sans-serif; font-size:13px; border-radius:var(--radius); outline:none; transition:all 0.15s; }
+.add-item-row input::placeholder { color:rgba(120,112,100,0.5); }
+.add-item-row input:focus { border-style:solid; border-color:var(--gold3); }
+.btn-add { padding:10px 16px; border:1px solid rgba(201,168,76,0.32); border-radius:var(--radius); background:transparent; color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; cursor:pointer; font-family:'Noto Sans TC',sans-serif; white-space:nowrap; transition:all 0.15s; }
+.btn-add:hover { background:var(--gold-dim); border-color:var(--gold); }
 
-  .btn-submit { width:100%; padding:12px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius-sm); font-size:14px; font-weight:600; cursor:pointer; margin-top:1.25rem; font-family:inherit; transition:opacity 0.15s; }
-  .btn-submit:hover { opacity:0.85; }
-  .btn-submit:disabled { opacity:0.35; cursor:not-allowed; }
+.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:2rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
+.upload-zone:hover { border-color:var(--gold3); background:#1E1E1E; }
+.file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
+.upload-icon { width:40px; height:40px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 10px; font-size:16px; color:var(--gold); background:rgba(201,168,76,0.05); }
+.upload-text { font-size:13px; font-weight:400; margin-bottom:4px; color:var(--white2); }
+.upload-hint { font-size:11px; color:var(--white3); letter-spacing:0.3px; }
+.file-list-item { display:flex; align-items:center; justify-content:space-between; padding:8px 13px; margin-top:6px; background:rgba(74,140,63,0.08); border:1px solid rgba(74,140,63,0.28); border-radius:var(--radius); font-size:12px; color:#7EC47A; }
+.file-list-item span { font-weight:500; }
+.btn-remove { background:none; border:none; cursor:pointer; color:#7EC47A; font-size:13px; opacity:0.5; transition:opacity 0.15s; }
+.btn-remove:hover { opacity:1; }
 
-  .alert { border-radius:var(--radius-sm); padding:11px 16px; font-size:13px; margin-top:1rem; display:none; font-weight:500; }
-  .alert-success { background:var(--success-bg); border:1px solid var(--success-border); color:var(--success-text); }
-  .alert-danger  { background:var(--danger-bg);  border:1px solid var(--danger-border);  color:var(--danger-text);  }
+.divider { border:none; border-top:1px solid rgba(201,168,76,0.1); margin:1.5rem 0; position:relative; }
+.divider::before { content:'◆'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:6px; color:var(--gold3); background:var(--black2); padding:0 8px; }
 
-  .spinner { display:inline-block; width:14px; height:14px; border:2px solid rgba(255,255,255,0.4); border-top-color:#fff; border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
-  @keyframes spin { to { transform:rotate(360deg); } }
+.btn-submit { width:100%; padding:14px; background:linear-gradient(135deg,var(--gold3) 0%,var(--gold) 50%,var(--gold3) 100%); background-size:200% 100%; color:#0A0A0A; border:none; border-radius:var(--radius); font-size:12px; font-weight:700; letter-spacing:3px; text-transform:uppercase; cursor:pointer; margin-top:1.5rem; font-family:'Noto Sans TC',sans-serif; transition:all 0.3s; position:relative; overflow:hidden; }
+.btn-submit::before { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,0.15),transparent); transform:translateX(-100%); transition:transform 0.5s; }
+.btn-submit:hover::before { transform:translateX(100%); }
+.btn-submit:hover { box-shadow:0 4px 24px rgba(201,168,76,0.28),0 0 0 1px rgba(201,168,76,0.4); }
+.btn-submit:disabled { opacity:0.3; cursor:not-allowed; }
 
-  @media(max-width:440px) { .row2 { grid-template-columns:1fr; } .card { padding:1.25rem; } }
+.progress-wrap { display:none; margin-top:1rem; }
+.progress-label { font-size:11px; color:var(--white3); margin-bottom:6px; letter-spacing:1px; }
+.progress-bar { height:2px; background:rgba(201,168,76,0.15); border-radius:1px; overflow:hidden; }
+.progress-fill { height:100%; width:0; background:linear-gradient(90deg,var(--gold3),var(--gold)); border-radius:1px; transition:width 0.4s ease; }
+
+.status-box { display:none; margin-top:1rem; padding:13px 16px; border-radius:var(--radius); font-size:12px; line-height:1.7; letter-spacing:0.3px; }
+.status-ok  { background:rgba(74,140,63,0.1);  border:1px solid rgba(74,140,63,0.32);  color:#7EC47A; }
+.status-err { background:rgba(140,63,63,0.1);  border:1px solid rgba(140,63,63,0.32);  color:#C47A7A; }
+
+.spinner { display:inline-block; width:13px; height:13px; border:1.5px solid rgba(0,0,0,0.3); border-top-color:#000; border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
+@keyframes spin { to{transform:rotate(360deg)} }
+
+.footer-note { text-align:center; margin-top:1.75rem; font-size:10px; color:var(--white3); letter-spacing:1.5px; opacity:0.5; }
+
+@media(max-width:440px) { .row2{grid-template-columns:1fr} .amount-row{grid-template-columns:90px 1fr} .card{padding:1.5rem} .header h1{font-size:26px} }
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>費用報銷填報</h1>
-    <p>填寫後資料將直接同步至報銷統計表</p>
+    <div class="header-eyebrow">Expense Reimbursement</div>
+    <h1>費用<em>報銷</em>填報</h1>
+    <p>提交後資料即時同步至 Google 試算表</p>
   </div>
 
   <div class="card">
+    <div class="section-label">人員資訊</div>
     <div class="row2">
-      <div class="field"><label>員編</label><input type="text" id="emp-id" placeholder="例：XS5876" maxlength="10"></div>
-      <div class="field"><label>花名</label><input type="text" id="emp-name" placeholder="例：肯尼" maxlength="10"></div>
+      <div class="field">
+        <label>辦公室</label>
+        <select id="office">
+          <option value="" disabled selected>請選擇</option>
+          <option>綜辦審計卓亞</option>
+          <option>商務中心</option>
+          <option>混合辦</option>
+          <option>悅達</option>
+          <option>SETV</option>
+          <option>智影</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>部門</label>
+        <input type="text" id="dept" placeholder="例：行政部">
+      </div>
     </div>
+    <div class="row2">
+      <div class="field">
+        <label>員編</label>
+        <input type="text" id="emp-id" placeholder="例：AS6612" maxlength="10">
+      </div>
+      <div class="field">
+        <label>花名</label>
+        <input type="text" id="emp-name" placeholder="例：Luna" maxlength="10">
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">報銷明細</div>
 
     <div class="field">
       <label>報銷項目（可複選）</label>
-      <div class="checkbox-list" id="item-list">
-        <!-- 預設三項 -->
-      </div>
+      <div class="checkbox-list" id="item-list"></div>
       <div class="add-item-row">
-        <input type="text" id="custom-input" placeholder="自行新增項目…" maxlength="20" onkeydown="if(event.key==='Enter')addItem()">
+        <input type="text" id="custom-input" placeholder="自行新增項目…" maxlength="20"
+               onkeydown="if(event.key==='Enter')addItem()">
         <button class="btn-add" onclick="addItem()">＋ 新增</button>
       </div>
     </div>
 
     <div class="field">
-      <label>備註說明（選填）</label>
-      <input type="text" id="note" placeholder="例：2025年1月份訂閱費">
+      <label>幣別 ＆ 金額</label>
+      <div class="amount-row">
+        <select id="currency">
+          <option value="TWD">TWD</option>
+          <option value="USD">USD</option>
+          <option value="CNY">CNY</option>
+          <option value="EUR">EUR</option>
+        </select>
+        <input type="number" id="amount" placeholder="請輸入金額" min="0" step="0.01">
+      </div>
     </div>
 
     <div class="field">
-      <label>報銷憑證</label>
+      <label>備註說明（選填）</label>
+      <input type="text" id="note" placeholder="例：2025年4月份訂閱費">
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-label">報銷憑證</div>
+
+    <div class="field">
       <div class="upload-zone" id="upload-zone">
-        <input type="file" class="file-input" id="file-input" accept="image/*,application/pdf" multiple onchange="handleFile(event)">
+        <input type="file" class="file-input" id="file-input"
+               accept="image/*,application/pdf" multiple onchange="handleFile(event)">
         <div class="upload-icon">↑</div>
         <div class="upload-text">點擊或拖曳上傳憑證</div>
-        <div class="upload-hint">支援 JPG、PNG、PDF，可多選，每檔最大 5MB</div>
+        <div class="upload-hint">支援 JPG · PNG · PDF &nbsp;｜&nbsp; 可多選 &nbsp;｜&nbsp; 每檔最大 5MB</div>
       </div>
       <div id="file-list"></div>
     </div>
 
     <button class="btn-submit" id="submit-btn" onclick="submitForm()">提交申請</button>
-    <div class="alert alert-success" id="success-msg"></div>
-    <div class="alert alert-danger"  id="error-msg"></div>
+
+    <div class="progress-wrap" id="progress-wrap">
+      <div class="progress-label" id="progress-label">提交中…</div>
+      <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
+
+    <div class="status-box" id="status-box"></div>
   </div>
+  <div class="footer-note">CONFIDENTIAL &nbsp;·&nbsp; INTERNAL USE ONLY</div>
 </div>
 
 <script>
-  // ★ 貼上你的 GAS Web App URL
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzduWHxyoBRmvyrfuAQQZ9vf9IUKjsWuXcmuJRowv-BaonJBXucxR-jeskGlFrvkQcOZw/exec';
+  // ★ 貼上你部署後的 GAS Web App URL
+  const GAS_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
 
-  // 預設項目
   const DEFAULT_ITEMS = ['VPS', 'Claude'];
   let items = [...DEFAULT_ITEMS];
+  let filesData = [];
 
   function renderItems() {
-    const list = document.getElementById('item-list');
-    list.innerHTML = items.map(name => `
+    document.getElementById('item-list').innerHTML = items.map(name => `
       <label class="checkbox-item" onclick="toggleCheck(this)">
         <input type="checkbox" value="${name}">
         <span class="check-box"></span>
         <span class="check-label">${name}</span>
-      </label>
-    `).join('');
+      </label>`).join('');
   }
-
   function toggleCheck(el) {
     const cb = el.querySelector('input[type="checkbox"]');
-    cb.checked = !cb.checked;
-    el.classList.toggle('checked', cb.checked);
+    cb.checked = !cb.checked; el.classList.toggle('checked', cb.checked);
   }
-
   function addItem() {
     const input = document.getElementById('custom-input');
     const val = input.value.trim();
-    if (!val) return;
-    if (items.includes(val)) { input.value=''; return; }
-    items.push(val);
-    renderItems();
-    input.value = '';
-    // 自動勾選剛新增的
+    if (!val || items.includes(val)) { input.value=''; return; }
+    items.push(val); renderItems(); input.value='';
     const all = document.querySelectorAll('.checkbox-item');
-    const last = all[all.length - 1];
-    last.querySelector('input').checked = true;
-    last.classList.add('checked');
+    const last = all[all.length-1];
+    last.querySelector('input').checked=true; last.classList.add('checked');
   }
-
   function getSelected() {
-    return [...document.querySelectorAll('.checkbox-item input:checked')].map(el => el.value);
+    return [...document.querySelectorAll('.checkbox-item input:checked')].map(el=>el.value);
   }
-
-  // 上傳（多檔）
-  let filesData = []; // [{name, type, data}]
 
   const zone = document.getElementById('upload-zone');
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.style.borderColor='#1A1917'; });
+  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
   zone.addEventListener('dragleave', () => { zone.style.borderColor=''; });
-  zone.addEventListener('drop', e => {
-    e.preventDefault(); zone.style.borderColor='';
-    addFiles(e.dataTransfer.files);
-  });
-
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files); });
   function handleFile(e) { addFiles(e.target.files); e.target.value=''; }
-
   function addFiles(fileList) {
     [...fileList].forEach(file => {
       if (file.size > 5*1024*1024) { alert(`${file.name} 超過 5MB，略過`); return; }
-      if (filesData.find(f => f.name===file.name)) return; // 不重複
+      if (filesData.find(f=>f.name===file.name)) return;
       const reader = new FileReader();
-      reader.onload = ev => {
-        filesData.push({ name: file.name, type: file.type, data: ev.target.result });
-        renderFileList();
-      };
+      reader.onload = ev => { filesData.push({name:file.name,type:file.type,data:ev.target.result}); renderFileList(); };
       reader.readAsDataURL(file);
     });
   }
-
-  function removeFile(name) {
-    filesData = filesData.filter(f => f.name !== name);
-    renderFileList();
-  }
-
+  function removeFile(name) { filesData=filesData.filter(f=>f.name!==name); renderFileList(); }
   function renderFileList() {
-    const el = document.getElementById('file-list');
-    if (!filesData.length) { el.innerHTML=''; return; }
-    el.innerHTML = filesData.map(f => `
+    document.getElementById('file-list').innerHTML = filesData.map(f=>`
       <div class="file-list-item">
-        <span>✓ ${f.name}</span>
+        <span>✓ &nbsp;${f.name}</span>
         <button class="btn-remove" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">✕</button>
       </div>`).join('');
   }
 
+  function getPeriod() {
+    const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+  }
+  function setProgress(pct, label) {
+    const wrap=document.getElementById('progress-wrap');
+    wrap.style.display = pct===null ? 'none' : 'block';
+    if (pct!==null) {
+      document.getElementById('progress-fill').style.width=pct+'%';
+      document.getElementById('progress-label').textContent=label||'';
+    }
+  }
+  function showStatus(type, html) {
+    const box=document.getElementById('status-box');
+    box.className='status-box status-'+type;
+    box.innerHTML=html; box.style.display='block';
+  }
+
   async function submitForm() {
+    const office   = document.getElementById('office').value;
+    const dept     = document.getElementById('dept').value.trim();
     const empId    = document.getElementById('emp-id').value.trim();
     const empName  = document.getElementById('emp-name').value.trim();
     const selected = getSelected();
+    const currency = document.getElementById('currency').value;
+    const amount   = document.getElementById('amount').value.trim();
     const note     = document.getElementById('note').value.trim();
 
-    if (!empId || !empName)     { showAlert('err','請填寫員編與花名'); return; }
-    if (!selected.length)       { showAlert('err','請至少選擇一個報銷項目'); return; }
+    if (!office)                { showStatus('err','⚠ 請選擇辦公室'); return; }
+    if (!empId||!empName)       { showStatus('err','⚠ 請填寫員編與花名'); return; }
+    if (!selected.length)       { showStatus('err','⚠ 請至少選擇一個報銷項目'); return; }
+    if (!amount||Number(amount)<=0) { showStatus('err','⚠ 請填寫正確的報銷金額'); return; }
 
     const btn = document.getElementById('submit-btn');
-    btn.disabled = true;
-    btn.innerHTML = '<span class="spinner"></span>提交中…';
+    btn.disabled=true; btn.innerHTML='<span class="spinner"></span>提交中…';
+    document.getElementById('status-box').style.display='none';
+    setProgress(30,'正在上傳資料…');
 
     try {
-      await fetch(GAS_URL, {
+      const payload = {
+        period:   getPeriod(),
+        office, dept, empId, empName,
+        itemType: selected.join('、'),
+        currency,
+        amount:   Number(amount),
+        note,
+        files:    filesData,
+        time:     new Date().toLocaleString('zh-TW',{hour12:false})
+      };
+
+      setProgress(60,'同步至 Google 試算表…');
+
+      const res = await fetch(GAS_URL, {
         method: 'POST',
-        mode: 'no-cors',
-        body: JSON.stringify({
-          empId, empName,
-          itemType: selected.join('、'),
-          note, files: filesData,
-          time: new Date().toLocaleString('zh-TW', { hour12: false })
-        })
+        body:   JSON.stringify(payload),
+        // 不用 mode:no-cors，這樣才能讀到回應
       });
-      // no-cors 無法讀取回應，送出即視為成功
-      showAlert('ok', '✓ 申請已成功提交，資料已同步至報銷統計表');
-      resetForm();
+      const result = await res.json();
+
+      setProgress(100,'完成！');
+      setTimeout(() => setProgress(null), 600);
+
+      if (result.status === 'ok') {
+        showStatus('ok',
+          `✓ &nbsp;<strong>提交成功</strong> &nbsp;｜&nbsp; 序號 #${result.seq}<br>` +
+          `${empName}（${empId}）&nbsp;·&nbsp; ${currency} ${amount}<br>` +
+          `${filesData.length ? `憑證 ${filesData.length} 張已上傳至 Google Drive` : '無憑證'}`
+        );
+        resetForm();
+      } else {
+        showStatus('err', `✕ 伺服器錯誤：${result.message}`);
+      }
+
     } catch (err) {
-      showAlert('err', '提交失敗：' + err.message);
+      setProgress(null);
+      showStatus('err',`✕ 提交失敗：${err.message}<br><span style="font-size:11px;opacity:0.7">請確認 GAS 已正確部署</span>`);
     }
 
-    btn.disabled = false;
-    btn.textContent = '提交申請';
+    btn.disabled=false; btn.textContent='提交申請';
   }
 
   function resetForm() {
-    ['emp-id','emp-name','note'].forEach(id => document.getElementById(id).value='');
+    ['dept','emp-id','emp-name','note','amount'].forEach(id=>document.getElementById(id).value='');
+    document.getElementById('office').value='';
+    document.getElementById('currency').value='TWD';
     document.getElementById('file-input').value='';
-    filesData = [];
-    renderFileList();
-    items = [...DEFAULT_ITEMS];
-    renderItems();
+    filesData=[]; renderFileList();
+    items=[...DEFAULT_ITEMS]; renderItems();
   }
 
-  function showAlert(type, msg) {
-    const s=document.getElementById('success-msg');
-    const e=document.getElementById('error-msg');
-    s.style.display='none'; e.style.display='none';
-    if (type==='ok') { s.textContent=msg; s.style.display='block'; setTimeout(()=>s.style.display='none',5000); }
-    else             { e.textContent=msg; e.style.display='block'; setTimeout(()=>e.style.display='none',6000); }
-  }
-
-  // 初始化
   renderItems();
 </script>
 </body>
