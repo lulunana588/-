@@ -200,8 +200,8 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 </div>
 
 <script>
-  // ★ 貼上你部署後的 GAS Web App URL
-  const GAS_URL = 'https://script.google.com/macros/s/YOUR_DEPLOYMENT_ID/exec';
+  // ★ 換成你的 GAS Web App URL
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbzduWHxyoBRmvyrfuAQQZ9vf9IUKjsWuXcmuJRowv-BaonJBXucxR-jeskGlFrvkQcOZw/exec';
 
   const DEFAULT_ITEMS = ['VPS', 'Claude'];
   let items = [...DEFAULT_ITEMS];
@@ -282,9 +282,9 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
     const amount   = document.getElementById('amount').value.trim();
     const note     = document.getElementById('note').value.trim();
 
-    if (!office)                { showStatus('err','⚠ 請選擇辦公室'); return; }
-    if (!empId||!empName)       { showStatus('err','⚠ 請填寫員編與花名'); return; }
-    if (!selected.length)       { showStatus('err','⚠ 請至少選擇一個報銷項目'); return; }
+    if (!office)                    { showStatus('err','⚠ 請選擇辦公室'); return; }
+    if (!empId||!empName)           { showStatus('err','⚠ 請填寫員編與花名'); return; }
+    if (!selected.length)           { showStatus('err','⚠ 請至少選擇一個報銷項目'); return; }
     if (!amount||Number(amount)<=0) { showStatus('err','⚠ 請填寫正確的報銷金額'); return; }
 
     const btn = document.getElementById('submit-btn');
@@ -304,28 +304,24 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
         time:     new Date().toLocaleString('zh-TW',{hour12:false})
       };
 
-      setProgress(60,'同步至 Google 試算表…');
+      setProgress(70,'同步至 Google 試算表…');
 
-      const res = await fetch(GAS_URL, {
+      await fetch(GAS_URL, {
         method: 'POST',
+        mode:   'no-cors',   // GAS 必須加這行
         body:   JSON.stringify(payload),
-        // 不用 mode:no-cors，這樣才能讀到回應
       });
-      const result = await res.json();
 
+      // no-cors 無法讀回應，送出即視為成功
       setProgress(100,'完成！');
-      setTimeout(() => setProgress(null), 600);
+      setTimeout(()=>setProgress(null), 600);
 
-      if (result.status === 'ok') {
-        showStatus('ok',
-          `✓ &nbsp;<strong>提交成功</strong> &nbsp;｜&nbsp; 序號 #${result.seq}<br>` +
-          `${empName}（${empId}）&nbsp;·&nbsp; ${currency} ${amount}<br>` +
-          `${filesData.length ? `憑證 ${filesData.length} 張已上傳至 Google Drive` : '無憑證'}`
-        );
-        resetForm();
-      } else {
-        showStatus('err', `✕ 伺服器錯誤：${result.message}`);
-      }
+      showStatus('ok',
+        `✓ &nbsp;<strong>提交成功</strong><br>` +
+        `${empName}（${empId}）&nbsp;·&nbsp; ${currency} ${amount}<br>` +
+        `${filesData.length ? `憑證 ${filesData.length} 張已隨資料送出` : '無憑證'}`
+      );
+      resetForm();
 
     } catch (err) {
       setProgress(null);
