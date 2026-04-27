@@ -90,15 +90,6 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 </style>
 </head>
 <body>
-
-<!-- 隱藏的 iframe + form，用來繞過 CORS 限制 -->
-<iframe name="hidden_iframe" style="display:none"></iframe>
-<form id="hidden-form" method="POST"
-      action="https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-XTI9_2QHuL7vg5XNnj8Z0VlFTI_UKBAQ49nucHMC65z/exec"
-      target="hidden_iframe" style="display:none">
-  <input type="hidden" name="payload" id="form-payload">
-</form>
-
 <div class="wrap">
   <div class="header">
     <div class="header-eyebrow">Expense Reimbursement</div>
@@ -116,10 +107,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
           <option>悅達</option><option>SETV</option><option>智影</option>
         </select>
       </div>
-      <div class="field">
-        <label>部門</label>
-        <input type="text" id="dept" placeholder="例：行政部">
-      </div>
+      <div class="field"><label>部門</label><input type="text" id="dept" placeholder="例：行政部"></div>
     </div>
     <div class="row2">
       <div class="field"><label>員編</label><input type="text" id="emp-id" placeholder="例：AS6612" maxlength="10"></div>
@@ -145,10 +133,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
         <input type="number" id="amount" placeholder="請輸入金額" min="0" step="0.01">
       </div>
     </div>
-    <div class="field">
-      <label>備註說明（選填）</label>
-      <input type="text" id="note" placeholder="例：2025年4月份訂閱費">
-    </div>
+    <div class="field"><label>備註說明（選填）</label><input type="text" id="note" placeholder="例：2025年4月份訂閱費"></div>
     <div class="divider"></div>
     <div class="section-label">報銷憑證</div>
     <div class="field">
@@ -171,130 +156,138 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 </div>
 
 <script>
-  const DEFAULT_ITEMS = ['VPS', 'Claude'];
-  let items = [...DEFAULT_ITEMS];
-  let filesData = [];
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-XTI9_2QHuL7vg5XNnj8Z0VlFTI_UKBAQ49nucHMC65z/exec';
 
-  function renderItems() {
-    document.getElementById('item-list').innerHTML = items.map(name => `
-      <label class="checkbox-item" onclick="toggleCheck(this)">
-        <input type="checkbox" value="${name}">
-        <span class="check-box"></span>
-        <span class="check-label">${name}</span>
-      </label>`).join('');
-  }
-  function toggleCheck(el) {
-    const cb = el.querySelector('input[type="checkbox"]');
-    cb.checked = !cb.checked; el.classList.toggle('checked', cb.checked);
-  }
-  function addItem() {
-    const input = document.getElementById('custom-input');
-    const val = input.value.trim();
-    if (!val || items.includes(val)) { input.value=''; return; }
-    items.push(val); renderItems(); input.value='';
-    const all = document.querySelectorAll('.checkbox-item');
-    const last = all[all.length-1];
-    last.querySelector('input').checked=true; last.classList.add('checked');
-  }
-  function getSelected() {
-    return [...document.querySelectorAll('.checkbox-item input:checked')].map(el=>el.value);
-  }
+const DEFAULT_ITEMS = ['VPS', 'Claude'];
+let items = [...DEFAULT_ITEMS];
+let filesData = [];
 
-  const zone = document.getElementById('upload-zone');
-  zone.addEventListener('dragover',  e => { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
-  zone.addEventListener('dragleave', () => { zone.style.borderColor=''; });
-  zone.addEventListener('drop', e => { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files); });
-  function handleFile(e) { addFiles(e.target.files); e.target.value=''; }
-  function addFiles(fileList) {
-    [...fileList].forEach(file => {
-      if (file.size > 5*1024*1024) { alert(`${file.name} 超過 5MB`); return; }
-      if (filesData.find(f=>f.name===file.name)) return;
-      const reader = new FileReader();
-      reader.onload = ev => { filesData.push({name:file.name,type:file.type,data:ev.target.result}); renderFileList(); };
-      reader.readAsDataURL(file);
+function renderItems() {
+  document.getElementById('item-list').innerHTML = items.map(name => `
+    <label class="checkbox-item" onclick="toggleCheck(this)">
+      <input type="checkbox" value="${name}">
+      <span class="check-box"></span>
+      <span class="check-label">${name}</span>
+    </label>`).join('');
+}
+function toggleCheck(el) {
+  const cb = el.querySelector('input[type="checkbox"]');
+  cb.checked = !cb.checked; el.classList.toggle('checked', cb.checked);
+}
+function addItem() {
+  const input = document.getElementById('custom-input');
+  const val = input.value.trim();
+  if (!val || items.includes(val)) { input.value=''; return; }
+  items.push(val); renderItems(); input.value='';
+  const all = document.querySelectorAll('.checkbox-item');
+  const last = all[all.length-1];
+  last.querySelector('input').checked=true; last.classList.add('checked');
+}
+function getSelected() {
+  return [...document.querySelectorAll('.checkbox-item input:checked')].map(el=>el.value);
+}
+
+const zone = document.getElementById('upload-zone');
+zone.addEventListener('dragover',  e => { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
+zone.addEventListener('dragleave', () => { zone.style.borderColor=''; });
+zone.addEventListener('drop', e => { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files); });
+function handleFile(e) { addFiles(e.target.files); e.target.value=''; }
+function addFiles(fileList) {
+  [...fileList].forEach(file => {
+    if (file.size > 5*1024*1024) { alert(file.name + ' 超過 5MB'); return; }
+    if (filesData.find(f=>f.name===file.name)) return;
+    const reader = new FileReader();
+    reader.onload = ev => { filesData.push({name:file.name,type:file.type,data:ev.target.result}); renderFileList(); };
+    reader.readAsDataURL(file);
+  });
+}
+function removeFile(name) { filesData=filesData.filter(f=>f.name!==name); renderFileList(); }
+function renderFileList() {
+  document.getElementById('file-list').innerHTML = filesData.map(f=>`
+    <div class="file-list-item">
+      <span>✓ &nbsp;${f.name}</span>
+      <button class="btn-remove" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">✕</button>
+    </div>`).join('');
+}
+function getPeriod() {
+  const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
+function setProgress(pct, label) {
+  const wrap=document.getElementById('progress-wrap');
+  wrap.style.display = pct===null ? 'none' : 'block';
+  if (pct!==null) {
+    document.getElementById('progress-fill').style.width=pct+'%';
+    document.getElementById('progress-label').textContent=label||'';
+  }
+}
+function showStatus(type, html) {
+  const box=document.getElementById('status-box');
+  box.className='status-box status-'+type;
+  box.innerHTML=html; box.style.display='block';
+}
+
+async function submitForm() {
+  const office   = document.getElementById('office').value;
+  const dept     = document.getElementById('dept').value.trim();
+  const empId    = document.getElementById('emp-id').value.trim();
+  const empName  = document.getElementById('emp-name').value.trim();
+  const selected = getSelected();
+  const currency = document.getElementById('currency').value;
+  const amount   = document.getElementById('amount').value.trim();
+  const note     = document.getElementById('note').value.trim();
+
+  if (!office)                    { showStatus('err','⚠ 請選擇辦公室'); return; }
+  if (!empId||!empName)           { showStatus('err','⚠ 請填寫員編與花名'); return; }
+  if (!selected.length)           { showStatus('err','⚠ 請至少選擇一個報銷項目'); return; }
+  if (!amount||Number(amount)<=0) { showStatus('err','⚠ 請填寫正確的報銷金額'); return; }
+
+  const btn = document.getElementById('submit-btn');
+  btn.disabled=true; btn.innerHTML='<span class="spinner"></span>提交中…';
+  document.getElementById('status-box').style.display='none';
+  setProgress(40,'同步至 Google 試算表…');
+
+  const payload = JSON.stringify({
+    period: getPeriod(), office, dept, empId, empName,
+    itemType: selected.join('、'), currency,
+    amount: Number(amount), note, files: filesData,
+    time: new Date().toLocaleString('zh-TW',{hour12:false})
+  });
+
+  try {
+    // 用 fetch + text/plain 送出，GAS 透過 postData.contents 接收
+    await fetch(GAS_URL, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: payload
     });
-  }
-  function removeFile(name) { filesData=filesData.filter(f=>f.name!==name); renderFileList(); }
-  function renderFileList() {
-    document.getElementById('file-list').innerHTML = filesData.map(f=>`
-      <div class="file-list-item">
-        <span>✓ &nbsp;${f.name}</span>
-        <button class="btn-remove" onclick="removeFile('${f.name.replace(/'/g,"\\'")}')">✕</button>
-      </div>`).join('');
-  }
 
-  function getPeriod() {
-    const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-  }
-  function setProgress(pct, label) {
-    const wrap=document.getElementById('progress-wrap');
-    wrap.style.display = pct===null ? 'none' : 'block';
-    if (pct!==null) {
-      document.getElementById('progress-fill').style.width=pct+'%';
-      document.getElementById('progress-label').textContent=label||'';
-    }
-  }
-  function showStatus(type, html) {
-    const box=document.getElementById('status-box');
-    box.className='status-box status-'+type;
-    box.innerHTML=html; box.style.display='block';
+    setProgress(100,'完成！');
+    setTimeout(()=>setProgress(null), 600);
+    showStatus('ok',
+      '✓ &nbsp;<strong>提交成功</strong><br>' +
+      empName+'（'+empId+'）&nbsp;·&nbsp; '+currency+' '+amount+'<br>'+
+      (filesData.length ? '憑證 '+filesData.length+' 張已上傳' : '無憑證')
+    );
+    resetForm();
+  } catch(err) {
+    setProgress(null);
+    showStatus('err','✕ 提交失敗：'+err.message);
   }
 
-  function submitForm() {
-    const office   = document.getElementById('office').value;
-    const dept     = document.getElementById('dept').value.trim();
-    const empId    = document.getElementById('emp-id').value.trim();
-    const empName  = document.getElementById('emp-name').value.trim();
-    const selected = getSelected();
-    const currency = document.getElementById('currency').value;
-    const amount   = document.getElementById('amount').value.trim();
-    const note     = document.getElementById('note').value.trim();
+  btn.disabled=false; btn.textContent='提交申請';
+}
 
-    if (!office)                    { showStatus('err','⚠ 請選擇辦公室'); return; }
-    if (!empId||!empName)           { showStatus('err','⚠ 請填寫員編與花名'); return; }
-    if (!selected.length)           { showStatus('err','⚠ 請至少選擇一個報銷項目'); return; }
-    if (!amount||Number(amount)<=0) { showStatus('err','⚠ 請填寫正確的報銷金額'); return; }
+function resetForm() {
+  ['dept','emp-id','emp-name','note','amount'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('office').value='';
+  document.getElementById('currency').value='TWD';
+  document.getElementById('file-input').value='';
+  filesData=[]; renderFileList();
+  items=[...DEFAULT_ITEMS]; renderItems();
+}
 
-    const btn = document.getElementById('submit-btn');
-    btn.disabled=true; btn.innerHTML='<span class="spinner"></span>提交中…';
-    document.getElementById('status-box').style.display='none';
-    setProgress(50,'同步至 Google 試算表…');
-
-    const payload = JSON.stringify({
-      period: getPeriod(), office, dept, empId, empName,
-      itemType: selected.join('、'), currency,
-      amount: Number(amount), note, files: filesData,
-      time: new Date().toLocaleString('zh-TW',{hour12:false})
-    });
-
-    // 用隱藏 form 送出，完全繞過 CORS
-    document.getElementById('form-payload').value = payload;
-    document.getElementById('hidden-form').submit();
-
-    // 2 秒後視為成功（無法讀 iframe 回應）
-    setTimeout(() => {
-      setProgress(100,'完成！');
-      setTimeout(()=>setProgress(null), 600);
-      showStatus('ok',
-        `✓ &nbsp;<strong>提交成功</strong><br>` +
-        `${empName}（${empId}）&nbsp;·&nbsp; ${currency} ${amount}<br>` +
-        `${filesData.length ? `憑證 ${filesData.length} 張已上傳` : '無憑證'}`
-      );
-      resetForm();
-      btn.disabled=false; btn.textContent='提交申請';
-    }, 2000);
-  }
-
-  function resetForm() {
-    ['dept','emp-id','emp-name','note','amount'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('office').value='';
-    document.getElementById('currency').value='TWD';
-    document.getElementById('file-input').value='';
-    filesData=[]; renderFileList();
-    items=[...DEFAULT_ITEMS]; renderItems();
-  }
-
-  renderItems();
+renderItems();
 </script>
 </body>
 </html>
