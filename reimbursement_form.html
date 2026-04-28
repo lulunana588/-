@@ -149,10 +149,9 @@ var GAS_URL = 'https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-X
 var DEFAULT_ITEMS = ['VPS','Claude'];
 var CURRENCIES = ['TWD','USD','CNY','EUR'];
 var APPLY_TYPES = ['首次','再次'];
-var receipts = {};   // idx -> {name,type,data}
-var confirms = [];   // [{name,type,data}]
+var receipts = {};
+var confirms = [];
 
-// ── 報銷項目列 ────────────────────────────────────────
 function addItemRow(name, type, cur, val) {
   var rows = document.getElementById('item-rows');
   var row = document.createElement('div');
@@ -170,9 +169,7 @@ function addItemRow(name, type, cur, val) {
   var btn = document.createElement('button');
   btn.type='button'; btn.className='btn-del'; btn.textContent='✕';
   btn.onclick=function(){
-    if(document.getElementById('item-rows').children.length>1){
-      row.remove(); renderReceiptZones();
-    }
+    if(document.getElementById('item-rows').children.length>1){ row.remove(); renderReceiptZones(); }
   };
   row.appendChild(nameEl); row.appendChild(typeEl); row.appendChild(curEl); row.appendChild(amtEl); row.appendChild(btn);
   rows.appendChild(row);
@@ -187,7 +184,6 @@ function getItems() {
   });
 }
 
-// ── 憑證上傳（每項各自）──────────────────────────────
 function renderReceiptZones() {
   var items = getItems();
   var container = document.getElementById('receipt-zones');
@@ -232,13 +228,8 @@ function handleReceipt(e, idx) {
   reader.readAsDataURL(file);
 }
 
-function removeReceipt(idx){
-  delete receipts[idx];
-  var el=document.getElementById('rlist-'+idx);
-  if(el) el.innerHTML='';
-}
+function removeReceipt(idx){ delete receipts[idx]; var el=document.getElementById('rlist-'+idx); if(el) el.innerHTML=''; }
 
-// ── 負責人確認截圖 ────────────────────────────────────
 var confirmZone=document.getElementById('confirm-zone');
 confirmZone.addEventListener('dragover',function(e){e.preventDefault();confirmZone.style.borderColor='var(--gold)';});
 confirmZone.addEventListener('dragleave',function(){confirmZone.style.borderColor='';});
@@ -262,11 +253,35 @@ function renderConfirmList(){
   }).join('');
 }
 
-// ── 工具 ──────────────────────────────────────────────
+// ── 上傳單一檔案（含重試，最多3次）─────────────────
+async function uploadOneFile(fileObj, label) {
+  for(var attempt=0; attempt<3; attempt++){
+    try{
+      if(attempt>0){
+        setProgress(null, '');
+        await new Promise(function(r){setTimeout(r,2000);});
+      }
+      setProgress(-1, label+(attempt>0?' (重試'+attempt+')':'')+'…');
+      var res = await fetch(GAS_URL,{
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:fileObj}))
+      });
+      var data = await res.json();
+      if(data.link) return data.link;
+    }catch(err){
+      if(attempt===2) throw err;
+    }
+  }
+  return '';
+}
+
 function setProgress(pct,label){
   var wrap=document.getElementById('progress-wrap');
-  wrap.style.display=pct===null?'none':'block';
-  if(pct!==null){document.getElementById('progress-fill').style.width=pct+'%';document.getElementById('progress-label').textContent=label||'';}
+  if(pct===null){ wrap.style.display='none'; return; }
+  wrap.style.display='block';
+  if(pct>=0) document.getElementById('progress-fill').style.width=pct+'%';
+  if(label!==undefined) document.getElementById('progress-label').textContent=label;
 }
 function showStatus(type,html){
   var box=document.getElementById('status-box');
@@ -280,7 +295,6 @@ function playCoinSound(){
   }catch(e){}
 }
 
-// ── 送出 ──────────────────────────────────────────────
 async function submitForm(){
   var office=document.getElementById('office').value;
   var dept=document.getElementById('dept').value.trim();
@@ -299,60 +313,45 @@ async function submitForm(){
   var btn=document.getElementById('submit-btn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>提交中…';
   document.getElementById('status-box').style.display='none';
-  setProgress(20,'準備送出 '+items.length+' 筆資料…');
-
-  var time=new Date().toLocaleString('zh-TW',{hour12:false});
+  setProgress(5,'準備上傳…');
 
   try{
-    // 步驟1：逐張上傳憑證圖片，取得 Drive 連結
+    // 步驟1：逐張上傳憑證（含重試）
     var receiptLinks = {};
-    console.log('receipts object:', JSON.stringify(Object.keys(receipts)));
+    var total = items.length + confirms.length;
+    var done = 0;
     for(var i=0;i<items.length;i++){
       if(receipts[i]){
-        setProgress(Math.round(10+(i/items.length)*30),'上傳「'+items[i].name+'」憑證…');
-        var rRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:receipts[i], time:time}))});
-        var rData = await rRes.json();
-        if(rData.link) receiptLinks[i] = rData.link;
+        var link = await uploadOneFile(receipts[i], '上傳「'+items[i].name+'」憑證');
+        if(link) receiptLinks[i]=link;
       }
+      done++;
+      setProgress(Math.round(5+(done/total)*60), '已上傳 '+done+'/'+total+' 張');
+      // 每張圖上傳後等 1 秒，避免 QUIC 錯誤
+      await new Promise(function(r){setTimeout(r,1000);});
     }
 
-    // 步驟2：上傳確認截圖
+    // 步驟2：上傳確認截圖（含重試）
     var confirmLinks = [];
-    if(confirms.length>0){
-      setProgress(50,'上傳負責人確認截圖…');
-      for(var j=0;j<confirms.length;j++){
-        var cRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
-          body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:confirms[j], time:time}))});
-        var cData = await cRes.json();
-        if(cData.link) confirmLinks.push(cData.link);
-      }
+    for(var j=0;j<confirms.length;j++){
+      var cLink = await uploadOneFile(confirms[j], '上傳確認截圖 '+(j+1));
+      if(cLink) confirmLinks.push(cLink);
+      done++;
+      setProgress(Math.round(5+(done/total)*60), '已上傳 '+done+'/'+total+' 張');
+      await new Promise(function(r){setTimeout(r,1000);});
     }
 
-    // 步驟3：送出純文字批次資料（無圖片 base64）
-    setProgress(70,'寫入報銷明細…');
+    // 步驟3：批次寫入（純文字）
+    setProgress(75,'寫入報銷明細…');
     var itemsPayload = items.map(function(item, i){
-      return {
-        period:      item.applyType,
-        itemType:    item.name,
-        currency:    item.currency,
-        amount:      item.amount,
-        receiptLink: receiptLinks[i] || ''
-      };
+      return { period:item.applyType, itemType:item.name, currency:item.currency, amount:item.amount, receiptLink:receiptLinks[i]||'' };
     });
-
-    var payload = JSON.stringify({
-      action:       'batchInsert',
-      office:       office, dept:dept, empId:empId, empName:empName,
-      note:         note, time:time,
-      items:        itemsPayload,
-      confirmLinks: confirmLinks
-    });
-
-    var res = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(payload)});
+    var res = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:'payload='+encodeURIComponent(JSON.stringify({action:'batchInsert',office:office,dept:dept,empId:empId,empName:empName,note:note,items:itemsPayload,confirmLinks:confirmLinks}))});
     await res.json();
+
     setProgress(100,'完成！');
-    setTimeout(function(){setProgress(null);},600);
+    setTimeout(function(){setProgress(null);},800);
     var lines=items.map(function(it){return '&nbsp;&nbsp;· '+it.name+'&nbsp;&nbsp;'+it.currency+' '+it.amount+'（'+it.applyType+'）';}).join('<br>');
     showStatus('ok','✓ &nbsp;<strong>提交成功，共 '+items.length+' 筆</strong><br>'+empName+'（'+empId+'）<br>'+lines);
     resetForm();
@@ -372,7 +371,6 @@ function resetForm(){
   DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'首次','TWD','');});
 }
 
-// ── 初始化 ────────────────────────────────────────────
 DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'首次','TWD','');});
 </script>
 </body>
