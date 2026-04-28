@@ -325,7 +325,7 @@ async function submitForm() {
         currency: items[i].currency,
         amount:   items[i].amount,
         note:     note,
-        files:    i===0 ? filesData : [],  // 憑證只在第一筆送出
+        files:    filesData[i] ? [filesData[i]] : [],  // 每項對應第i張憑證
         time:     time
       });
       var res = await fetch(GAS_URL, {
