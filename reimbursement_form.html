@@ -312,6 +312,7 @@ async function submitForm(){
         var rRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
           body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:receipts[i], time:time}))});
         var rData = await rRes.json();
+        alert('上傳結果: ' + JSON.stringify(rData));
         if(rData.link) receiptLinks[i] = rData.link;
       }
     }
