@@ -43,7 +43,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 /* 報銷項目列 */
 .item-rows { display:flex; flex-direction:column; gap:8px; }
 .item-row {
-  display:grid; grid-template-columns:1fr 100px 120px 34px;
+  display:grid; grid-template-columns:1fr 80px 90px 110px 34px;
   gap:8px; align-items:center;
   padding:10px 12px;
   background:var(--black3);
@@ -64,7 +64,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .btn-del:hover { border-color:rgba(200,80,80,0.4); color:#C47A7A; background:rgba(140,63,63,0.08); }
 
 /* 欄位標題 */
-.item-row-header { display:grid; grid-template-columns:1fr 100px 120px 34px; gap:8px; padding:0 12px; margin-bottom:2px; }
+.item-row-header { display:grid; grid-template-columns:1fr 80px 90px 110px 34px; gap:8px; padding:0 12px; margin-bottom:2px; }
 .item-row-header span { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); }
 .item-row-header span:last-child { visibility:hidden; }
 
@@ -115,7 +115,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
         <label>辦公室</label>
         <select id="office">
           <option value="" disabled selected>請選擇</option>
-          <option>綜辦審計卓亞</option><option>商務中心</option><option>混合辦</option>
+          <option>綜辦</option><option>審計</option><option>卓亞</option><option>商務中心</option><option>混合辦</option>
           <option>悅達</option><option>SETV</option><option>智影</option>
         </select>
       </div>
@@ -131,6 +131,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 
     <div class="item-row-header">
       <span>項目名稱</span>
+      <span>申請類別</span>
       <span>幣別</span>
       <span>金額</span>
       <span>—</span>
@@ -183,6 +184,14 @@ function addItemRow(name, cur, val) {
   nameInput.value = name || '';
 
   // 幣別
+  // 申請類別
+  var typeSel = document.createElement('select');
+  ['首次','再次'].forEach(function(t) {
+    var o = document.createElement('option');
+    o.value = t; o.textContent = t;
+    typeSel.appendChild(o);
+  });
+
   var sel = document.createElement('select');
   CURRENCIES.forEach(function(c) {
     var o = document.createElement('option');
@@ -206,6 +215,7 @@ function addItemRow(name, cur, val) {
   };
 
   row.appendChild(nameInput);
+  row.appendChild(typeSel);
   row.appendChild(sel);
   row.appendChild(amtInput);
   row.appendChild(btn);
@@ -216,10 +226,12 @@ function getItems() {
   return Array.prototype.slice.call(document.querySelectorAll('.item-row')).map(function(row) {
     var inputs = row.querySelectorAll('input');
     var sel = row.querySelector('select');
+    var sels = row.querySelectorAll('select');
     return {
-      name:     inputs[0].value.trim(),
-      currency: sel.value,
-      amount:   parseFloat(inputs[1].value) || 0
+      name:      inputs[0].value.trim(),
+      applyType: sels[0].value,
+      currency:  sels[1].value,
+      amount:    parseFloat(inputs[1].value) || 0
     };
   });
 }
@@ -316,7 +328,7 @@ async function submitForm() {
     for (var i=0; i<items.length; i++) {
       setProgress(Math.round(20 + (i/items.length)*70), '送出第 '+(i+1)+' 筆：'+items[i].name+'…');
       var payload = JSON.stringify({
-        period:   period,
+        period:   items[i].applyType,
         office:   office,
         dept:     dept,
         empId:    empId,
