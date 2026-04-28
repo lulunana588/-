@@ -325,7 +325,7 @@ async function submitForm() {
         amount:       items[i].amount,
         note:         note,
         files:        uploads.receipts[i] ? [uploads.receipts[i]] : [],
-        confirmFiles: uploads.confirms[i] ? [uploads.confirms[i]] : [],
+        confirmFiles: uploads.confirms,
         time:         time
       });
       var res = await fetch(GAS_URL, {
