@@ -15,7 +15,7 @@
 }
 body { font-family:'Noto Sans TC',sans-serif; background:var(--black); color:var(--white); min-height:100vh; display:flex; align-items:flex-start; justify-content:center; padding:3rem 1rem 4rem; position:relative; overflow-x:hidden; }
 body::before { content:''; position:fixed; inset:0; background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(201,168,76,0.06) 0%,transparent 70%),repeating-linear-gradient(0deg,transparent,transparent 39px,rgba(201,168,76,0.025) 39px,rgba(201,168,76,0.025) 40px),repeating-linear-gradient(90deg,transparent,transparent 39px,rgba(201,168,76,0.025) 39px,rgba(201,168,76,0.025) 40px); pointer-events:none; z-index:0; }
-.wrap { width:100%; max-width:560px; position:relative; z-index:1; animation:fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; }
+.wrap { width:100%; max-width:580px; position:relative; z-index:1; animation:fadeUp 0.7s cubic-bezier(0.22,1,0.36,1) both; }
 @keyframes fadeUp { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:translateY(0)} }
 .header { text-align:center; margin-bottom:2.5rem; padding-bottom:2rem; position:relative; }
 .header::after { content:''; position:absolute; bottom:0; left:50%; transform:translateX(-50%); width:60px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent); }
@@ -23,7 +23,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .header h1 { font-family:'Cormorant Garamond',serif; font-size:34px; font-weight:400; letter-spacing:1px; color:var(--white); line-height:1.2; }
 .header h1 em { color:var(--gold); font-style:normal; }
 .header p { font-size:12px; color:var(--white3); margin-top:10px; letter-spacing:0.5px; font-weight:300; }
-.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; overflow:hidden; position:relative; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
+.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; position:relative; overflow:hidden; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
 .card::before,.card::after { content:''; position:absolute; width:16px; height:16px; border-color:var(--gold); border-style:solid; }
 .card::before { top:-1px; left:-1px; border-width:1px 0 0 1px; }
 .card::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; }
@@ -40,47 +40,35 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .field input::placeholder { color:rgba(120,112,100,0.55); }
 .field input:focus,.field select:focus { border-color:var(--gold3); background:#1E1E1E; box-shadow:0 0 0 3px rgba(201,168,76,0.07); }
 
-/* 報銷項目列 */
+/* 報銷明細列 */
+.item-header { display:grid; grid-template-columns:1fr 72px 80px 96px 28px; gap:6px; padding:0 10px; margin-bottom:4px; }
+.item-header span { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); }
 .item-rows { display:flex; flex-direction:column; gap:8px; }
-.item-row {
-  display:grid; grid-template-columns:1fr 72px 84px 100px 30px;
-  gap:8px; align-items:center;
-  padding:8px 10px;
-  background:var(--black3);
-  border:1px solid rgba(201,168,76,0.14);
-  border-radius:var(--radius);
-  transition:border-color 0.15s;
-}
+.item-row { display:grid; grid-template-columns:1fr 72px 80px 96px 28px; gap:6px; align-items:center; padding:8px 10px; background:var(--black3); border:1px solid rgba(201,168,76,0.14); border-radius:var(--radius); transition:border-color 0.15s; }
 .item-row:hover { border-color:rgba(201,168,76,0.28); }
-.item-row input[type="text"] { background:transparent; border:none; border-bottom:1px solid rgba(201,168,76,0.2); border-radius:0; padding:4px 2px; font-size:13px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; }
+.item-row input[type="text"] { background:transparent; border:none; border-bottom:1px solid rgba(201,168,76,0.2); border-radius:0; padding:4px 2px; font-size:13px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; width:100%; }
 .item-row input[type="text"]:focus { border-bottom-color:var(--gold); }
 .item-row input[type="text"]::placeholder { color:rgba(120,112,100,0.5); }
-.item-row select { background:transparent; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:6px 24px 6px 8px; font-size:13px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23C9A84C' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 6px center; cursor:pointer; }
+.item-row select { background:#0F0F0F; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:5px 20px 5px 7px; font-size:12px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23C9A84C' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 5px center; cursor:pointer; width:100%; }
 .item-row select option { background:#1A1A1A; }
-.item-row input[type="number"] { background:transparent; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:6px 8px; font-size:13px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; text-align:right; }
-.item-row input[type="number"]::placeholder { color:rgba(120,112,100,0.5); text-align:left; }
-.item-row input[type="number"]:focus,.item-row select:focus { border-color:var(--gold3); }
-.btn-del { width:34px; height:34px; border:1px solid rgba(201,168,76,0.15); border-radius:var(--radius); background:transparent; color:var(--white3); font-size:13px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
+.item-row input[type="number"] { background:#0F0F0F; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:5px 7px; font-size:12px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; text-align:right; width:100%; }
+.item-row input[type="number"]::placeholder { color:rgba(120,112,100,0.5); text-align:left; font-size:11px; }
+.btn-del { width:28px; height:28px; border:1px solid rgba(201,168,76,0.15); border-radius:var(--radius); background:transparent; color:var(--white3); font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
 .btn-del:hover { border-color:rgba(200,80,80,0.4); color:#C47A7A; background:rgba(140,63,63,0.08); }
-
-/* 欄位標題 */
-.item-row-header { display:grid; grid-template-columns:1fr 72px 84px 100px 30px; gap:8px; padding:0 12px; margin-bottom:2px; }
-.item-row-header span { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); }
-.item-row-header span:last-child { visibility:hidden; }
-
 .btn-add-item { width:100%; margin-top:6px; padding:9px; border:1px dashed rgba(201,168,76,0.22); border-radius:var(--radius); background:transparent; color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; cursor:pointer; font-family:'Noto Sans TC',sans-serif; transition:all 0.15s; }
 .btn-add-item:hover { background:var(--gold-dim); border-color:var(--gold); border-style:solid; }
 
-.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:2rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
+/* 上傳區 */
+.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:1.5rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
 .upload-zone:hover { border-color:var(--gold3); background:#1E1E1E; }
 .file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
-.upload-icon { width:40px; height:40px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 10px; font-size:16px; color:var(--gold); background:rgba(201,168,76,0.05); }
-.upload-text { font-size:13px; font-weight:400; margin-bottom:4px; color:var(--white2); }
-.upload-hint { font-size:11px; color:var(--white3); letter-spacing:0.3px; }
-.file-list-item { display:flex; align-items:center; justify-content:space-between; padding:8px 13px; margin-top:6px; background:rgba(74,140,63,0.08); border:1px solid rgba(74,140,63,0.28); border-radius:var(--radius); font-size:12px; color:#7EC47A; }
-.file-list-item span { font-weight:500; }
+.upload-icon { width:36px; height:36px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 8px; font-size:15px; color:var(--gold); background:rgba(201,168,76,0.05); }
+.upload-text { font-size:13px; font-weight:400; margin-bottom:3px; color:var(--white2); }
+.upload-hint { font-size:11px; color:var(--white3); }
+.file-list-item { display:flex; align-items:center; justify-content:space-between; padding:7px 12px; margin-top:5px; background:rgba(74,140,63,0.08); border:1px solid rgba(74,140,63,0.28); border-radius:var(--radius); font-size:12px; color:#7EC47A; }
 .btn-remove { background:none; border:none; cursor:pointer; color:#7EC47A; font-size:13px; opacity:0.5; transition:opacity 0.15s; }
 .btn-remove:hover { opacity:1; }
+
 .divider { border:none; border-top:1px solid rgba(201,168,76,0.1); margin:1.5rem 0; position:relative; }
 .divider::before { content:'◆'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:6px; color:var(--gold3); background:var(--black2); padding:0 8px; }
 .btn-submit { width:100%; padding:14px; background:linear-gradient(135deg,var(--gold3) 0%,var(--gold) 50%,var(--gold3) 100%); color:#0A0A0A; border:none; border-radius:var(--radius); font-size:12px; font-weight:700; letter-spacing:3px; text-transform:uppercase; cursor:pointer; margin-top:1.5rem; font-family:'Noto Sans TC',sans-serif; transition:all 0.3s; position:relative; overflow:hidden; }
@@ -98,7 +86,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .spinner { display:inline-block; width:13px; height:13px; border:1.5px solid rgba(0,0,0,0.3); border-top-color:#000; border-radius:50%; animation:spin 0.6s linear infinite; vertical-align:middle; margin-right:6px; }
 @keyframes spin { to{transform:rotate(360deg)} }
 .footer-note { text-align:center; margin-top:1.75rem; font-size:10px; color:var(--white3); letter-spacing:1.5px; opacity:0.5; }
-@media(max-width:480px) { .row2{grid-template-columns:1fr} .card{padding:1.5rem} .header h1{font-size:26px} .item-row{grid-template-columns:1fr 80px 100px 30px} .item-row-header{grid-template-columns:1fr 80px 100px 30px} }
+@media(max-width:480px) { .row2{grid-template-columns:1fr} .card{padding:1.5rem} .header h1{font-size:26px} .item-header,.item-row{grid-template-columns:1fr 60px 68px 82px 24px} }
 </style>
 </head>
 <body>
@@ -115,8 +103,9 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
         <label>辦公室</label>
         <select id="office">
           <option value="" disabled selected>請選擇</option>
-          <option>綜辦</option><option>審計</option><option>卓亞</option><option>商務中心</option><option>混合辦</option>
-          <option>悅達</option><option>SETV</option><option>智影</option>
+          <option>綜辦</option><option>審計</option><option>卓亞</option>
+          <option>商務中心</option><option>混合辦</option><option>悅達</option>
+          <option>SETV</option><option>智影</option>
         </select>
       </div>
       <div class="field"><label>部門</label><input type="text" id="dept" placeholder="例：行政部"></div>
@@ -128,18 +117,13 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 
     <div class="divider"></div>
     <div class="section-label">報銷明細（每項各自一筆）</div>
-
-    <div class="item-row-header">
-      <span>項目名稱</span>
-      <span>申請類別</span>
-      <span>幣別</span>
-      <span>金額</span>
-      <span>—</span>
+    <div class="item-header">
+      <span>項目名稱</span><span>類別</span><span>幣別</span><span>金額</span><span></span>
     </div>
     <div class="item-rows" id="item-rows"></div>
     <button class="btn-add-item" onclick="addItemRow()">＋ 新增項目</button>
 
-    <div class="field" style="margin-top:1rem">
+    <div class="field" style="margin-top:1.2rem">
       <label>備註說明（選填）</label>
       <input type="text" id="note" placeholder="例：2025年4月份訂閱費">
     </div>
@@ -147,13 +131,24 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
     <div class="divider"></div>
     <div class="section-label">報銷憑證</div>
     <div class="field">
-      <div class="upload-zone" id="upload-zone">
-        <input type="file" class="file-input" id="file-input" accept="image/*,application/pdf" multiple onchange="handleFile(event)">
+      <div class="upload-zone" id="zone1">
+        <input type="file" class="file-input" id="file-input1" accept="image/*,application/pdf" multiple onchange="handleFiles(event,'receipts')">
         <div class="upload-icon">↑</div>
         <div class="upload-text">點擊或拖曳上傳憑證</div>
-        <div class="upload-hint">支援 JPG · PNG · PDF &nbsp;｜&nbsp; 可多選 &nbsp;｜&nbsp; 每檔最大 5MB</div>
+        <div class="upload-hint">發票 · 收據 &nbsp;｜&nbsp; JPG · PNG · PDF &nbsp;｜&nbsp; 每檔最大 5MB</div>
       </div>
-      <div id="file-list"></div>
+      <div id="list1"></div>
+    </div>
+
+    <div class="section-label">負責人確認截圖</div>
+    <div class="field">
+      <div class="upload-zone" id="zone2">
+        <input type="file" class="file-input" id="file-input2" accept="image/*,application/pdf" multiple onchange="handleFiles(event,'confirms')">
+        <div class="upload-icon">↑</div>
+        <div class="upload-text">點擊或拖曳上傳確認截圖</div>
+        <div class="upload-hint">主管已確認的截圖 &nbsp;｜&nbsp; JPG · PNG · PDF &nbsp;｜&nbsp; 每檔最大 5MB</div>
+      </div>
+      <div id="list2"></div>
     </div>
 
     <button class="btn-submit" id="submit-btn" onclick="submitForm()">提交申請</button>
@@ -167,96 +162,103 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 </div>
 
 <script>
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-XTI9_2QHuL7vg5XNnj8Z0VlFTI_UKBAQ49nucHMC65z/exec';
-const CURRENCIES = ['TWD','USD','CNY','EUR'];
-const DEFAULT_ITEMS = ['VPS','Claude'];
+var GAS_URL = 'https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-XTI9_2QHuL7vg5XNnj8Z0VlFTI_UKBAQ49nucHMC65z/exec';
+var DEFAULT_ITEMS = ['VPS','Claude'];
+var CURRENCIES = ['TWD','USD','CNY','EUR'];
+var APPLY_TYPES = ['首次','再次'];
 
 // ── 報銷項目列 ────────────────────────────────────────
-function addItemRow(name, cur, val) {
+function addItemRow(name, type, cur, val) {
   var rows = document.getElementById('item-rows');
   var row = document.createElement('div');
   row.className = 'item-row';
 
-  // 項目名稱
-  var nameInput = document.createElement('input');
-  nameInput.type = 'text';
-  nameInput.placeholder = '項目名稱';
-  nameInput.value = name || '';
+  var nameEl = document.createElement('input');
+  nameEl.type = 'text'; nameEl.placeholder = '項目名稱';
+  nameEl.value = name || '';
 
-  // 幣別
-  // 申請類別
-  var typeSel = document.createElement('select');
-  ['首次','再次'].forEach(function(t) {
+  var typeEl = document.createElement('select');
+  APPLY_TYPES.forEach(function(t) {
     var o = document.createElement('option');
     o.value = t; o.textContent = t;
-    typeSel.appendChild(o);
+    if (t === (type || '首次')) o.selected = true;
+    typeEl.appendChild(o);
   });
 
-  var sel = document.createElement('select');
+  var curEl = document.createElement('select');
   CURRENCIES.forEach(function(c) {
     var o = document.createElement('option');
     o.value = c; o.textContent = c;
     if (c === (cur || 'TWD')) o.selected = true;
-    sel.appendChild(o);
+    curEl.appendChild(o);
   });
 
-  // 金額
-  var amtInput = document.createElement('input');
-  amtInput.type = 'number';
-  amtInput.placeholder = '金額';
-  amtInput.min = '0'; amtInput.step = '0.01';
-  if (val) amtInput.value = val;
+  var amtEl = document.createElement('input');
+  amtEl.type = 'number'; amtEl.placeholder = '金額';
+  amtEl.min = '0'; amtEl.step = '0.01';
+  if (val) amtEl.value = val;
 
-  // 刪除
   var btn = document.createElement('button');
   btn.type = 'button'; btn.className = 'btn-del'; btn.textContent = '✕';
   btn.onclick = function() {
     if (document.getElementById('item-rows').children.length > 1) row.remove();
   };
 
-  row.appendChild(nameInput);
-  row.appendChild(typeSel);
-  row.appendChild(sel);
-  row.appendChild(amtInput);
-  row.appendChild(btn);
+  row.appendChild(nameEl); row.appendChild(typeEl);
+  row.appendChild(curEl); row.appendChild(amtEl); row.appendChild(btn);
   rows.appendChild(row);
 }
 
 function getItems() {
   return Array.prototype.slice.call(document.querySelectorAll('.item-row')).map(function(row) {
-    var inputs = row.querySelectorAll('input');
-    var sel = row.querySelector('select');
     var sels = row.querySelectorAll('select');
+    var inps = row.querySelectorAll('input');
     return {
-      name:      inputs[0].value.trim(),
+      name:      inps[0].value.trim(),
       applyType: sels[0].value,
       currency:  sels[1].value,
-      amount:    parseFloat(inputs[1].value) || 0
+      amount:    parseFloat(inps[1].value) || 0
     };
   });
 }
 
-// ── 上傳 ──────────────────────────────────────────────
-var filesData = [];
-var zone = document.getElementById('upload-zone');
-zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
-zone.addEventListener('dragleave', function() { zone.style.borderColor=''; });
-zone.addEventListener('drop', function(e) { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files); });
-function handleFile(e) { addFiles(e.target.files); e.target.value=''; }
-function addFiles(fileList) {
+// ── 上傳管理 ──────────────────────────────────────────
+var uploads = { receipts: [], confirms: [] };
+
+function setupZone(zoneId, key) {
+  var zone = document.getElementById(zoneId);
+  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
+  zone.addEventListener('dragleave', function() { zone.style.borderColor=''; });
+  zone.addEventListener('drop', function(e) { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files, key); });
+}
+setupZone('zone1','receipts');
+setupZone('zone2','confirms');
+
+function handleFiles(e, key) { addFiles(e.target.files, key); e.target.value=''; }
+
+function addFiles(fileList, key) {
+  var listId = key === 'receipts' ? 'list1' : 'list2';
   Array.prototype.slice.call(fileList).forEach(function(file) {
     if (file.size > 5*1024*1024) { alert(file.name+' 超過 5MB'); return; }
-    if (filesData.find(function(f){return f.name===file.name;})) return;
+    if (uploads[key].find(function(f){return f.name===file.name;})) return;
     var reader = new FileReader();
-    reader.onload = function(ev) { filesData.push({name:file.name,type:file.type,data:ev.target.result}); renderFileList(); };
+    reader.onload = function(ev) {
+      uploads[key].push({name:file.name, type:file.type, data:ev.target.result});
+      renderList(key, listId);
+    };
     reader.readAsDataURL(file);
   });
 }
-function removeFile(name) { filesData=filesData.filter(function(f){return f.name!==name;}); renderFileList(); }
-function renderFileList() {
-  document.getElementById('file-list').innerHTML = filesData.map(function(f) {
+
+function removeFile(key, name) {
+  uploads[key] = uploads[key].filter(function(f){return f.name!==name;});
+  renderList(key, key==='receipts'?'list1':'list2');
+}
+
+function renderList(key, listId) {
+  document.getElementById(listId).innerHTML = uploads[key].map(function(f) {
     return '<div class="file-list-item"><span>✓ &nbsp;'+f.name+'</span>' +
-      '<button class="btn-remove" onclick="removeFile(\''+f.name.replace(/'/g,"\\'")+'\')">✕</button></div>';
+      '<button class="btn-remove" onclick="removeFile(\''+key+'\',\''+f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">✕</button></div>';
   }).join('');
 }
 
@@ -277,23 +279,12 @@ function showStatus(type, html) {
   box.className='status-box status-'+type;
   box.innerHTML=html; box.style.display='block';
 }
-
-// ── 金幣音效 ──────────────────────────────────────────
 function playCoinSound() {
   try {
-    var ctx = new (window.AudioContext||window.webkitAudioContext)();
-    function beep(freq,start,dur,vol) {
-      var o=ctx.createOscillator(), g=ctx.createGain();
-      o.connect(g); g.connect(ctx.destination);
-      o.frequency.setValueAtTime(freq, ctx.currentTime+start);
-      o.frequency.exponentialRampToValueAtTime(freq*1.5, ctx.currentTime+start+dur*0.3);
-      g.gain.setValueAtTime(0, ctx.currentTime+start);
-      g.gain.linearRampToValueAtTime(vol, ctx.currentTime+start+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime+start+dur);
-      o.start(ctx.currentTime+start); o.stop(ctx.currentTime+start+dur);
-    }
-    beep(1200,0,0.12,0.3); beep(1600,0.07,0.10,0.25); beep(2000,0.13,0.15,0.2);
-  } catch(e) {}
+    var ctx=new(window.AudioContext||window.webkitAudioContext)();
+    function beep(f,s,d,v){var o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(f,ctx.currentTime+s);o.frequency.exponentialRampToValueAtTime(f*1.5,ctx.currentTime+s+d*0.3);g.gain.setValueAtTime(0,ctx.currentTime+s);g.gain.linearRampToValueAtTime(v,ctx.currentTime+s+0.01);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s+d);o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);}
+    beep(1200,0,0.12,0.3);beep(1600,0.07,0.10,0.25);beep(2000,0.13,0.15,0.2);
+  } catch(e){}
 }
 
 // ── 送出 ──────────────────────────────────────────────
@@ -312,75 +303,67 @@ async function submitForm() {
   if (items.some(function(i){return !i.amount||i.amount<=0;})) { showStatus('err','⚠ 請填寫所有項目的金額'); return; }
 
   playCoinSound();
-
-  var btn = document.getElementById('submit-btn');
+  var btn=document.getElementById('submit-btn');
   btn.disabled=true; btn.innerHTML='<span class="spinner"></span>提交中…';
   document.getElementById('status-box').style.display='none';
   setProgress(20,'準備送出 '+items.length+' 筆資料…');
 
-  var period  = getPeriod();
-  var now     = new Date();
-  var today   = now.toLocaleDateString('zh-TW');
-  var time    = now.toLocaleString('zh-TW',{hour12:false});
+  var time = new Date().toLocaleString('zh-TW',{hour12:false});
+  var today = new Date().toLocaleDateString('zh-TW');
 
   try {
-    // 每個項目各自送一筆
     for (var i=0; i<items.length; i++) {
-      setProgress(Math.round(20 + (i/items.length)*70), '送出第 '+(i+1)+' 筆：'+items[i].name+'…');
+      setProgress(Math.round(20+(i/items.length)*70),'送出第 '+(i+1)+' 筆：'+items[i].name+'…');
       var payload = JSON.stringify({
-        period:   items[i].applyType,
-        office:   office,
-        dept:     dept,
-        empId:    empId,
-        empName:  empName,
-        itemType: items[i].name,
-        currency: items[i].currency,
-        amount:   items[i].amount,
-        note:     note,
-        files:    filesData[i] ? [filesData[i]] : [],  // 每項對應第i張憑證
-        time:     time
+        period:       items[i].applyType,
+        office:       office,
+        dept:         dept,
+        empId:        empId,
+        empName:      empName,
+        itemType:     items[i].name,
+        currency:     items[i].currency,
+        amount:       items[i].amount,
+        note:         note,
+        files:        uploads.receipts[i] ? [uploads.receipts[i]] : [],
+        confirmFiles: uploads.confirms[i] ? [uploads.confirms[i]] : [],
+        time:         time
       });
       var res = await fetch(GAS_URL, {
-        method: 'POST',
-        headers: {'Content-Type':'application/x-www-form-urlencoded'},
-        body: 'payload='+encodeURIComponent(payload)
+        method:'POST',
+        headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:'payload='+encodeURIComponent(payload)
       });
       await res.json();
     }
 
     setProgress(100,'完成！');
-    setTimeout(function(){setProgress(null);}, 600);
+    setTimeout(function(){setProgress(null);},600);
 
     var lines = items.map(function(item) {
-      return '&nbsp;&nbsp;· '+item.name+'&nbsp;&nbsp;'+item.currency+' '+item.amount;
+      return '&nbsp;&nbsp;· '+item.name+'&nbsp;&nbsp;'+item.currency+' '+item.amount+'（'+item.applyType+'）';
     }).join('<br>');
-
-    showStatus('ok',
-      '✓ &nbsp;<strong>提交成功，共 '+items.length+' 筆</strong><br>'+
-      empName+'（'+empId+'）<br>'+lines+'<br>'+
-      (filesData.length ? '憑證 '+filesData.length+' 張已上傳至 Drive' : '無憑證')
-    );
+    showStatus('ok','✓ &nbsp;<strong>提交成功，共 '+items.length+' 筆</strong><br>'+empName+'（'+empId+'）<br>'+lines);
     resetForm();
-
   } catch(err) {
     setProgress(null);
     showStatus('err','✕ 提交失敗：'+err.message);
   }
-
   btn.disabled=false; btn.textContent='提交申請';
 }
 
 function resetForm() {
   ['dept','emp-id','emp-name','note'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('office').value='';
-  document.getElementById('file-input').value='';
+  document.getElementById('file-input1').value='';
+  document.getElementById('file-input2').value='';
+  uploads={receipts:[],confirms:[]};
+  renderList('receipts','list1'); renderList('confirms','list2');
   document.getElementById('item-rows').innerHTML='';
-  DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'TWD','');});
-  filesData=[]; renderFileList();
+  DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'首次','TWD','');});
 }
 
 // ── 初始化 ────────────────────────────────────────────
-DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'TWD','');});
+DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'首次','TWD','');});
 </script>
 </body>
 </html>
