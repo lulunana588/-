@@ -23,7 +23,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .header h1 { font-family:'Cormorant Garamond',serif; font-size:34px; font-weight:400; letter-spacing:1px; color:var(--white); line-height:1.2; }
 .header h1 em { color:var(--gold); font-style:normal; }
 .header p { font-size:12px; color:var(--white3); margin-top:10px; letter-spacing:0.5px; font-weight:300; }
-.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; position:relative; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
+.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; overflow:hidden; position:relative; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
 .card::before,.card::after { content:''; position:absolute; width:16px; height:16px; border-color:var(--gold); border-style:solid; }
 .card::before { top:-1px; left:-1px; border-width:1px 0 0 1px; }
 .card::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; }
@@ -43,9 +43,9 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 /* 報銷項目列 */
 .item-rows { display:flex; flex-direction:column; gap:8px; }
 .item-row {
-  display:grid; grid-template-columns:1fr 80px 90px 110px 34px;
+  display:grid; grid-template-columns:1fr 72px 84px 100px 30px;
   gap:8px; align-items:center;
-  padding:10px 12px;
+  padding:8px 10px;
   background:var(--black3);
   border:1px solid rgba(201,168,76,0.14);
   border-radius:var(--radius);
@@ -64,7 +64,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .btn-del:hover { border-color:rgba(200,80,80,0.4); color:#C47A7A; background:rgba(140,63,63,0.08); }
 
 /* 欄位標題 */
-.item-row-header { display:grid; grid-template-columns:1fr 80px 90px 110px 34px; gap:8px; padding:0 12px; margin-bottom:2px; }
+.item-row-header { display:grid; grid-template-columns:1fr 72px 84px 100px 30px; gap:8px; padding:0 12px; margin-bottom:2px; }
 .item-row-header span { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); }
 .item-row-header span:last-child { visibility:hidden; }
 
