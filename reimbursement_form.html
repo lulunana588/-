@@ -304,29 +304,48 @@ async function submitForm(){
   var time=new Date().toLocaleString('zh-TW',{hour12:false});
 
   try{
-    setProgress(30,'上傳資料中…');
+    // 步驟1：逐張上傳憑證圖片，取得 Drive 連結
+    var receiptLinks = {};
+    for(var i=0;i<items.length;i++){
+      if(receipts[i]){
+        setProgress(Math.round(10+(i/items.length)*30),'上傳「'+items[i].name+'」憑證…');
+        var rRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:receipts[i], time:time}))});
+        var rData = await rRes.json();
+        if(rData.link) receiptLinks[i] = rData.link;
+      }
+    }
 
-    // 一次送出所有資料，GAS 自己拆開寫入
+    // 步驟2：上傳確認截圖
+    var confirmLinks = [];
+    if(confirms.length>0){
+      setProgress(50,'上傳負責人確認截圖…');
+      for(var j=0;j<confirms.length;j++){
+        var cRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
+          body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:confirms[j], time:time}))});
+        var cData = await cRes.json();
+        if(cData.link) confirmLinks.push(cData.link);
+      }
+    }
+
+    // 步驟3：送出純文字批次資料（無圖片 base64）
+    setProgress(70,'寫入報銷明細…');
     var itemsPayload = items.map(function(item, i){
       return {
-        period:    item.applyType,
-        itemType:  item.name,
-        currency:  item.currency,
-        amount:    item.amount,
-        file:      receipts[i] ? receipts[i] : null
+        period:      item.applyType,
+        itemType:    item.name,
+        currency:    item.currency,
+        amount:      item.amount,
+        receiptLink: receiptLinks[i] || ''
       };
     });
 
     var payload = JSON.stringify({
       action:       'batchInsert',
-      office:       office,
-      dept:         dept,
-      empId:        empId,
-      empName:      empName,
-      note:         note,
-      time:         time,
+      office:       office, dept:dept, empId:empId, empName:empName,
+      note:         note, time:time,
       items:        itemsPayload,
-      confirmFiles: confirms
+      confirmLinks: confirmLinks
     });
 
     var res = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(payload)});
