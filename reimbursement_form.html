@@ -312,16 +312,12 @@ async function submitForm(){
         var rRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},
           body:'payload='+encodeURIComponent(JSON.stringify({action:'uploadFile', file:receipts[i], time:time}))});
         var rData = await rRes.json();
-        alert('上傳結果: ' + JSON.stringify(rData));
         if(rData.link) receiptLinks[i] = rData.link;
       }
     }
 
     // 步驟2：上傳確認截圖
     var confirmLinks = [];
-    Logger && Logger.log && Logger.log('confirms count: ' + confirms.length);
-    setProgress(48,'確認截圖數量：'+confirms.length+'張…');
-    await new Promise(function(r){setTimeout(r,500);});
     if(confirms.length>0){
       setProgress(50,'上傳負責人確認截圖…');
       for(var j=0;j<confirms.length;j++){
