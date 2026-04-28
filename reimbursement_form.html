@@ -33,6 +33,12 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .section-label:first-child { margin-top:0; }
 .row2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
 .amount-row { display:grid; grid-template-columns:120px 1fr; gap:10px; }
+.amount-list { display:flex; flex-direction:column; gap:8px; }
+.amount-entry { display:grid; grid-template-columns:110px 1fr 32px; gap:8px; align-items:center; }
+.btn-del-amount { width:32px; height:38px; border:1px solid rgba(201,168,76,0.2); border-radius:var(--radius); background:transparent; color:var(--white3); font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; }
+.btn-del-amount:hover { border-color:rgba(200,80,80,0.5); color:#C47A7A; background:rgba(140,63,63,0.08); }
+.btn-add-amount { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:4px; padding:9px; border:1px dashed rgba(201,168,76,0.22); border-radius:var(--radius); background:transparent; color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; cursor:pointer; font-family:'Noto Sans TC',sans-serif; transition:all 0.15s; width:100%; }
+.btn-add-amount:hover { background:var(--gold-dim); border-color:var(--gold); border-style:solid; }
 .field { margin-bottom:1rem; }
 .field label { display:block; font-size:10px; font-weight:500; letter-spacing:2px; text-transform:uppercase; color:var(--white3); margin-bottom:8px; }
 .field input,.field select { width:100%; padding:11px 14px; background:var(--black3); border:1px solid rgba(201,168,76,0.18); color:var(--white); font-size:14px; font-family:'Noto Sans TC',sans-serif; font-weight:300; border-radius:var(--radius); outline:none; appearance:none; -webkit-appearance:none; transition:border-color 0.2s,box-shadow 0.2s,background 0.2s; }
@@ -124,14 +130,9 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
       </div>
     </div>
     <div class="field">
-      <label>幣別 ＆ 金額</label>
-      <div class="amount-row">
-        <select id="currency">
-          <option value="TWD">TWD</option><option value="USD">USD</option>
-          <option value="CNY">CNY</option><option value="EUR">EUR</option>
-        </select>
-        <input type="number" id="amount" placeholder="請輸入金額" min="0" step="0.01">
-      </div>
+      <label>幣別 ＆ 金額（可新增多筆）</label>
+      <div class="amount-list" id="amount-list"></div>
+      <button class="btn-add-amount" onclick="addAmountEntry()">＋ 新增幣別</button>
     </div>
     <div class="field"><label>備註說明（選填）</label><input type="text" id="note" placeholder="例：2025年4月份訂閱費"></div>
     <div class="divider"></div>
@@ -248,8 +249,11 @@ async function submitForm() {
 
   const payload = JSON.stringify({
     period: getPeriod(), office, dept, empId, empName,
-    itemType: selected.join('、'), currency,
-    amount: Number(amount), note, files: filesData,
+    itemType: selected.join('、'),
+    currency: amounts.map(a=>a.currency).join('、'),
+    amount:   amounts.map(a=>a.amount).join('、'),
+    amountDetails: amounts,
+    note, files: filesData,
     time: new Date().toLocaleString('zh-TW',{hour12:false})
   });
 
@@ -268,7 +272,8 @@ async function submitForm() {
     if (result.status === 'ok') {
       showStatus('ok',
         '✓ &nbsp;<strong>提交成功</strong> &nbsp;｜&nbsp; 序號 #'+result.seq+'<br>'+
-        empName+'（'+empId+'）&nbsp;·&nbsp; '+currency+' '+amount+'<br>'+
+        empName+'（'+empId+'）<br>'+
+        amounts.map(a=>a.currency+' '+a.amount).join('&nbsp;·&nbsp;')+'<br>'+
         (filesData.length ? '憑證 '+filesData.length+' 張已上傳至 Drive' : '無憑證')
       );
       resetForm();
@@ -283,15 +288,73 @@ async function submitForm() {
   btn.disabled=false; btn.textContent='提交申請';
 }
 
+function getAmounts() {
+  return [...document.querySelectorAll('.amount-entry')].map(function(div) {
+    return {
+      currency: div.querySelector('.ae-cur').value,
+      amount:   parseFloat(div.querySelector('.ae-amt').value) || 0
+    };
+  });
+}
+
+function makeAmountEntry(cur, val) {
+  cur = cur || 'TWD'; val = val || '';
+  var div = document.createElement('div');
+  div.className = 'amount-entry';
+  var sel = document.createElement('select');
+  sel.className = 'ae-cur';
+  ['TWD','USD','CNY','EUR'].forEach(function(c) {
+    var o = document.createElement('option');
+    o.value = c; o.textContent = c;
+    if (c === cur) o.selected = true;
+    sel.appendChild(o);
+  });
+  var inp = document.createElement('input');
+  inp.className = 'ae-amt'; inp.type = 'number';
+  inp.placeholder = '請輸入金額'; inp.min = '0'; inp.step = '0.01';
+  if (val) inp.value = val;
+  var btn = document.createElement('button');
+  btn.className = 'btn-del-amount'; btn.type = 'button';
+  btn.textContent = '✕';
+  btn.onclick = function() { removeAmountEntry(btn); };
+  var style = 'width:100%;padding:10px 12px;background:var(--black3);border:1px solid rgba(201,168,76,0.18);color:var(--white);font-size:14px;font-family:inherit;font-weight:300;border-radius:var(--radius);outline:none;appearance:none;-webkit-appearance:none;';
+  sel.style.cssText = style;
+  sel.style.backgroundImage = "url('data:image/svg+xml,%3Csvg xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22 width%3D%2210%22 height%3D%226%22 viewBox%3D%220 0 10 6%22%3E%3Cpath d%3D%22M1 1l4 4 4-4%22 stroke%3D%22%23C9A84C%22 stroke-width%3D%221.5%22 fill%3D%22none%22 stroke-linecap%3D%22round%22%2F%3E%3C%2Fsvg%3E')";
+  sel.style.backgroundRepeat = 'no-repeat';
+  sel.style.backgroundPosition = 'right 10px center';
+  sel.style.paddingRight = '28px';
+  sel.style.cursor = 'pointer';
+  inp.style.cssText = style;
+  div.appendChild(sel); div.appendChild(inp); div.appendChild(btn);
+  return div;
+}
+
+function addAmountEntry() {
+  document.getElementById('amount-list').appendChild(makeAmountEntry());
+}
+
+function removeAmountEntry(btn) {
+  var list = document.getElementById('amount-list');
+  if (list.children.length <= 1) return;
+  btn.closest('.amount-entry').remove();
+}
+
+function initAmountList() {
+  var list = document.getElementById('amount-list');
+  list.innerHTML = '';
+  list.appendChild(makeAmountEntry('TWD',''));
+}
+
 function resetForm() {
-  ['dept','emp-id','emp-name','note','amount'].forEach(id=>document.getElementById(id).value='');
+  ['dept','emp-id','emp-name','note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('office').value='';
-  document.getElementById('currency').value='TWD';
   document.getElementById('file-input').value='';
+  initAmountList();
   filesData=[]; renderFileList();
   items=[...DEFAULT_ITEMS]; renderItems();
 }
 
+initAmountList();
 renderItems();
 </script>
 </body>
