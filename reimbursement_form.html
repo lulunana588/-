@@ -304,14 +304,25 @@ async function submitForm(){
   var time=new Date().toLocaleString('zh-TW',{hour12:false});
 
   try{
+    // 步驟1：先上傳確認截圖，取得連結
+    var confirmLinks = [];
+    if(confirms.length > 0){
+      setProgress(25,'上傳負責人確認截圖…');
+      var confirmPayload = JSON.stringify({action:'uploadConfirm', confirmFiles:confirms, time:time});
+      var confirmRes = await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(confirmPayload)});
+      var confirmData = await confirmRes.json();
+      if(confirmData.links) confirmLinks = confirmData.links;
+    }
+
+    // 步驟2：每個項目各自送出（只帶憑證圖，確認截圖用連結）
     for(var i=0;i<items.length;i++){
-      setProgress(Math.round(20+(i/items.length)*70),'送出第 '+(i+1)+' 筆：'+items[i].name+'…');
+      setProgress(Math.round(35+(i/items.length)*55),'送出第 '+(i+1)+' 筆：'+items[i].name+'…');
       var payload=JSON.stringify({
         period:items[i].applyType, office:office, dept:dept,
         empId:empId, empName:empName, itemType:items[i].name,
         currency:items[i].currency, amount:items[i].amount, note:note,
         files:receipts[i]?[receipts[i]]:[],
-        confirmFiles:confirms,
+        confirmLinks:confirmLinks,
         time:time
       });
       var res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(payload)});
