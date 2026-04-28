@@ -306,6 +306,7 @@ async function submitForm(){
   try{
     // 步驟1：逐張上傳憑證圖片，取得 Drive 連結
     var receiptLinks = {};
+    console.log('receipts object:', JSON.stringify(Object.keys(receipts)));
     for(var i=0;i<items.length;i++){
       if(receipts[i]){
         setProgress(Math.round(10+(i/items.length)*30),'上傳「'+items[i].name+'」憑證…');
