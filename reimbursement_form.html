@@ -328,7 +328,7 @@ async function submitForm(){
       var res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(payload)});
       await res.json();
       // 每筆之間等 1.5 秒，避免連線過快被中斷
-      if(i < items.length-1) await new Promise(function(r){setTimeout(r,1500);});
+      if(i < items.length-1) await new Promise(function(r){setTimeout(r,3000);});
     }
     setProgress(100,'完成！');
     setTimeout(function(){setProgress(null);},600);
