@@ -23,7 +23,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .header h1 { font-family:'Cormorant Garamond',serif; font-size:34px; font-weight:400; letter-spacing:1px; color:var(--white); line-height:1.2; }
 .header h1 em { color:var(--gold); font-style:normal; }
 .header p { font-size:12px; color:var(--white3); margin-top:10px; letter-spacing:0.5px; font-weight:300; }
-.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; position:relative; overflow:hidden; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
+.card { background:var(--black2); border:1px solid var(--border); padding:2.5rem; position:relative; overflow:visible; box-shadow:0 0 0 1px rgba(0,0,0,0.8),0 32px 64px rgba(0,0,0,0.6),inset 0 1px 0 rgba(201,168,76,0.08); }
 .card::before,.card::after { content:''; position:absolute; width:16px; height:16px; border-color:var(--gold); border-style:solid; }
 .card::before { top:-1px; left:-1px; border-width:1px 0 0 1px; }
 .card::after  { bottom:-1px; right:-1px; border-width:0 1px 1px 0; }
@@ -54,7 +54,7 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .btn-del:hover { border-color:rgba(200,80,80,0.4); color:#C47A7A; background:rgba(140,63,63,0.08); }
 .btn-add-item { width:100%; margin-top:6px; padding:9px; border:1px dashed rgba(201,168,76,0.22); border-radius:var(--radius); background:transparent; color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; cursor:pointer; font-family:'Noto Sans TC',sans-serif; transition:all 0.15s; }
 .btn-add-item:hover { background:var(--gold-dim); border-color:var(--gold); border-style:solid; }
-.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:1.2rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
+.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:1.2rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); overflow:visible; }
 .upload-zone:hover { border-color:var(--gold3); background:#1E1E1E; }
 .file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
 .upload-icon { width:32px; height:32px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 6px; font-size:14px; color:var(--gold); background:rgba(201,168,76,0.05); }
@@ -159,7 +159,7 @@ function addItemRow(name, type, cur, val) {
   row.className = 'item-row';
   var nameEl = document.createElement('input');
   nameEl.type='text'; nameEl.placeholder='項目名稱'; nameEl.value=name||'';
-  nameEl.onchange = function() { renderReceiptZones(); };
+  nameEl.oninput = function() { renderReceiptZones(); };
   var typeEl = document.createElement('select');
   APPLY_TYPES.forEach(function(t){var o=document.createElement('option');o.value=t;o.textContent=t;if(t===(type||'首次'))o.selected=true;typeEl.appendChild(o);});
   var curEl = document.createElement('select');
