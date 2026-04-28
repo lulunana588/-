@@ -39,36 +39,32 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
 .field select option { background:#1A1A1A; }
 .field input::placeholder { color:rgba(120,112,100,0.55); }
 .field input:focus,.field select:focus { border-color:var(--gold3); background:#1E1E1E; box-shadow:0 0 0 3px rgba(201,168,76,0.07); }
-
-/* 報銷明細列 */
 .item-header { display:grid; grid-template-columns:1fr 72px 80px 96px 28px; gap:6px; padding:0 10px; margin-bottom:4px; }
 .item-header span { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); }
 .item-rows { display:flex; flex-direction:column; gap:8px; }
-.item-row { display:grid; grid-template-columns:1fr 72px 80px 96px 28px; gap:6px; align-items:center; padding:8px 10px; background:var(--black3); border:1px solid rgba(201,168,76,0.14); border-radius:var(--radius); transition:border-color 0.15s; }
-.item-row:hover { border-color:rgba(201,168,76,0.28); }
+.item-row { display:grid; grid-template-columns:1fr 72px 80px 96px 28px; gap:6px; align-items:center; padding:8px 10px; background:var(--black3); border:1px solid rgba(201,168,76,0.14); border-radius:var(--radius); }
 .item-row input[type="text"] { background:transparent; border:none; border-bottom:1px solid rgba(201,168,76,0.2); border-radius:0; padding:4px 2px; font-size:13px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; width:100%; }
 .item-row input[type="text"]:focus { border-bottom-color:var(--gold); }
 .item-row input[type="text"]::placeholder { color:rgba(120,112,100,0.5); }
 .item-row select { background:#0F0F0F; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:5px 20px 5px 7px; font-size:12px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M1 1l3 3 3-3' stroke='%23C9A84C' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 5px center; cursor:pointer; width:100%; }
 .item-row select option { background:#1A1A1A; }
 .item-row input[type="number"] { background:#0F0F0F; border:1px solid rgba(201,168,76,0.18); border-radius:var(--radius); padding:5px 7px; font-size:12px; color:var(--white); font-family:'Noto Sans TC',sans-serif; outline:none; text-align:right; width:100%; }
-.item-row input[type="number"]::placeholder { color:rgba(120,112,100,0.5); text-align:left; font-size:11px; }
+.item-row input[type="number"]::placeholder { color:rgba(120,112,100,0.5); font-size:11px; }
 .btn-del { width:28px; height:28px; border:1px solid rgba(201,168,76,0.15); border-radius:var(--radius); background:transparent; color:var(--white3); font-size:12px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:all 0.15s; flex-shrink:0; }
 .btn-del:hover { border-color:rgba(200,80,80,0.4); color:#C47A7A; background:rgba(140,63,63,0.08); }
 .btn-add-item { width:100%; margin-top:6px; padding:9px; border:1px dashed rgba(201,168,76,0.22); border-radius:var(--radius); background:transparent; color:var(--gold); font-size:12px; font-weight:500; letter-spacing:1px; cursor:pointer; font-family:'Noto Sans TC',sans-serif; transition:all 0.15s; }
 .btn-add-item:hover { background:var(--gold-dim); border-color:var(--gold); border-style:solid; }
-
-/* 上傳區 */
-.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:1.5rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
+.upload-zone { border:1px dashed rgba(201,168,76,0.28); border-radius:var(--radius); padding:1.2rem 1rem; text-align:center; cursor:pointer; transition:all 0.2s; position:relative; background:var(--black3); }
 .upload-zone:hover { border-color:var(--gold3); background:#1E1E1E; }
 .file-input { position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%; }
-.upload-icon { width:36px; height:36px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 8px; font-size:15px; color:var(--gold); background:rgba(201,168,76,0.05); }
-.upload-text { font-size:13px; font-weight:400; margin-bottom:3px; color:var(--white2); }
-.upload-hint { font-size:11px; color:var(--white3); }
+.upload-icon { width:32px; height:32px; border-radius:50%; border:1px solid rgba(201,168,76,0.28); display:flex; align-items:center; justify-content:center; margin:0 auto 6px; font-size:14px; color:var(--gold); background:rgba(201,168,76,0.05); }
+.upload-text { font-size:12px; font-weight:400; color:var(--white2); margin-bottom:2px; }
+.upload-hint { font-size:10px; color:var(--white3); }
+.receipt-item { margin-bottom:10px; }
+.receipt-label { font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--white3); margin-bottom:6px; }
 .file-list-item { display:flex; align-items:center; justify-content:space-between; padding:7px 12px; margin-top:5px; background:rgba(74,140,63,0.08); border:1px solid rgba(74,140,63,0.28); border-radius:var(--radius); font-size:12px; color:#7EC47A; }
 .btn-remove { background:none; border:none; cursor:pointer; color:#7EC47A; font-size:13px; opacity:0.5; transition:opacity 0.15s; }
 .btn-remove:hover { opacity:1; }
-
 .divider { border:none; border-top:1px solid rgba(201,168,76,0.1); margin:1.5rem 0; position:relative; }
 .divider::before { content:'◆'; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); font-size:6px; color:var(--gold3); background:var(--black2); padding:0 8px; }
 .btn-submit { width:100%; padding:14px; background:linear-gradient(135deg,var(--gold3) 0%,var(--gold) 50%,var(--gold3) 100%); color:#0A0A0A; border:none; border-radius:var(--radius); font-size:12px; font-weight:700; letter-spacing:3px; text-transform:uppercase; cursor:pointer; margin-top:1.5rem; font-family:'Noto Sans TC',sans-serif; transition:all 0.3s; position:relative; overflow:hidden; }
@@ -114,7 +110,6 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
       <div class="field"><label>員編</label><input type="text" id="emp-id" placeholder="例：AS6612" maxlength="10"></div>
       <div class="field"><label>花名</label><input type="text" id="emp-name" placeholder="例：Luna" maxlength="10"></div>
     </div>
-
     <div class="divider"></div>
     <div class="section-label">報銷明細（每項各自一筆）</div>
     <div class="item-header">
@@ -122,35 +117,24 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
     </div>
     <div class="item-rows" id="item-rows"></div>
     <button class="btn-add-item" onclick="addItemRow()">＋ 新增項目</button>
-
     <div class="field" style="margin-top:1.2rem">
       <label>備註說明（選填）</label>
       <input type="text" id="note" placeholder="例：2025年4月份訂閱費">
     </div>
-
     <div class="divider"></div>
-    <div class="section-label">報銷憑證</div>
-    <div class="field">
-      <div class="upload-zone" id="zone1">
-        <input type="file" class="file-input" id="file-input1" accept="image/*,application/pdf" multiple onchange="handleFiles(event,'receipts')">
-        <div class="upload-icon">↑</div>
-        <div class="upload-text">點擊或拖曳上傳憑證</div>
-        <div class="upload-hint">發票 · 收據 &nbsp;｜&nbsp; JPG · PNG · PDF &nbsp;｜&nbsp; 每檔最大 5MB</div>
-      </div>
-      <div id="list1"></div>
-    </div>
-
+    <div class="section-label">報銷憑證（每項各自上傳）</div>
+    <div id="receipt-zones"></div>
+    <div class="divider"></div>
     <div class="section-label">負責人確認截圖</div>
     <div class="field">
-      <div class="upload-zone" id="zone2">
-        <input type="file" class="file-input" id="file-input2" accept="image/*,application/pdf" multiple onchange="handleFiles(event,'confirms')">
+      <div class="upload-zone" id="confirm-zone">
+        <input type="file" class="file-input" id="confirm-input" accept="image/*,application/pdf" multiple onchange="handleConfirm(event)">
         <div class="upload-icon">↑</div>
         <div class="upload-text">點擊或拖曳上傳確認截圖</div>
-        <div class="upload-hint">主管已確認的截圖 &nbsp;｜&nbsp; JPG · PNG · PDF &nbsp;｜&nbsp; 每檔最大 5MB</div>
+        <div class="upload-hint">主管已確認的截圖｜JPG · PNG · PDF｜每檔最大 5MB</div>
       </div>
-      <div id="list2"></div>
+      <div id="confirm-list"></div>
     </div>
-
     <button class="btn-submit" id="submit-btn" onclick="submitForm()">提交申請</button>
     <div class="progress-wrap" id="progress-wrap">
       <div class="progress-label" id="progress-label">提交中…</div>
@@ -160,147 +144,156 @@ body::before { content:''; position:fixed; inset:0; background:radial-gradient(e
   </div>
   <div class="footer-note">CONFIDENTIAL &nbsp;·&nbsp; INTERNAL USE ONLY</div>
 </div>
-
 <script>
 var GAS_URL = 'https://script.google.com/macros/s/AKfycbwj0zglG2ia97kEPNFP2dTN-XTI9_2QHuL7vg5XNnj8Z0VlFTI_UKBAQ49nucHMC65z/exec';
 var DEFAULT_ITEMS = ['VPS','Claude'];
 var CURRENCIES = ['TWD','USD','CNY','EUR'];
 var APPLY_TYPES = ['首次','再次'];
+var receipts = {};   // idx -> {name,type,data}
+var confirms = [];   // [{name,type,data}]
 
 // ── 報銷項目列 ────────────────────────────────────────
 function addItemRow(name, type, cur, val) {
   var rows = document.getElementById('item-rows');
   var row = document.createElement('div');
   row.className = 'item-row';
-
   var nameEl = document.createElement('input');
-  nameEl.type = 'text'; nameEl.placeholder = '項目名稱';
-  nameEl.value = name || '';
-
+  nameEl.type='text'; nameEl.placeholder='項目名稱'; nameEl.value=name||'';
+  nameEl.onchange = function() { renderReceiptZones(); };
   var typeEl = document.createElement('select');
-  APPLY_TYPES.forEach(function(t) {
-    var o = document.createElement('option');
-    o.value = t; o.textContent = t;
-    if (t === (type || '首次')) o.selected = true;
-    typeEl.appendChild(o);
-  });
-
+  APPLY_TYPES.forEach(function(t){var o=document.createElement('option');o.value=t;o.textContent=t;if(t===(type||'首次'))o.selected=true;typeEl.appendChild(o);});
   var curEl = document.createElement('select');
-  CURRENCIES.forEach(function(c) {
-    var o = document.createElement('option');
-    o.value = c; o.textContent = c;
-    if (c === (cur || 'TWD')) o.selected = true;
-    curEl.appendChild(o);
-  });
-
+  CURRENCIES.forEach(function(c){var o=document.createElement('option');o.value=c;o.textContent=c;if(c===(cur||'TWD'))o.selected=true;curEl.appendChild(o);});
   var amtEl = document.createElement('input');
-  amtEl.type = 'number'; amtEl.placeholder = '金額';
-  amtEl.min = '0'; amtEl.step = '0.01';
-  if (val) amtEl.value = val;
-
+  amtEl.type='number'; amtEl.placeholder='金額'; amtEl.min='0'; amtEl.step='0.01';
+  if(val) amtEl.value=val;
   var btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'btn-del'; btn.textContent = '✕';
-  btn.onclick = function() {
-    if (document.getElementById('item-rows').children.length > 1) row.remove();
+  btn.type='button'; btn.className='btn-del'; btn.textContent='✕';
+  btn.onclick=function(){
+    if(document.getElementById('item-rows').children.length>1){
+      row.remove(); renderReceiptZones();
+    }
   };
-
-  row.appendChild(nameEl); row.appendChild(typeEl);
-  row.appendChild(curEl); row.appendChild(amtEl); row.appendChild(btn);
+  row.appendChild(nameEl); row.appendChild(typeEl); row.appendChild(curEl); row.appendChild(amtEl); row.appendChild(btn);
   rows.appendChild(row);
+  renderReceiptZones();
 }
 
 function getItems() {
-  return Array.prototype.slice.call(document.querySelectorAll('.item-row')).map(function(row) {
-    var sels = row.querySelectorAll('select');
-    var inps = row.querySelectorAll('input');
-    return {
-      name:      inps[0].value.trim(),
-      applyType: sels[0].value,
-      currency:  sels[1].value,
-      amount:    parseFloat(inps[1].value) || 0
-    };
+  return Array.prototype.slice.call(document.querySelectorAll('.item-row')).map(function(row){
+    var sels=row.querySelectorAll('select');
+    var inps=row.querySelectorAll('input');
+    return {name:inps[0].value.trim(), applyType:sels[0].value, currency:sels[1].value, amount:parseFloat(inps[1].value)||0};
   });
 }
 
-// ── 上傳管理 ──────────────────────────────────────────
-var uploads = { receipts: [], confirms: [] };
-
-function setupZone(zoneId, key) {
-  var zone = document.getElementById(zoneId);
-  zone.addEventListener('dragover', function(e) { e.preventDefault(); zone.style.borderColor='var(--gold)'; });
-  zone.addEventListener('dragleave', function() { zone.style.borderColor=''; });
-  zone.addEventListener('drop', function(e) { e.preventDefault(); zone.style.borderColor=''; addFiles(e.dataTransfer.files, key); });
+// ── 憑證上傳（每項各自）──────────────────────────────
+function renderReceiptZones() {
+  var items = getItems();
+  var container = document.getElementById('receipt-zones');
+  container.innerHTML = '';
+  items.forEach(function(item, i) {
+    var wrap = document.createElement('div');
+    wrap.className = 'receipt-item';
+    var lbl = document.createElement('div');
+    lbl.className = 'receipt-label';
+    lbl.textContent = (item.name||('項目 '+(i+1))) + ' 的憑證';
+    var zone = document.createElement('div');
+    zone.className = 'upload-zone';
+    var inp = document.createElement('input');
+    inp.type='file'; inp.className='file-input'; inp.accept='image/*,application/pdf';
+    inp.onchange=(function(idx){ return function(e){ handleReceipt(e,idx); }; })(i);
+    var icon=document.createElement('div'); icon.className='upload-icon'; icon.textContent='↑';
+    var txt=document.createElement('div'); txt.className='upload-text';
+    txt.textContent='上傳「'+(item.name||'項目'+(i+1))+'」的憑證';
+    var hint=document.createElement('div'); hint.className='upload-hint';
+    hint.textContent='JPG · PNG · PDF｜最大 5MB';
+    zone.appendChild(inp); zone.appendChild(icon); zone.appendChild(txt); zone.appendChild(hint);
+    var listDiv=document.createElement('div'); listDiv.id='rlist-'+i;
+    if(receipts[i]){
+      listDiv.innerHTML='<div class="file-list-item"><span>✓ &nbsp;'+receipts[i].name+'</span>'+
+        '<button class="btn-remove" onclick="removeReceipt('+i+')">✕</button></div>';
+    }
+    wrap.appendChild(lbl); wrap.appendChild(zone); wrap.appendChild(listDiv);
+    container.appendChild(wrap);
+  });
 }
-setupZone('zone1','receipts');
-setupZone('zone2','confirms');
 
-function handleFiles(e, key) { addFiles(e.target.files, key); e.target.value=''; }
+function handleReceipt(e, idx) {
+  var file=e.target.files[0]; if(!file) return;
+  if(file.size>5*1024*1024){alert(file.name+' 超過 5MB');return;}
+  var reader=new FileReader();
+  reader.onload=function(ev){
+    receipts[idx]={name:file.name,type:file.type,data:ev.target.result};
+    var el=document.getElementById('rlist-'+idx);
+    if(el) el.innerHTML='<div class="file-list-item"><span>✓ &nbsp;'+file.name+'</span>'+
+      '<button class="btn-remove" onclick="removeReceipt('+idx+')">✕</button></div>';
+  };
+  reader.readAsDataURL(file);
+}
 
-function addFiles(fileList, key) {
-  var listId = key === 'receipts' ? 'list1' : 'list2';
-  Array.prototype.slice.call(fileList).forEach(function(file) {
-    if (file.size > 5*1024*1024) { alert(file.name+' 超過 5MB'); return; }
-    if (uploads[key].find(function(f){return f.name===file.name;})) return;
-    var reader = new FileReader();
-    reader.onload = function(ev) {
-      uploads[key].push({name:file.name, type:file.type, data:ev.target.result});
-      renderList(key, listId);
-    };
+function removeReceipt(idx){
+  delete receipts[idx];
+  var el=document.getElementById('rlist-'+idx);
+  if(el) el.innerHTML='';
+}
+
+// ── 負責人確認截圖 ────────────────────────────────────
+var confirmZone=document.getElementById('confirm-zone');
+confirmZone.addEventListener('dragover',function(e){e.preventDefault();confirmZone.style.borderColor='var(--gold)';});
+confirmZone.addEventListener('dragleave',function(){confirmZone.style.borderColor='';});
+confirmZone.addEventListener('drop',function(e){e.preventDefault();confirmZone.style.borderColor='';addConfirms(e.dataTransfer.files);});
+
+function handleConfirm(e){addConfirms(e.target.files);e.target.value='';}
+function addConfirms(fileList){
+  Array.prototype.slice.call(fileList).forEach(function(file){
+    if(file.size>5*1024*1024){alert(file.name+' 超過 5MB');return;}
+    if(confirms.find(function(f){return f.name===file.name;})) return;
+    var reader=new FileReader();
+    reader.onload=function(ev){confirms.push({name:file.name,type:file.type,data:ev.target.result});renderConfirmList();};
     reader.readAsDataURL(file);
   });
 }
-
-function removeFile(key, name) {
-  uploads[key] = uploads[key].filter(function(f){return f.name!==name;});
-  renderList(key, key==='receipts'?'list1':'list2');
-}
-
-function renderList(key, listId) {
-  document.getElementById(listId).innerHTML = uploads[key].map(function(f) {
-    return '<div class="file-list-item"><span>✓ &nbsp;'+f.name+'</span>' +
-      '<button class="btn-remove" onclick="removeFile(\''+key+'\',\''+f.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\')">✕</button></div>';
+function removeConfirm(name){confirms=confirms.filter(function(f){return f.name!==name;});renderConfirmList();}
+function renderConfirmList(){
+  document.getElementById('confirm-list').innerHTML=confirms.map(function(f){
+    return '<div class="file-list-item"><span>✓ &nbsp;'+f.name+'</span>'+
+      '<button class="btn-remove" onclick="removeConfirm(\''+f.name.replace(/'/g,"\\'")+'\')">✕</button></div>';
   }).join('');
 }
 
 // ── 工具 ──────────────────────────────────────────────
-function getPeriod() {
-  var d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
-}
-function setProgress(pct, label) {
+function setProgress(pct,label){
   var wrap=document.getElementById('progress-wrap');
-  wrap.style.display = pct===null ? 'none' : 'block';
-  if (pct!==null) {
-    document.getElementById('progress-fill').style.width=pct+'%';
-    document.getElementById('progress-label').textContent=label||'';
-  }
+  wrap.style.display=pct===null?'none':'block';
+  if(pct!==null){document.getElementById('progress-fill').style.width=pct+'%';document.getElementById('progress-label').textContent=label||'';}
 }
-function showStatus(type, html) {
+function showStatus(type,html){
   var box=document.getElementById('status-box');
-  box.className='status-box status-'+type;
-  box.innerHTML=html; box.style.display='block';
+  box.className='status-box status-'+type; box.innerHTML=html; box.style.display='block';
 }
-function playCoinSound() {
-  try {
+function playCoinSound(){
+  try{
     var ctx=new(window.AudioContext||window.webkitAudioContext)();
     function beep(f,s,d,v){var o=ctx.createOscillator(),g=ctx.createGain();o.connect(g);g.connect(ctx.destination);o.frequency.setValueAtTime(f,ctx.currentTime+s);o.frequency.exponentialRampToValueAtTime(f*1.5,ctx.currentTime+s+d*0.3);g.gain.setValueAtTime(0,ctx.currentTime+s);g.gain.linearRampToValueAtTime(v,ctx.currentTime+s+0.01);g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+s+d);o.start(ctx.currentTime+s);o.stop(ctx.currentTime+s+d);}
     beep(1200,0,0.12,0.3);beep(1600,0.07,0.10,0.25);beep(2000,0.13,0.15,0.2);
-  } catch(e){}
+  }catch(e){}
 }
 
 // ── 送出 ──────────────────────────────────────────────
-async function submitForm() {
-  var office  = document.getElementById('office').value;
-  var dept    = document.getElementById('dept').value.trim();
-  var empId   = document.getElementById('emp-id').value.trim();
-  var empName = document.getElementById('emp-name').value.trim();
-  var note    = document.getElementById('note').value.trim();
-  var items   = getItems();
+async function submitForm(){
+  var office=document.getElementById('office').value;
+  var dept=document.getElementById('dept').value.trim();
+  var empId=document.getElementById('emp-id').value.trim();
+  var empName=document.getElementById('emp-name').value.trim();
+  var note=document.getElementById('note').value.trim();
+  var items=getItems();
 
-  if (!office)          { showStatus('err','⚠ 請選擇辦公室'); return; }
-  if (!empId||!empName) { showStatus('err','⚠ 請填寫員編與花名'); return; }
-  if (!items.length)    { showStatus('err','⚠ 請至少新增一個報銷項目'); return; }
-  if (items.some(function(i){return !i.name;})) { showStatus('err','⚠ 請填寫所有項目名稱'); return; }
-  if (items.some(function(i){return !i.amount||i.amount<=0;})) { showStatus('err','⚠ 請填寫所有項目的金額'); return; }
+  if(!office){showStatus('err','⚠ 請選擇辦公室');return;}
+  if(!empId||!empName){showStatus('err','⚠ 請填寫員編與花名');return;}
+  if(!items.length){showStatus('err','⚠ 請至少新增一個報銷項目');return;}
+  if(items.some(function(i){return !i.name;})){showStatus('err','⚠ 請填寫所有項目名稱');return;}
+  if(items.some(function(i){return !i.amount||i.amount<=0;})){showStatus('err','⚠ 請填寫所有項目的金額');return;}
 
   playCoinSound();
   var btn=document.getElementById('submit-btn');
@@ -308,56 +301,39 @@ async function submitForm() {
   document.getElementById('status-box').style.display='none';
   setProgress(20,'準備送出 '+items.length+' 筆資料…');
 
-  var time = new Date().toLocaleString('zh-TW',{hour12:false});
-  var today = new Date().toLocaleDateString('zh-TW');
+  var time=new Date().toLocaleString('zh-TW',{hour12:false});
 
-  try {
-    for (var i=0; i<items.length; i++) {
+  try{
+    for(var i=0;i<items.length;i++){
       setProgress(Math.round(20+(i/items.length)*70),'送出第 '+(i+1)+' 筆：'+items[i].name+'…');
-      var payload = JSON.stringify({
-        period:       items[i].applyType,
-        office:       office,
-        dept:         dept,
-        empId:        empId,
-        empName:      empName,
-        itemType:     items[i].name,
-        currency:     items[i].currency,
-        amount:       items[i].amount,
-        note:         note,
-        files:        uploads.receipts[i] ? [uploads.receipts[i]] : [],
-        confirmFiles: uploads.confirms,
-        time:         time
+      var payload=JSON.stringify({
+        period:items[i].applyType, office:office, dept:dept,
+        empId:empId, empName:empName, itemType:items[i].name,
+        currency:items[i].currency, amount:items[i].amount, note:note,
+        files:receipts[i]?[receipts[i]]:[],
+        confirmFiles:confirms,
+        time:time
       });
-      var res = await fetch(GAS_URL, {
-        method:'POST',
-        headers:{'Content-Type':'application/x-www-form-urlencoded'},
-        body:'payload='+encodeURIComponent(payload)
-      });
+      var res=await fetch(GAS_URL,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:'payload='+encodeURIComponent(payload)});
       await res.json();
     }
-
     setProgress(100,'完成！');
     setTimeout(function(){setProgress(null);},600);
-
-    var lines = items.map(function(item) {
-      return '&nbsp;&nbsp;· '+item.name+'&nbsp;&nbsp;'+item.currency+' '+item.amount+'（'+item.applyType+'）';
-    }).join('<br>');
+    var lines=items.map(function(it){return '&nbsp;&nbsp;· '+it.name+'&nbsp;&nbsp;'+it.currency+' '+it.amount+'（'+it.applyType+'）';}).join('<br>');
     showStatus('ok','✓ &nbsp;<strong>提交成功，共 '+items.length+' 筆</strong><br>'+empName+'（'+empId+'）<br>'+lines);
     resetForm();
-  } catch(err) {
+  }catch(err){
     setProgress(null);
     showStatus('err','✕ 提交失敗：'+err.message);
   }
   btn.disabled=false; btn.textContent='提交申請';
 }
 
-function resetForm() {
+function resetForm(){
   ['dept','emp-id','emp-name','note'].forEach(function(id){document.getElementById(id).value='';});
   document.getElementById('office').value='';
-  document.getElementById('file-input1').value='';
-  document.getElementById('file-input2').value='';
-  uploads={receipts:[],confirms:[]};
-  renderList('receipts','list1'); renderList('confirms','list2');
+  document.getElementById('confirm-input').value='';
+  receipts={}; confirms=[]; renderConfirmList();
   document.getElementById('item-rows').innerHTML='';
   DEFAULT_ITEMS.forEach(function(name){addItemRow(name,'首次','TWD','');});
 }
