@@ -37,6 +37,10 @@ PAYMENT_PROGRESS_OPTIONS = [
     "尚未提交",
 ]
 
-# --- 授權可操作此機器人的 Telegram 使用者 (留空 = 不限制，建議正式上線後填寫) ---
+# --- 允許授權可操作此機器人的 Telegram 使用者 (留空 = 不限制，建議正式上線後填寫) ---
 _allowed = os.getenv("ALLOWED_USER_IDS", "")
 ALLOWED_USER_IDS = {int(x) for x in _allowed.split(",") if x.strip().isdigit()}
+
+# --- 每日款項追蹤提醒（週一~週五 台灣時間 10:05 私訊提醒）---
+_reminder_chat_id = os.getenv("REMINDER_CHAT_ID", "8656008330")
+REMINDER_CHAT_ID = int(_reminder_chat_id) if _reminder_chat_id.strip().isdigit() else None

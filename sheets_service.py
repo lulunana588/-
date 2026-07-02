@@ -345,3 +345,48 @@ def mark_payment_paid(row: int, paid_date: str = None, note: str = None):
         "amount": current[3] if len(current) > 3 else "",
         "paid_date": paid_date,
     }
+
+
+# 進度完全走完（已提交請款單及發票）才算「已完成」，其餘進度都視為還需要追蹤
+_COMPLETE_PROGRESS = "已提交請款單及發票"
+
+
+def get_pending_payments():
+    """
+    取得所有「需要追蹤」的款項：付款狀態不是已付，或進度還沒到「已提交請款單及發票」。
+    回傳 {count, total, items: [{id, name, amount, status, progress}, ...]}
+    """
+    ws = get_payment_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _payment_header_row_idx(all_values)
+
+    items = []
+    for row in all_values[header_idx + 1 :]:
+        if not row or not row[0].strip():
+            continue
+        status = row[5].strip() if len(row) > 5 else ""
+        progress = row[4].strip() if len(row) > 4 else ""
+
+        needs_tracking = (status != "已付") or (progress != _COMPLETE_PROGRESS)
+        if not needs_tracking:
+            continue
+
+        name = row[2].strip() if len(row) > 2 else ""
+        amount_raw = row[3].strip() if len(row) > 3 else "0"
+        try:
+            amount = int(amount_raw.replace(",", ""))
+        except ValueError:
+            amount = 0
+
+        items.append(
+            {
+                "id": row[0].strip(),
+                "name": name,
+                "amount": amount,
+                "status": status or "（未填）",
+                "progress": progress or "（未填）",
+            }
+        )
+
+    total = sum(i["amount"] for i in items)
+    return {"count": len(items), "total": total, "items": items}

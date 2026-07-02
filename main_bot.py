@@ -7,6 +7,7 @@
 import logging
 import re
 import datetime
+from zoneinfo import ZoneInfo
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, MessageEntity
 from telegram.constants import ParseMode
@@ -661,6 +662,49 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =========================================================
+# 每日款項追蹤提醒（週一~週五 台灣時間 10:05）
+# =========================================================
+
+async def send_payment_reminder(context: ContextTypes.DEFAULT_TYPE):
+    if not config.REMINDER_CHAT_ID:
+        logger.warning("REMINDER_CHAT_ID 未設定，跳過款項追蹤提醒")
+        return
+
+    try:
+        summary = sheets.get_pending_payments()
+    except Exception:
+        logger.exception("讀取款項追蹤表失敗，提醒推播中止")
+        return
+
+    if summary["count"] == 0:
+        text = (
+            f"{BOT_DISPLAY_NAME}\n"
+            f"📋 早安！今天的款項追蹤提醒　📅 {sheets.today_str()}\n\n"
+            f"目前沒有需要追蹤的款項 🎉"
+        )
+    else:
+        lines = "\n".join(
+            f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
+            f" - {item['status']}／{item['progress']}"
+            for i, item in enumerate(summary["items"][:15])
+        )
+        more = ""
+        if summary["count"] > 15:
+            more = f"\n...還有 {summary['count'] - 15} 筆，輸入 /start 查完整清單"
+        text = (
+            f"{BOT_DISPLAY_NAME}\n"
+            f"📋 早安！今天的款項追蹤提醒　📅 {sheets.today_str()}\n\n"
+            f"需要追蹤：{summary['count']} 筆，共 NT${summary['total']:,}\n\n"
+            f"{lines}{more}"
+        )
+
+    try:
+        await context.bot.send_message(chat_id=config.REMINDER_CHAT_ID, text=text)
+    except Exception:
+        logger.exception("發送款項追蹤提醒失敗")
+
+
+# =========================================================
 # 組裝 Application
 # =========================================================
 
@@ -700,6 +744,20 @@ def build_app() -> Application:
     )
 
     app.add_handler(conv)
+
+    if config.REMINDER_CHAT_ID and app.job_queue is not None:
+        app.job_queue.run_daily(
+            send_payment_reminder,
+            time=datetime.time(hour=10, minute=5, tzinfo=ZoneInfo("Asia/Taipei")),
+            days=(1, 2, 3, 4, 5),  # 週一~週五（python-telegram-bot 的 days 是 0=週日起算）
+            name="payment_reminder",
+        )
+    elif config.REMINDER_CHAT_ID:
+        logger.warning(
+            "JobQueue 未啟用，款項提醒排程不會運作。"
+            "請確認 requirements.txt 有安裝 python-telegram-bot[job-queue]。"
+        )
+
     return app
 
 
