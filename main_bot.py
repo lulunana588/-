@@ -61,8 +61,9 @@ async def _reject(update: Update):
 # 群組 @提及 觸發（不用 /start，在群裡 @機器人 就能直接處理）
 # =========================================================
 
-_ACTION_IN_WORDS = ("入庫", "入", "補貨", "進貨", "送達")
-_ACTION_OUT_WORDS = ("出庫", "出", "領用", "領取", "扣")
+_WATER_KEYWORD = "桶裝水"
+_WATER_OUT_WORD = "送水"  # 送水 = 扣桶（出庫）
+_WATER_IN_WORD = "儲值"   # 儲值 = 補桶（入庫）
 
 
 def _strip_mention(text: str, bot_username: str) -> str:
@@ -71,40 +72,34 @@ def _strip_mention(text: str, bot_username: str) -> str:
 
 def _parse_quick_water_command(remainder: str, locations: list):
     """
-    嘗試解析一行快速指令，支援兩種寫法：
-      1) 帶正負號：「共享服務中心(忠孝) +10」「忠孝辦 -5」
-      2) 帶動作字：「忠孝 出庫 5」「松山辦 入庫20」
-    比對成功回傳 (location_dict, delta)；比對不到回傳 None（會改成打開選單）。
+    嘗試解析一行快速指令，格式固定為：
+      「地點 桶裝水 送水 5 桶」→ 扣5桶（出庫）
+      「地點 桶裝水 儲值 100 桶」→ 補100桶（入庫）
+    「桶裝水」與「送水」/「儲值」兩個關鍵字都一定要出現才會處理，
+    避免隨口打幾個字就誤觸發，比對不到就回傳 None（改成打開選單）。
     """
-    signed_match = re.search(r"([+\-－＋])\s*(\d+)", remainder)
-    if signed_match:
-        qty = int(signed_match.group(2))
-        if qty <= 0:
-            return None
-        delta_sign = -1 if signed_match.group(1) in "-－" else 1
-    else:
-        qty_match = re.search(r"(\d+)", remainder)
-        if not qty_match:
-            return None
-        qty = int(qty_match.group(1))
-        if qty <= 0:
-            return None
+    if _WATER_KEYWORD not in remainder:
+        return None
 
-        if any(w in remainder for w in _ACTION_OUT_WORDS) and not any(
-            w in remainder for w in _ACTION_IN_WORDS
-        ):
-            delta_sign = -1
-        elif any(w in remainder for w in _ACTION_IN_WORDS):
-            delta_sign = 1
-        else:
-            return None  # 看不出來是入庫還出庫，不要亂猜，交給選單流程
+    has_out = _WATER_OUT_WORD in remainder
+    has_in = _WATER_IN_WORD in remainder
+    if has_out == has_in:
+        return None  # 兩個字都有，或兩個字都沒有 -> 語意不明確，不要亂猜
 
-    # 把數字、正負號、動作字、標點、括號都拿掉，剩下的當作「地點關鍵字」，
-    # 中文通常不會特地打空格分詞，所以用子字串比對而不是切詞比對
+    qty_match = re.search(r"(\d+)", remainder)
+    if not qty_match:
+        return None
+    qty = int(qty_match.group(1))
+    if qty <= 0:
+        return None
+
+    delta_sign = -1 if has_out else 1
+
+    # 把關鍵字、桶、數字、標點都拿掉，剩下的當作「地點關鍵字」
     core = remainder
-    for w in (*_ACTION_IN_WORDS, *_ACTION_OUT_WORDS):
+    for w in (_WATER_KEYWORD, _WATER_OUT_WORD, _WATER_IN_WORD, "桶"):
         core = core.replace(w, "")
-    core = re.sub(r"[\d\s　、，,+\-－＋()（）]+", "", core)
+    core = re.sub(r"[\d\s　、，,()（）]+", "", core)
 
     best_len = 0
     candidates = []
@@ -158,7 +153,10 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parsed = _parse_quick_water_command(remainder, locations)
     if not parsed:
         await update.effective_message.reply_text(
-            f"{BOT_DISPLAY_NAME}\n沒看懂「{remainder}」這個指令，幫您打開選單操作："
+            f"{BOT_DISPLAY_NAME}\n"
+            f"沒看懂「{remainder}」這個指令，格式要像這樣：\n"
+            f"「地點 桶裝水 送水 5 桶」（扣桶）或「地點 桶裝水 儲值 100 桶」（補桶）\n"
+            f"先幫您打開選單操作："
         )
         return await start(update, context)
 
