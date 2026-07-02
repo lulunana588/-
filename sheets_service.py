@@ -347,13 +347,16 @@ def mark_payment_paid(row: int, paid_date: str = None, note: str = None):
     }
 
 
-# 進度完全走完（已提交請款單及發票）才算「已完成」，其餘進度都視為還需要追蹤
-_COMPLETE_PROGRESS = "已提交請款單及發票"
+# 「已付」但進度還卡在候補發票，也要算進追蹤清單裡
+_NEEDS_TRACKING_EVEN_IF_PAID_PROGRESS = "已提交請款單候補發票"
 
 
 def get_pending_payments():
     """
-    取得所有「需要追蹤」的款項：付款狀態不是已付，或進度還沒到「已提交請款單及發票」。
+    取得所有「需要追蹤」的款項：
+      - 付款狀態是「待付」的，全部都算
+      - 付款狀態是「已付」但進度還是「已提交請款單候補發票」的，也算
+    其餘（已付且進度已完成）不算。
     回傳 {count, total, items: [{id, name, amount, status, progress}, ...]}
     """
     ws = get_payment_worksheet()
@@ -367,7 +370,9 @@ def get_pending_payments():
         status = row[5].strip() if len(row) > 5 else ""
         progress = row[4].strip() if len(row) > 4 else ""
 
-        needs_tracking = (status != "已付") or (progress != _COMPLETE_PROGRESS)
+        needs_tracking = (status != "已付") or (
+            progress == _NEEDS_TRACKING_EVEN_IF_PAID_PROGRESS
+        )
         if not needs_tracking:
             continue
 
