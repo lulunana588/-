@@ -303,6 +303,42 @@ def add_payment_record(
     }
 
 
+def find_near_pending_payment(name: str, amount: str, tolerance: int):
+    """
+    找出款項名稱完全相同、金額在誤差範圍內（但不完全相同）、且還沒付的既有列。
+    用於：金額有一點誤差時，先跳出來給使用者確認是不是同一筆，而不是直接自動合併或誤判成新的一筆。
+    回傳 [{row, amount}, ...]
+    """
+    ws = get_payment_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _payment_header_row_idx(all_values)
+
+    try:
+        target = int(amount.replace(",", "").strip())
+    except ValueError:
+        return []
+
+    matches = []
+    for i in range(header_idx + 1, len(all_values)):
+        row = all_values[i]
+        if not row or not row[0].strip():
+            continue
+        row_name = row[2].strip() if len(row) > 2 else ""
+        row_amount_raw = row[3].strip().replace(",", "") if len(row) > 3 else ""
+        row_status = row[5].strip() if len(row) > 5 else ""
+        if row_name != name or row_status == "已付":
+            continue
+        try:
+            row_amount = int(row_amount_raw)
+        except ValueError:
+            continue
+        if row_amount == target:
+            continue  # 完全相同的交給 find_pending_payment_exact 處理，這裡只找「有誤差」的
+        if abs(row_amount - target) <= tolerance:
+            matches.append({"row": i + 1, "amount": row_amount})
+    return matches
+
+
 def find_pending_payment_exact(name: str, amount: str):
     """
     找出款項名稱、金額都完全相同，且目前狀態不是「已付」的既有列。
