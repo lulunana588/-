@@ -303,6 +303,59 @@ def add_payment_record(
     }
 
 
+def find_pending_payment_exact(name: str, amount: str):
+    """
+    找出款項名稱、金額都完全相同，且目前狀態不是「已付」的既有列。
+    用於快速指令判斷：同一筆款項再送一次時，應該編輯既有的，而不是新增重複的一筆。
+    回傳符合的列號清單（1-indexed），可能是 0/1/多筆。
+    """
+    ws = get_payment_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _payment_header_row_idx(all_values)
+
+    amount = amount.replace(",", "").strip()
+    matches = []
+    for i in range(header_idx + 1, len(all_values)):
+        row = all_values[i]
+        if not row or not row[0].strip():
+            continue
+        row_name = row[2].strip() if len(row) > 2 else ""
+        row_amount = row[3].strip().replace(",", "") if len(row) > 3 else ""
+        row_status = row[5].strip() if len(row) > 5 else ""
+        if row_name == name and row_amount == amount and row_status != "已付":
+            matches.append(i + 1)
+    return matches
+
+
+def update_payment_fields(row: int, progress: str = None, status: str = None, paid_date: str = None, note: str = None):
+    """
+    更新既有款項列的進度/付款狀態/實付日期/備註（只更新有提供值的欄位，其餘保留原值）。
+    """
+    ws = get_payment_worksheet()
+    current = ws.row_values(row)
+
+    cur_progress = current[4] if len(current) > 4 else ""
+    cur_status = current[5] if len(current) > 5 else ""
+    cur_paid_date = current[6] if len(current) > 6 else ""
+    cur_note = current[7] if len(current) > 7 else ""
+
+    new_progress = progress if progress else cur_progress
+    new_status = status if status else cur_status
+    new_paid_date = paid_date if paid_date is not None and paid_date != "" else cur_paid_date
+    new_note = note if note else cur_note
+
+    ws.update(f"E{row}:H{row}", [[new_progress, new_status, new_paid_date, new_note]])
+
+    return {
+        "id": current[0] if current else "",
+        "name": current[2] if len(current) > 2 else "",
+        "amount": current[3] if len(current) > 3 else "",
+        "progress": new_progress,
+        "status": new_status,
+        "paid_date": new_paid_date,
+    }
+
+
 def find_payment_records(query: str, limit: int = 8):
     """依編號完全比對優先，否則用款項名稱模糊比對"""
     ws = get_payment_worksheet()
