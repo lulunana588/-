@@ -195,12 +195,19 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
       - 內容含「款項名稱」-> 走款項新增快速指令
       - 其他 -> 直接開選單
     """
+    bot_username = context.bot.username
+    raw_text = update.effective_message.text or ""
+
+    # 隱私模式關閉後機器人會收到群組裡所有訊息，一定要先確認「這則訊息真的有@到機器人自己」，
+    # 不能只看「訊息裡有沒有任何@提及」——不然別人互相 @ 對方時機器人也會誤判成被叫。
+    # 這個判斷要放在權限檢查之前，否則設了白名單時，不相關的訊息也會被誤發「沒有權限」提示。
+    if f"@{bot_username}".lower() not in raw_text.lower():
+        return ConversationHandler.END
+
     if not _authorized(update):
         await _reject(update)
         return ConversationHandler.END
 
-    bot_username = context.bot.username
-    raw_text = update.effective_message.text or ""
     remainder = _strip_mention(raw_text, bot_username)
 
     if not remainder:
