@@ -131,8 +131,69 @@ def _parse_quick_water_command(remainder: str, locations: list):
     return candidates[0], qty * delta_sign
 
 
+_PAYMENT_FIELD_ALIASES = {
+    "款項名稱": "name",
+    "名稱": "name",
+    "項目": "name",
+    "金額": "amount",
+    "金额": "amount",
+    "進度": "progress",
+    "付款狀態": "status",
+    "狀態": "status",
+    "送件日期": "submit_date",
+    "日期": "submit_date",
+    "實付日期": "paid_date",
+    "備註": "note",
+    "备注": "note",
+}
+
+
+def _parse_quick_payment_command(remainder: str):
+    """
+    嘗試解析多行「款項名稱: xxx / 金額: xxx / 進度: xxx / 付款狀態: xxx」格式的快速新增指令。
+    「款項名稱」跟「金額」為必填，其餘可省略。解析不到必填欄位就回傳 None（改開選單）。
+    """
+    fields = {}
+    for line in remainder.splitlines():
+        m = re.match(r"\s*([^:：]{1,10})[:：]\s*(.+?)\s*$", line)
+        if not m:
+            continue
+        raw_key, value = m.group(1).strip(), m.group(2).strip()
+        key = _PAYMENT_FIELD_ALIASES.get(raw_key)
+        if key and value:
+            fields[key] = value
+
+    if "name" not in fields or "amount" not in fields:
+        return None
+
+    amount = fields["amount"].replace(",", "").replace("NT$", "").replace("$", "").strip()
+    if not amount.isdigit():
+        return None
+
+    status = fields.get("status", "待付")
+    paid_date = fields.get("paid_date", "")
+    if status == "已付" and not paid_date:
+        paid_date = sheets.today_str()
+
+    return {
+        "name": fields["name"],
+        "amount": amount,
+        "submit_date": fields.get("submit_date", sheets.today_str()),
+        "progress": fields.get("progress", config.PAYMENT_PROGRESS_OPTIONS[0]),
+        "status": status,
+        "paid_date": paid_date,
+        "note": fields.get("note", ""),
+    }
+
+
 async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """群組訊息中 @機器人 時觸發：沒有附加文字就開選單；附加『地點 入庫/出庫 數量』就直接處理桶裝水登記。"""
+    """
+    群組訊息中 @機器人 時觸發：
+      - 沒有附加文字 -> 開選單
+      - 內容含「桶裝水」-> 走桶裝水快速指令
+      - 內容含「款項名稱」-> 走款項新增快速指令
+      - 其他 -> 直接開選單
+    """
     if not _authorized(update):
         await _reject(update)
         return ConversationHandler.END
@@ -144,6 +205,15 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not remainder:
         return await start(update, context)
 
+    if "桶裝水" in remainder:
+        return await _handle_quick_water(update, context, remainder)
+    if "款項名稱" in remainder:
+        return await _handle_quick_payment(update, context, remainder)
+
+    return await start(update, context)
+
+
+async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE, remainder: str):
     try:
         locations = sheets.list_water_locations()
     except Exception:
@@ -181,6 +251,46 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
         f"狀態：{result['status']}\n"
         f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
+        f"已更新"
+    )
+    return ConversationHandler.END
+
+
+async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, remainder: str):
+    parsed = _parse_quick_payment_command(remainder)
+    if not parsed:
+        await update.effective_message.reply_text(
+            f"{BOT_DISPLAY_NAME}\n"
+            f"沒看懂這筆款項資料，格式要像這樣（款項名稱、金額必填）：\n"
+            f"款項名稱: 公務車ETC費用\n金額: 38\n進度: 已提交請款單及發票\n付款狀態: 待付\n\n"
+            f"先幫您打開選單操作："
+        )
+        return await start(update, context)
+
+    processing_msg = await update.effective_message.reply_text(
+        f"{BOT_DISPLAY_NAME}\n🔄 動作：新增款項\n⏳ 處理中，請稍候..."
+    )
+    try:
+        result = sheets.add_payment_record(
+            name=parsed["name"],
+            amount=parsed["amount"],
+            submit_date=parsed["submit_date"],
+            progress=parsed["progress"],
+            status=parsed["status"],
+            paid_date=parsed["paid_date"],
+            note=parsed["note"],
+        )
+    except Exception as e:
+        logger.exception("快速指令新增款項失敗")
+        await processing_msg.edit_text(f"❌ 新增失敗：{e}")
+        return ConversationHandler.END
+
+    extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
+    await processing_msg.edit_text(
+        f"{BOT_DISPLAY_NAME}\n"
+        f"🔄 動作：新增款項　📅 日期：{result['submit_date']}\n"
+        f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
+        f"進度：{result['progress']}　付款狀態：{result['status']}{extra}\n"
         f"已更新"
     )
     return ConversationHandler.END
