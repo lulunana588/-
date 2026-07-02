@@ -71,31 +71,40 @@ def _strip_mention(text: str, bot_username: str) -> str:
 
 def _parse_quick_water_command(remainder: str, locations: list):
     """
-    嘗試解析類似「忠孝 出庫 5」「松山辦 入庫20」的一行快速指令。
+    嘗試解析一行快速指令，支援兩種寫法：
+      1) 帶正負號：「共享服務中心(忠孝) +10」「忠孝辦 -5」
+      2) 帶動作字：「忠孝 出庫 5」「松山辦 入庫20」
     比對成功回傳 (location_dict, delta)；比對不到回傳 None（會改成打開選單）。
     """
-    qty_match = re.search(r"(\d+)", remainder)
-    if not qty_match:
-        return None
-    qty = int(qty_match.group(1))
-    if qty <= 0:
-        return None
-
-    if any(w in remainder for w in _ACTION_OUT_WORDS) and not any(
-        w in remainder for w in _ACTION_IN_WORDS
-    ):
-        delta_sign = -1
-    elif any(w in remainder for w in _ACTION_IN_WORDS):
-        delta_sign = 1
+    signed_match = re.search(r"([+\-－＋])\s*(\d+)", remainder)
+    if signed_match:
+        qty = int(signed_match.group(2))
+        if qty <= 0:
+            return None
+        delta_sign = -1 if signed_match.group(1) in "-－" else 1
     else:
-        return None  # 看不出來是入庫還出庫，不要亂猜，交給選單流程
+        qty_match = re.search(r"(\d+)", remainder)
+        if not qty_match:
+            return None
+        qty = int(qty_match.group(1))
+        if qty <= 0:
+            return None
 
-    # 把數字、動作字、標點都拿掉，剩下的當作「地點關鍵字」，
+        if any(w in remainder for w in _ACTION_OUT_WORDS) and not any(
+            w in remainder for w in _ACTION_IN_WORDS
+        ):
+            delta_sign = -1
+        elif any(w in remainder for w in _ACTION_IN_WORDS):
+            delta_sign = 1
+        else:
+            return None  # 看不出來是入庫還出庫，不要亂猜，交給選單流程
+
+    # 把數字、正負號、動作字、標點、括號都拿掉，剩下的當作「地點關鍵字」，
     # 中文通常不會特地打空格分詞，所以用子字串比對而不是切詞比對
     core = remainder
     for w in (*_ACTION_IN_WORDS, *_ACTION_OUT_WORDS):
         core = core.replace(w, "")
-    core = re.sub(r"[\d\s　、，,]+", "", core)
+    core = re.sub(r"[\d\s　、，,+\-－＋()（）]+", "", core)
 
     best_len = 0
     candidates = []
