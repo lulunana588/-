@@ -162,7 +162,7 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ 處理中，請稍候..."
     )
     try:
-        result = sheets.update_water_stock(loc["row"], delta)
+        result = sheets.record_water_transaction(loc, delta)
     except Exception as e:
         logger.exception("快速指令更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
@@ -173,6 +173,7 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 動作：{action_label}　📅 日期：{result['date']}\n"
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
         f"狀態：{result['status']}\n"
+        f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
         f"已更新"
     )
     return ConversationHandler.END
@@ -324,7 +325,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result = sheets.update_water_stock(loc["row"], delta)
+        result = sheets.record_water_transaction(loc, delta)
     except Exception as e:
         logger.exception("更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
@@ -335,6 +336,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 動作：{action_label}　📅 日期：{result['date']}\n"
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
         f"狀態：{result['status']}\n"
+        f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
         f"已更新"
     )
     context.user_data.clear()
