@@ -275,6 +275,51 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return await start(update, context)
 
+    try:
+        matches = sheets.find_pending_payment_exact(parsed["name"], parsed["amount"])
+    except Exception:
+        logger.exception("快速指令查找既有款項失敗")
+        matches = []
+
+    if len(matches) > 1:
+        await update.effective_message.reply_text(
+            f"{BOT_DISPLAY_NAME}\n"
+            f"找到 {len(matches)} 筆「{parsed['name']}」金額相同、還沒付的款項，不確定要改哪一筆。\n"
+            f"改用選單裡的「更新付款狀態」搜尋、指定要改的那一筆："
+        )
+        return await start(update, context)
+
+    if len(matches) == 1:
+        # 已經有一筆同名稱、同金額、還沒付的款項 -> 編輯它，不新增重複的一筆
+        row = matches[0]
+        processing_msg = await update.effective_message.reply_text(
+            f"{BOT_DISPLAY_NAME}\n🔄 動作：更新既有款項\n⏳ 處理中，請稍候..."
+        )
+        try:
+            result = sheets.update_payment_fields(
+                row,
+                progress=parsed["progress"],
+                status=parsed["status"],
+                paid_date=parsed["paid_date"],
+                note=parsed["note"] or None,
+            )
+        except Exception as e:
+            logger.exception("快速指令更新既有款項失敗")
+            await processing_msg.edit_text(f"❌ 更新失敗：{e}")
+            return ConversationHandler.END
+
+        extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
+        await processing_msg.edit_text(
+            f"{BOT_DISPLAY_NAME}\n"
+            f"🔄 動作：更新既有款項　📅 {sheets.today_str()}\n"
+            f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
+            f"進度：{result['progress']}　付款狀態：{result['status']}{extra}\n"
+            f"（找到既有款項，已直接編輯，沒有新增重複的一筆）\n"
+            f"已更新"
+        )
+        return ConversationHandler.END
+
+    # 沒有找到同名稱同金額的既有款項 -> 新增一筆
     processing_msg = await update.effective_message.reply_text(
         f"{BOT_DISPLAY_NAME}\n🔄 動作：新增款項\n⏳ 處理中，請稍候..."
     )
