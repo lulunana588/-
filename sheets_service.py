@@ -259,9 +259,18 @@ def get_next_payment_id(all_values=None, header_idx=None) -> int:
     return max_id + 1
 
 
-def add_payment_record(name: str, amount: str, submit_date: str, progress: str):
+def add_payment_record(
+    name: str,
+    amount: str,
+    submit_date: str,
+    progress: str,
+    status: str = "待付",
+    paid_date: str = "",
+    note: str = "",
+):
     """
-    新增一筆款項紀錄。編號自動遞增，付款狀態預設「待付」，實付日期/備註留空。
+    新增一筆款項紀錄。編號自動遞增。
+    status/paid_date/note 預設留空（待付狀態），若快速指令直接標明「已付」則會一併寫入。
     """
     ws = get_payment_worksheet()
     all_values = ws.get_all_values()
@@ -280,7 +289,7 @@ def add_payment_record(name: str, amount: str, submit_date: str, progress: str):
 
     ws.update(
         f"A{target_row}:H{target_row}",
-        [[new_id, submit_date, name, amount, progress, "待付", "", ""]],
+        [[new_id, submit_date, name, amount, progress, status, paid_date, note]],
     )
     return {
         "id": new_id,
@@ -289,6 +298,8 @@ def add_payment_record(name: str, amount: str, submit_date: str, progress: str):
         "amount": amount,
         "submit_date": submit_date,
         "progress": progress,
+        "status": status,
+        "paid_date": paid_date,
     }
 
 
