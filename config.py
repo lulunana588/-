@@ -32,6 +32,7 @@ PAYMENT_GID = int(os.getenv("PAYMENT_GID", "1471681931"))
 # 款項追蹤表新增款項時，「進度」欄位的常用選項（可自行增修）
 PAYMENT_PROGRESS_OPTIONS = [
     "已提交請款單及發票",
+    "已提交請款單候補發票",
     "已提交請款單，未附發票",
     "尚未提交",
 ]
