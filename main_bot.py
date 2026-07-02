@@ -67,6 +67,14 @@ _WATER_OUT_WORD = "送水"  # 送水 = 扣桶（出庫）
 _WATER_IN_WORD = "儲值"   # 儲值 = 補桶（入庫）
 
 
+def _operator_name(update: Update) -> str:
+    """從 Telegram 訊息取得操作人顯示名稱，優先用全名，沒有就用帳號"""
+    user = update.effective_user
+    if not user:
+        return "未知"
+    return user.full_name or (f"@{user.username}" if user.username else str(user.id))
+
+
 def _strip_mention(text: str, bot_username: str) -> str:
     return re.sub(rf"@{re.escape(bot_username)}\b", "", text, flags=re.IGNORECASE).strip()
 
@@ -101,6 +109,14 @@ def _parse_quick_water_command(remainder: str, locations: list):
     for w in (_WATER_KEYWORD, _WATER_OUT_WORD, _WATER_IN_WORD, "桶"):
         core = core.replace(w, "")
     core = re.sub(r"[\d\s　、，,()（）]+", "", core)
+
+    # 先查使用者自訂的別名對照表（config.WATER_LOCATION_ALIASES），
+    # 查到就直接用，不用再跑模糊比對；查不到才照原本的關鍵字子字串比對邏輯
+    for alias, target_text in config.WATER_LOCATION_ALIASES.items():
+        if alias and alias in core:
+            for loc in locations:
+                if target_text in loc["location"]:
+                    return loc, qty * delta_sign
 
     best_len = 0
     candidates = []
@@ -240,6 +256,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
 
     loc, delta = parsed
     action_label = "入庫" if delta > 0 else "出庫"
+    operator = _operator_name(update)
 
     processing_msg = await update.effective_message.reply_text(
         f"{BOT_DISPLAY_NAME}\n"
@@ -247,7 +264,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"⏳ 處理中，請稍候..."
     )
     try:
-        result = sheets.record_water_transaction(loc, delta)
+        result = sheets.record_water_transaction(loc, delta, note=operator)
     except Exception as e:
         logger.exception("快速指令更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
@@ -259,6 +276,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
         f"狀態：{result['status']}\n"
         f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
+        f"👤 操作人：{operator}\n"
         f"已更新"
     )
     return ConversationHandler.END
@@ -275,6 +293,9 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return await start(update, context)
 
+    operator = _operator_name(update)
+    note_for_sheet = f"{parsed['note']}｜{operator}" if parsed["note"] else operator
+
     try:
         matches = sheets.find_pending_payment_exact(parsed["name"], parsed["amount"])
     except Exception:
@@ -290,37 +311,80 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         return await start(update, context)
 
     if len(matches) == 1:
-        # 已經有一筆同名稱、同金額、還沒付的款項 -> 編輯它，不新增重複的一筆
-        row = matches[0]
-        processing_msg = await update.effective_message.reply_text(
-            f"{BOT_DISPLAY_NAME}\n🔄 動作：更新既有款項\n⏳ 處理中，請稍候..."
+        return await _apply_payment_update(
+            update, matches[0], parsed, operator, note_for_sheet
         )
-        try:
-            result = sheets.update_payment_fields(
-                row,
-                progress=parsed["progress"],
-                status=parsed["status"],
-                paid_date=parsed["paid_date"],
-                note=parsed["note"] or None,
-            )
-        except Exception as e:
-            logger.exception("快速指令更新既有款項失敗")
-            await processing_msg.edit_text(f"❌ 更新失敗：{e}")
-            return ConversationHandler.END
 
-        extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
-        await processing_msg.edit_text(
+    # 沒有找到金額完全相同的既有款項，再看看有沒有金額很接近的（可能是打錯字/誤差）
+    try:
+        near_matches = sheets.find_near_pending_payment(
+            parsed["name"], parsed["amount"], config.PAYMENT_AMOUNT_TOLERANCE
+        )
+    except Exception:
+        logger.exception("快速指令查找相近既有款項失敗")
+        near_matches = []
+
+    if len(near_matches) == 1:
+        near = near_matches[0]
+        context.user_data["pending_near_payment"] = {
+            "row": near["row"],
+            "parsed": parsed,
+            "operator": operator,
+            "note_for_sheet": note_for_sheet,
+        }
+        keyboard = [
+            [
+                InlineKeyboardButton("✅ 是同一筆，更新", callback_data="qpnear_update"),
+                InlineKeyboardButton("➕ 不是，新增一筆", callback_data="qpnear_addnew"),
+            ]
+        ]
+        await update.effective_message.reply_text(
             f"{BOT_DISPLAY_NAME}\n"
-            f"🔄 動作：更新既有款項　📅 {sheets.today_str()}\n"
-            f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
-            f"進度：{result['progress']}　付款狀態：{result['status']}{extra}\n"
-            f"（找到既有款項，已直接編輯，沒有新增重複的一筆）\n"
-            f"已更新"
+            f"找到一筆金額接近但不完全相同的既有款項：\n"
+            f"「{parsed['name']}」既有金額 NT${near['amount']:,}，這次輸入 NT${parsed['amount']}\n\n"
+            f"是同一筆款項嗎？",
+            reply_markup=InlineKeyboardMarkup(keyboard),
         )
         return ConversationHandler.END
 
-    # 沒有找到同名稱同金額的既有款項 -> 新增一筆
-    processing_msg = await update.effective_message.reply_text(
+    # 沒有金額相符或相近的既有款項 -> 新增一筆
+    return await _apply_payment_add(update, parsed, operator, note_for_sheet)
+
+
+async def _apply_payment_update(update_or_query, row, parsed, operator, note_for_sheet):
+    message = update_or_query.effective_message if isinstance(update_or_query, Update) else update_or_query.message
+    processing_msg = await message.reply_text(
+        f"{BOT_DISPLAY_NAME}\n🔄 動作：更新既有款項\n⏳ 處理中，請稍候..."
+    )
+    try:
+        result = sheets.update_payment_fields(
+            row,
+            progress=parsed["progress"],
+            status=parsed["status"],
+            paid_date=parsed["paid_date"],
+            note=note_for_sheet,
+        )
+    except Exception as e:
+        logger.exception("快速指令更新既有款項失敗")
+        await processing_msg.edit_text(f"❌ 更新失敗：{e}")
+        return ConversationHandler.END
+
+    extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
+    await processing_msg.edit_text(
+        f"{BOT_DISPLAY_NAME}\n"
+        f"🔄 動作：更新既有款項　📅 {sheets.today_str()}\n"
+        f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
+        f"進度：{result['progress']}　付款狀態：{result['status']}{extra}\n"
+        f"（找到既有款項，已直接編輯，沒有新增重複的一筆）\n"
+        f"👤 操作人：{operator}\n"
+        f"已更新"
+    )
+    return ConversationHandler.END
+
+
+async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet):
+    message = update_or_query.effective_message if isinstance(update_or_query, Update) else update_or_query.message
+    processing_msg = await message.reply_text(
         f"{BOT_DISPLAY_NAME}\n🔄 動作：新增款項\n⏳ 處理中，請稍候..."
     )
     try:
@@ -331,7 +395,7 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
             progress=parsed["progress"],
             status=parsed["status"],
             paid_date=parsed["paid_date"],
-            note=parsed["note"],
+            note=note_for_sheet,
         )
     except Exception as e:
         logger.exception("快速指令新增款項失敗")
@@ -344,8 +408,32 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         f"🔄 動作：新增款項　📅 日期：{result['submit_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
         f"進度：{result['progress']}　付款狀態：{result['status']}{extra}\n"
+        f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    return ConversationHandler.END
+
+
+async def quick_payment_near_match(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    pending = context.user_data.pop("pending_near_payment", None)
+    if not pending:
+        await query.edit_message_text(f"{BOT_DISPLAY_NAME}\n❌ 找不到待確認的資料，可能已逾時，請重新輸入指令。")
+        return
+
+    await query.edit_message_text(f"{BOT_DISPLAY_NAME}\n⏳ 處理中，請稍候...")
+
+    if query.data == "qpnear_update":
+        result_state = await _apply_payment_update(
+            query, pending["row"], pending["parsed"], pending["operator"], pending["note_for_sheet"]
+        )
+    else:
+        result_state = await _apply_payment_add(
+            query, pending["parsed"], pending["operator"], pending["note_for_sheet"]
+        )
+    return result_state
     return ConversationHandler.END
 
 
@@ -487,6 +575,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     loc = context.user_data["water_target"]
     delta = qty if op == "in" else -qty
     action_label = "入庫" if op == "in" else "出庫"
+    operator = _operator_name(update)
 
     processing_msg = await update.message.reply_text(
         f"{BOT_DISPLAY_NAME}\n"
@@ -495,7 +584,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result = sheets.record_water_transaction(loc, delta)
+        result = sheets.record_water_transaction(loc, delta, note=operator)
     except Exception as e:
         logger.exception("更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
@@ -507,6 +596,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
         f"狀態：{result['status']}\n"
         f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
+        f"👤 操作人：{operator}\n"
         f"已更新"
     )
     context.user_data.clear()
@@ -596,6 +686,7 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     idx = int(query.data.replace("prog_", ""))
     progress = config.PAYMENT_PROGRESS_OPTIONS[idx]
+    operator = _operator_name(update)
 
     await query.edit_message_text(
         f"{BOT_DISPLAY_NAME}\n📝 新增款項\n⏳ 處理中，請稍候..."
@@ -607,6 +698,7 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount=context.user_data["pay_amount"],
             submit_date=context.user_data["pay_date"],
             progress=progress,
+            note=operator,
         )
     except Exception as e:
         logger.exception("新增款項失敗")
@@ -618,6 +710,7 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 動作：新增款項　📅 日期：{result['submit_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
         f"進度：{result['progress']}　付款狀態：待付\n"
+        f"👤 操作人：{operator}\n"
         f"已更新"
     )
     context.user_data.clear()
@@ -688,6 +781,8 @@ async def pay_update_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     note = update.message.text.strip()
     note = None if note in ("略過", "skip", "") else note
+    operator = _operator_name(update)
+    combined_note = f"{note}｜{operator}" if note else operator
 
     row = context.user_data["pay_target_row"]
     processing = await update.message.reply_text(
@@ -695,7 +790,7 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result = sheets.mark_payment_paid(row, note=note)
+        result = sheets.mark_payment_paid(row, note=combined_note)
     except Exception as e:
         logger.exception("更新付款狀態失敗")
         await processing.edit_text(f"❌ 更新失敗：{e}")
@@ -706,6 +801,7 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔄 動作：更新付款狀態　📅 日期：{result['paid_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
         f"付款狀態：待付 → 已付\n"
+        f"👤 操作人：{operator}\n"
         f"已更新"
     )
     context.user_data.clear()
@@ -816,6 +912,7 @@ def build_app() -> Application:
     )
 
     app.add_handler(conv)
+    app.add_handler(CallbackQueryHandler(quick_payment_near_match, pattern="^qpnear_(update|addnew)$"))
 
     if config.REMINDER_CHAT_ID and app.job_queue is not None:
         app.job_queue.run_daily(
