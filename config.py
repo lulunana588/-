@@ -18,10 +18,19 @@ GOOGLE_SERVICE_ACCOUNT_JSON = os.getenv(
 WATER_SHEET_ID = os.getenv(
     "WATER_SHEET_ID", "1rBdc0jHRmunHJ01eA5hkdF25mCWgfW8WUbCuUHeeFYc"
 )
-WATER_GID = int(os.getenv("WATER_GID", "332866068"))
+WATER_GID = int(os.getenv("WATER_GID", "2140693624"))
 
 # 剩餘桶數 <= 此門檻，狀態自動標示為「⚠️ 需補貨」
 WATER_LOW_STOCK_THRESHOLD = int(os.getenv("WATER_LOW_STOCK_THRESHOLD", "20"))
+
+# 桶裝水地點「別名」對照表：左邊是您平常習慣打的簡稱，右邊要對到「總覽」表地點欄位裡
+# 實際出現的文字（子字串即可）。快速指令解析時會先查這個表，查不到才用關鍵字模糊比對。
+# 可以自行增修，例如：
+#   WATER_LOCATION_ALIASES = {
+#       "敦化": "共享服務中心忠孝辦",
+#       "松山辦水寶貝": "客服中心松山辦",
+#   }
+WATER_LOCATION_ALIASES = {}
 
 # --- 款項追蹤表 ---
 PAYMENT_SHEET_ID = os.getenv(
@@ -36,6 +45,10 @@ PAYMENT_PROGRESS_OPTIONS = [
     "已提交請款單，未附發票",
     "尚未提交",
 ]
+
+# 快速指令比對「是否為同一筆既有款項」時，金額允許的誤差範圍（NT$）
+# 完全相同金額 -> 直接視為同一筆自動編輯；金額在誤差範圍內但不完全相同 -> 會先跳出確認，不會自動合併
+PAYMENT_AMOUNT_TOLERANCE = int(os.getenv("PAYMENT_AMOUNT_TOLERANCE", "50"))
 
 # --- 允許授權可操作此機器人的 Telegram 使用者 (留空 = 不限制，建議正式上線後填寫) ---
 _allowed = os.getenv("ALLOWED_USER_IDS", "")
