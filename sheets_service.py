@@ -1,8 +1,10 @@
 # sheets_service.py
 # 封裝所有跟 Google Sheets 直接讀寫的邏輯（用服務帳戶 gspread，不用 GAS）
 
+import re
 import datetime
 import gspread
+from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
 
 import config
@@ -126,6 +128,104 @@ def update_water_stock(row: int, delta: int):
         "date": new_date,
         "status": new_status,
     }
+
+
+# ---------------------------------------------------------
+# 桶裝水 - 個別地點分頁（逐筆記錄：日期/備註/加值桶數/扣除桶數/剩餘數量）
+# ---------------------------------------------------------
+
+# 總覽表的「地點」欄位若帶有廠商後綴，代表該地點分頁裡有兩組並排的記錄區塊
+# 比對到「水寶貝」就用右邊區塊（G欄開始），其餘（含華生／無後綴）都用左邊區塊（A欄開始）
+_SUPPLIER_SUFFIX_RE = re.compile(r"^(?P<base>.*?)[（(](?P<supplier>[^（()）]+)[）)]$")
+
+_LOG_COLS = ("日期", "備註", "加值桶數", "扣除桶數", "剩餘數量")  # 每個區塊固定5欄
+
+
+def _resolve_detail_target(location_name: str):
+    """回傳 (個別分頁標題, 區塊起始欄號)。區塊起始欄號 1=A欄, 7=G欄"""
+    m = _SUPPLIER_SUFFIX_RE.match(location_name.strip())
+    if not m:
+        return location_name.strip(), 1
+    base = m.group("base").strip()
+    supplier = m.group("supplier").strip()
+    col_start = 7 if "水寶貝" in supplier else 1
+    return base, col_start
+
+
+def get_water_detail_worksheet(tab_title: str):
+    sh = get_client().open_by_key(config.WATER_SHEET_ID)
+    return sh.worksheet(tab_title)
+
+
+def append_water_log(location_name: str, delta: int, note: str = ""):
+    """
+    在該地點的個別分頁新增一筆逐日記錄，比照人工登記的格式。
+    回傳 dict：{tab, new_balance}
+    """
+    tab_title, col_start = _resolve_detail_target(location_name)
+    ws = get_water_detail_worksheet(tab_title)
+    values = ws.get_all_values()
+
+    # 找到這個區塊的標題列（該欄第一格內容為「日期」的那一列）
+    header_idx = None
+    for i, row in enumerate(values):
+        cell = row[col_start - 1] if len(row) >= col_start else ""
+        if cell.strip() == "日期":
+            header_idx = i
+            break
+    if header_idx is None:
+        raise RuntimeError(f"在分頁「{tab_title}」找不到「日期」標題欄，請確認表格式未被改動")
+
+    balance_col = col_start + 4  # 剩餘數量欄，相對日期欄 +4
+
+    # 找這個區塊目前最後一筆的「剩餘數量」，當作這次加減的起始庫存
+    prev_balance = 0
+    last_filled_idx = header_idx
+    for i in range(header_idx + 1, len(values)):
+        row = values[i]
+        date_cell = row[col_start - 1] if len(row) >= col_start else ""
+        if not date_cell.strip():
+            break
+        last_filled_idx = i
+        bal_cell = row[balance_col - 1] if len(row) >= balance_col else ""
+        if bal_cell.strip():
+            try:
+                prev_balance = int(bal_cell.strip())
+            except ValueError:
+                pass
+
+    target_row = last_filled_idx + 2 if last_filled_idx > header_idx else header_idx + 2
+    # (+2 是因為 header_idx / last_filled_idx 是 0-indexed，且要寫在下一列)
+
+    new_balance = max(0, prev_balance + delta)
+    add_qty = delta if delta > 0 else ""
+    minus_qty = -delta if delta < 0 else ""
+
+    start_cell = rowcol_to_a1(target_row, col_start)
+    end_cell = rowcol_to_a1(target_row, col_start + 4)
+    ws.update(
+        f"{start_cell}:{end_cell}",
+        [[today_str(), note, add_qty, minus_qty, new_balance]],
+    )
+
+    return {"tab": tab_title, "new_balance": new_balance}
+
+
+def record_water_transaction(loc: dict, delta: int, note: str = ""):
+    """
+    同時更新①總覽分頁的目前庫存 ②該地點個別分頁的逐筆記錄。
+    loc 是 list_water_locations() 回傳的其中一筆（需要 row / location）。
+    """
+    summary_result = update_water_stock(loc["row"], delta)
+    try:
+        detail_result = append_water_log(loc["location"], delta, note=note)
+    except Exception:
+        # 總覽已經寫成功，個別分頁若失敗仍要讓使用者知道總覽有更新，
+        # 但這個例外要往上拋，讓呼叫端可以分開告知使用者
+        raise
+    summary_result["detail_tab"] = detail_result["tab"]
+    summary_result["detail_balance"] = detail_result["new_balance"]
+    return summary_result
 
 
 # =========================================================
