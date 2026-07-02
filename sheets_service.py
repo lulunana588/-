@@ -395,3 +395,52 @@ def get_pending_payments():
 
     total = sum(i["amount"] for i in items)
     return {"count": len(items), "total": total, "items": items}
+
+
+# =========================================================
+# 綜辦文件繳回追蹤表
+# =========================================================
+
+_DOC_TRACKING_STATUSES = ("待繳回綜辦", "已繳回綜辦", "已回綜辦")
+
+
+def get_doc_worksheet():
+    return _open_worksheet(config.DOC_SHEET_ID, config.DOC_GID)
+
+
+def _doc_header_row_idx(all_values):
+    for i, row in enumerate(all_values):
+        if row and row[0].strip() == "收到日期":
+            return i
+    raise RuntimeError("找不到綜辦文件表的標題列（收到日期/公司/...），請確認表格式未被改動")
+
+
+def get_pending_docs():
+    """
+    取得所有「狀態」欄是「待繳回綜辦」或「已繳回綜辦」的文件列
+    （「已交至財務部」跟其他狀態不算）。
+    回傳 {count, items: [{received_date, company, doc_type, detail, status}, ...]}
+    """
+    ws = get_doc_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _doc_header_row_idx(all_values)
+
+    items = []
+    for row in all_values[header_idx + 1 :]:
+        if not row or not row[0].strip():
+            continue
+        status = row[4].strip() if len(row) > 4 else ""
+        if status not in _DOC_TRACKING_STATUSES:
+            continue
+
+        items.append(
+            {
+                "received_date": row[0].strip(),
+                "company": row[1].strip() if len(row) > 1 else "",
+                "doc_type": row[2].strip() if len(row) > 2 else "",
+                "detail": row[3].strip() if len(row) > 3 else "",
+                "status": status,
+            }
+        )
+
+    return {"count": len(items), "items": items}

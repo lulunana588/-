@@ -667,41 +667,61 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def send_payment_reminder(context: ContextTypes.DEFAULT_TYPE):
     if not config.REMINDER_CHAT_ID:
-        logger.warning("REMINDER_CHAT_ID 未設定，跳過款項追蹤提醒")
+        logger.warning("REMINDER_CHAT_ID 未設定，跳過每日提醒")
         return
 
+    sections = [f"{BOT_DISPLAY_NAME}\n📋 早安！今天的提醒　📅 {sheets.today_str()}"]
+
+    # --- 款項追蹤 ---
     try:
-        summary = sheets.get_pending_payments()
+        payment_summary = sheets.get_pending_payments()
     except Exception:
-        logger.exception("讀取款項追蹤表失敗，提醒推播中止")
-        return
+        logger.exception("讀取款項追蹤表失敗，這部分跳過")
+        payment_summary = None
 
-    if summary["count"] == 0:
-        text = (
-            f"{BOT_DISPLAY_NAME}\n"
-            f"📋 早安！今天的款項追蹤提醒　📅 {sheets.today_str()}\n\n"
-            f"目前沒有需要追蹤的款項 🎉"
-        )
-    else:
-        lines = "\n".join(
-            f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
-            f" - {item['status']}／{item['progress']}"
-            for i, item in enumerate(summary["items"][:15])
-        )
-        more = ""
-        if summary["count"] > 15:
-            more = f"\n...還有 {summary['count'] - 15} 筆，輸入 /start 查完整清單"
-        text = (
-            f"{BOT_DISPLAY_NAME}\n"
-            f"📋 早安！今天的款項追蹤提醒　📅 {sheets.today_str()}\n\n"
-            f"需要追蹤：{summary['count']} 筆，共 NT${summary['total']:,}\n\n"
-            f"{lines}{more}"
-        )
+    if payment_summary is not None:
+        if payment_summary["count"] == 0:
+            sections.append("💰 款項追蹤：目前沒有需要追蹤的款項 🎉")
+        else:
+            lines = "\n".join(
+                f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
+                f" - {item['status']}／{item['progress']}"
+                for i, item in enumerate(payment_summary["items"][:15])
+            )
+            more = ""
+            if payment_summary["count"] > 15:
+                more = f"\n...還有 {payment_summary['count'] - 15} 筆，輸入 /start 查完整清單"
+            sections.append(
+                f"💰 款項追蹤：{payment_summary['count']} 筆，共 NT${payment_summary['total']:,}\n{lines}{more}"
+            )
+
+    # --- 綜辦文件繳回 ---
+    try:
+        doc_summary = sheets.get_pending_docs()
+    except Exception:
+        logger.exception("讀取綜辦文件表失敗，這部分跳過")
+        doc_summary = None
+
+    if doc_summary is not None:
+        if doc_summary["count"] == 0:
+            sections.append("📮 綜辦文件繳回：目前沒有待處理的文件 🎉")
+        else:
+            lines = "\n".join(
+                f"{i + 1}. {item['received_date']} {item['company']}"
+                f" - {item['doc_type']}（{item['status']}）"
+                for i, item in enumerate(doc_summary["items"][:15])
+            )
+            more = ""
+            if doc_summary["count"] > 15:
+                more = f"\n...還有 {doc_summary['count'] - 15} 筆"
+            sections.append(f"📮 綜辦文件繳回：{doc_summary['count']} 筆\n{lines}{more}")
+
+    text = "\n\n".join(sections)
 
     try:
         await context.bot.send_message(chat_id=config.REMINDER_CHAT_ID, text=text)
     except Exception:
-        logger.exception("發送款項追蹤提醒失敗")
+        logger.exception("發送每日提醒失敗")
 
 
 # =========================================================

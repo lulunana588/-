@@ -44,3 +44,9 @@ ALLOWED_USER_IDS = {int(x) for x in _allowed.split(",") if x.strip().isdigit()}
 # --- 每日款項追蹤提醒（週一~週五 台灣時間 10:05 私訊提醒）---
 _reminder_chat_id = os.getenv("REMINDER_CHAT_ID", "8656008330")
 REMINDER_CHAT_ID = int(_reminder_chat_id) if _reminder_chat_id.strip().isdigit() else None
+
+# --- 綜辦文件繳回追蹤表 ---
+DOC_SHEET_ID = os.getenv(
+    "DOC_SHEET_ID", "1jirTj5n-V5nEwoOmRhI0NQ1Lz9zIovLtwTFR0hCvD9Y"
+)
+DOC_GID = int(os.getenv("DOC_GID", "0"))
