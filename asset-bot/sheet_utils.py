@@ -63,6 +63,22 @@ def find_asset(office: str, asset_id: str):
     return None
 
 
+def find_asset_any_office(asset_id: str):
+    """
+    不指定辦公室,自動在所有 OFFICES 底下搜尋這個編號。
+    回傳一個 list,每個元素是 (office, sheet_name, row_number, record_dict)。
+    正常情況下應該只會有 0 或 1 筆;如果同一編號在兩間辦公室都存在,
+    會回傳多筆,呼叫端應提示使用者手動指定辦公室。
+    """
+    matches = []
+    for office in OFFICES:
+        found = find_asset(office, asset_id)
+        if found:
+            sheet_name, row, record = found
+            matches.append((office, sheet_name, row, record))
+    return matches
+
+
 def update_field(office: str, sheet_name: str, row: int, field_key: str, value: str):
     """更新單一欄位(所在區域/使用部門/員編/保管人/使用狀況等)"""
     ws = get_worksheet(office, sheet_name)
