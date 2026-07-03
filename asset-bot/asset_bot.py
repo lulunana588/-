@@ -33,6 +33,7 @@ from config import (
     STATUS_OPTIONS,
     EDITABLE_FIELDS,
     BATCH_ACTION_TYPES,
+    DETAIL_SHEETS,
 )
 import sheet_utils
 import llm_parser
@@ -70,17 +71,16 @@ def format_record(record: dict, office: str, note: str) -> str:
     ]
     if note:
         lines.append(f"備註紀錄:\n{note}")
+    lines.append(
+        "\n✏️ 要改欄位,直接貼(可只填要改的幾行):\n"
+        "所在區域:xxx\n使用部門:xxx\n員編:xxx\n保管人:xxx\n使用狀況:使用中/庫存\n備註:xxx"
+    )
     return "\n".join(lines)
 
 
 def record_keyboard():
     keyboard = [
         [InlineKeyboardButton("🔁 切換使用狀況(庫存⇄使用中)", callback_data="edit:status")],
-        [InlineKeyboardButton("📍 修改所在區域", callback_data="edit:location")],
-        [InlineKeyboardButton("🏢 修改使用部門", callback_data="edit:department")],
-        [InlineKeyboardButton("🆔 修改員編", callback_data="edit:emp_id")],
-        [InlineKeyboardButton("🙋 修改保管人", callback_data="edit:keeper")],
-        [InlineKeyboardButton("📝 新增備註紀錄", callback_data="edit:note")],
         [InlineKeyboardButton("🔎 查詢別筆", callback_data="new_query")],
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -218,6 +218,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if entry["ok"] and entry["found"]:
                 sheet_utils.update_fields(entry["office"], entry["sheet"], entry["row"], entry["fields"])
                 sheet_utils.append_note(entry["office"], entry["sheet"], entry["row"], entry["note"])
+                log_action = entry.get("log_action")
+                if log_action:
+                    who = log_action["who"] or entry["office"]
+                    if log_action["target"] == "local":
+                        sheet_utils.append_local_log(
+                            entry["office"], log_action["task"], who, log_action["desc"],
+                            entry["asset_id"], entry["record_name"], entry["record_spec"],
+                        )
+                    elif log_action["target"] == "transfer":
+                        sheet_utils.append_transfer_log(
+                            entry["office"], log_action["task"], who, log_action["desc"],
+                            entry["asset_id"], entry["record_name"], entry["record_spec"],
+                        )
                 success += 1
             else:
                 skipped += 1
@@ -226,6 +239,32 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "batch_cancel":
         state["pending_batch"] = None
+        await query.edit_message_text("已取消,沒有寫入任何資料。")
+
+    elif data == "single_confirm":
+        pending = state.get("pending_single")
+        if not pending:
+            await query.edit_message_text("⚠️ 沒有待確認的異動。")
+            return
+        kind = pending["kind"]
+
+        if kind == "purchase":
+            row = sheet_utils.create_asset(
+                pending["office"], pending["category"], pending["asset_id"],
+                pending["name"], pending["spec"], pending["location"],
+            )
+            sheet_utils.append_transfer_log(
+                pending["office"], "購入", pending["office"], pending.get("desc", "新購入"),
+                pending["asset_id"], pending["name"], pending["spec"],
+            )
+            await query.edit_message_text(
+                f"✅ 已新增資產 {pending['asset_id']}({pending['office']}/{pending['category']}),第 {row} 列"
+            )
+
+        state["pending_single"] = None
+
+    elif data == "single_cancel":
+        state["pending_single"] = None
         await query.edit_message_text("已取消,沒有寫入任何資料。")
 
 
@@ -247,7 +286,7 @@ async def run_batch_preview(message, chat_id: int, text: str):
     lines = [f"📋 解析出 {len(actions)} 筆異動,請確認:\n"]
     for a in actions:
         asset_id = a["asset_id"]
-        ok, fields, note, error_msg = batch_rules.build_plan(a)
+        ok, fields, note, error_msg, log_action = batch_rules.build_plan(a)
         status, result = resolve_asset(asset_id)
 
         if status == "not_found":
@@ -270,6 +309,9 @@ async def run_batch_preview(message, chat_id: int, text: str):
             "office": office,
             "sheet": sheet_name,
             "row": row,
+            "log_action": log_action,
+            "record_name": record.get("name", ""),
+            "record_spec": record.get("spec") or record.get("spec2", ""),
         }
         pending.append(entry)
 
@@ -277,7 +319,10 @@ async def run_batch_preview(message, chat_id: int, text: str):
             lines.append(f"⚠️ {asset_id}({a['type']}):{error_msg},不會自動寫入")
         else:
             field_desc = "、".join(f"{FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
-            lines.append(f"✅ {asset_id}({a['type']},{office}):{field_desc or '(欄位不變)'}\n　備註+「{note}」")
+            extra = "、另記一筆到「本点管理」" if log_action and log_action["target"] == "local" else (
+                "、另記一筆到「跨點調撥」" if log_action else ""
+            )
+            lines.append(f"✅ {asset_id}({a['type']},{office}):{field_desc or '(欄位不變)'}{extra}\n　備註+「{note}」")
 
     valid_count = sum(1 for e in pending if e["ok"] and e["found"])
     lines.append(f"\n共 {valid_count} 筆會被寫入,{len(pending) - valid_count} 筆會略過。")
@@ -293,7 +338,115 @@ async def run_batch_preview(message, chat_id: int, text: str):
     await message.reply_text("\n".join(lines), reply_markup=keyboard)
 
 
+def parse_field_edit_lines(text: str):
+    """
+    解析多行「欄位:值」文字,回傳 (fields:dict, note_text:str|None, unknown_lines:list)
+    可辨識:所在區域/使用部門/員編/保管人/使用狀況/備註,每行一個,順序不拘。
+    """
+    fields = {}
+    note_text = None
+    unknown = []
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        label, value = None, None
+        for sep in ("：", ":"):
+            if sep in line:
+                label, value = line.split(sep, 1)
+                label, value = label.strip(), value.strip()
+                break
+        if label is None:
+            unknown.append(line)
+            continue
+        if label == "備註":
+            note_text = value
+        elif label in FIELD_LABELS:
+            field_key = FIELD_LABELS[label]
+            if field_key == "status" and value not in STATUS_OPTIONS:
+                unknown.append(line)
+                continue
+            fields[field_key] = value
+        else:
+            unknown.append(line)
+    return fields, note_text, unknown
+
+
+def looks_like_field_edit(text: str) -> bool:
+    return any(("：" in line or ":" in line) for line in text.splitlines() if line.strip())
+
+
 # ---------- 文字輸入處理(選單流程的下一步 + 快速指令) ----------
+
+def confirm_cancel_keyboard():
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("✅ 確認寫入", callback_data="single_confirm")],
+            [InlineKeyboardButton("❌ 取消", callback_data="single_cancel")],
+        ]
+    )
+
+
+def parse_label_value_lines(text: str) -> dict:
+    """通用的多行「標籤:值」解析,不限制標籤種類(給調入/調出/報廢/購入用)"""
+    result = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        for sep in ("：", ":"):
+            if sep in line:
+                label, value = line.split(sep, 1)
+                result[label.strip()] = value.strip()
+                break
+    return result
+
+
+async def prepare_purchase(message, chat_id: int, text: str):
+    """購入(新建資產)的解析+預覽邏輯"""
+    data = parse_label_value_lines(text)
+    office = data.get("辦公室", "").strip()
+    category = data.get("分類", "").strip()
+    asset_id = data.get("編號", "").strip()
+    name = data.get("名稱", "").strip()
+    spec = data.get("規格", "").strip()
+    location = data.get("所在區域", "").strip()
+
+    missing = [k for k, v in [("辦公室", office), ("分類", category), ("編號", asset_id), ("名稱", name), ("所在區域", location)] if not v]
+    if missing:
+        await message.reply_text(
+            "⚠️ 購入需要填:辦公室/分類/編號/名稱/所在區域(規格選填),缺少:" + "、".join(missing) +
+            "\n\n格式範例:\n購入\n辦公室:商務中心\n分類:辦公室資產\n編號:A-01-500\n名稱:辦公椅\n規格:黑色網布\n所在區域:座位099"
+        )
+        return
+    if office not in OFFICES:
+        await message.reply_text(f"⚠️ 找不到辦公室:{office}(可用:{'、'.join(OFFICES)})")
+        return
+    if category not in DETAIL_SHEETS:
+        await message.reply_text(f"⚠️ 分類請填:{'、'.join(DETAIL_SHEETS)}")
+        return
+    if sheet_utils.find_asset(office, asset_id):
+        await message.reply_text(f"⚠️ 編號 {asset_id} 在「{office}」已經存在,不能重複新增。")
+        return
+
+    pending = {
+        "kind": "purchase",
+        "office": office,
+        "category": category,
+        "asset_id": asset_id,
+        "name": name,
+        "spec": spec,
+        "location": location,
+        "desc": "新購入",
+    }
+    USER_STATE[chat_id] = {"pending_single": pending}
+    await message.reply_text(
+        "📋 購入預覽(將新增全新資產):\n"
+        f"辦公室:{office}\n分類:{category}\n編號:{asset_id}\n名稱:{name}\n"
+        f"規格:{spec or '(未填)'}\n所在區域:{location}\n使用狀況:庫存\n\n確認要新增嗎?",
+        reply_markup=confirm_cancel_keyboard(),
+    )
+
 
 async def process_text(message, chat_id: int, text: str):
     """文字指令的核心處理邏輯,私訊(text_router)跟群組 @mention 都會呼叫這裡"""
@@ -307,6 +460,14 @@ async def process_text(message, chat_id: int, text: str):
     # --- 批次異動清單貼上偵測 ---
     if not awaiting and looks_like_batch_text(text):
         await run_batch_preview(message, chat_id, text)
+        return
+
+    # --- 購入(新建資產,多行 標籤:值 格式,第一行是「購入」)---
+    lines_for_check = text.splitlines()
+    first_line = lines_for_check[0].strip() if lines_for_check else ""
+    if not awaiting and len(lines_for_check) > 1 and first_line == "購入":
+        rest_text = "\n".join(lines_for_check[1:])
+        await prepare_purchase(message, chat_id, rest_text)
         return
 
     # --- 選單流程中,正在等待輸入編號 ---
@@ -329,6 +490,29 @@ async def process_text(message, chat_id: int, text: str):
         state["awaiting"] = None
         await show_record(message, chat_id, asset_id, forced_office=office)
         return
+
+    # --- 已查詢出一筆資產在畫面上,直接貼多行「欄位:值」一次改多個欄位 ---
+    if not awaiting and state.get("row") and looks_like_batch_text(text) is False and looks_like_field_edit(text):
+        fields, note_text, unknown = parse_field_edit_lines(text)
+        if fields or note_text:
+            office, sheet_name, row, asset_id = state["office"], state["sheet"], state["row"], state["asset_id"]
+            if fields:
+                sheet_utils.update_fields(office, sheet_name, row, fields)
+            if note_text:
+                sheet_utils.append_note(office, sheet_name, row, note_text)
+
+            msg_lines = [f"✅ {asset_id}({office}) 已更新:"]
+            if fields:
+                msg_lines.append(
+                    "、".join(f"{FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
+                )
+            if note_text:
+                msg_lines.append(f"備註+「{note_text}」")
+            if unknown:
+                msg_lines.append("⚠️ 以下這幾行看不懂,已略過:\n" + "\n".join(unknown))
+            await message.reply_text("\n".join(msg_lines))
+            await show_record(message, chat_id, asset_id, forced_office=office)
+            return
 
     # --- 快速指令模式 ---
     parts = text.split()
@@ -362,7 +546,8 @@ async def process_text(message, chat_id: int, text: str):
             "・改 編號 欄位 新值\n"
             "・備註 編號 內容\n"
             "・領用 編號 花名 部門 員編 所在區域\n"
-            "・或直接貼一整段異動清單\n"
+            "・購入(多行標籤:值格式,新建資產)\n"
+            "・或直接貼一整段異動清單(入庫/領用/故障/換座位/變更保管人/遺失/調入/調出/報廢)\n"
             "・打 /start 用按鈕選單"
         )
 
