@@ -59,5 +59,5 @@ EDITABLE_FIELDS = {
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "請填入你的 Groq API Key")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 
-# 批次異動支援的六種動作類型(第一版不含跨辦公室轉調)
-BATCH_ACTION_TYPES = ["入庫", "領用", "故障", "換座位", "變更保管人", "遺失"]
+# 批次異動支援的類型(用同一套 LLM 解析 + 預覽確認;購入因為要新建資料,走獨立指令流程)
+BATCH_ACTION_TYPES = ["入庫", "領用", "故障", "換座位", "變更保管人", "遺失", "調入", "調出", "報廢"]
