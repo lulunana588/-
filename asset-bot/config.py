@@ -41,7 +41,11 @@ COLUMNS = {
 }
 
 HEADER_ROW = 1
-STATUS_OPTIONS = ["庫存", "使用中"]
+STATUS_OPTIONS = ["庫存", "使用中", "已報廢", "已調出"]
+
+# 本點管理 / 跨點調撥 這兩個分頁,用來記錄領用/入庫/遺失/調入/調出/報廢/購入的異動歷程
+LOCAL_LOG_SHEET = "本点管理"       # 欄位: A任務 B日期 C花名 D說明 E編號 F名稱 G規格
+TRANSFER_LOG_SHEET = "跨點調撥"    # 欄位: A任務 B日期 C部門 D說明 E編號 F名稱 G規格
 
 # 同仁可透過 bot 修改的欄位(中文標籤 -> COLUMNS key)
 EDITABLE_FIELDS = {
@@ -57,4 +61,3 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # 批次異動支援的六種動作類型(第一版不含跨辦公室轉調)
 BATCH_ACTION_TYPES = ["入庫", "領用", "故障", "換座位", "變更保管人", "遺失"]
-
