@@ -75,4 +75,26 @@ def build_plan(action: dict):
         log_action = {"target": "transfer", "task": "遺失", "who": person, "desc": reason}
         return True, {}, note, None, log_action
 
+    if a_type == "調入":
+        if not department:
+            return False, {}, "", "缺少來源部門/辦公室", None
+        fields = {"status": "庫存"}
+        note = f"調入(部門:{department})" + (f":{reason}" if reason else "")
+        log_action = {"target": "transfer", "task": "調入", "who": department, "desc": reason}
+        return True, fields, note, None, log_action
+
+    if a_type == "調出":
+        if not department:
+            return False, {}, "", "缺少目的地部門/辦公室", None
+        fields = {"status": "已調出"}
+        note = f"調出(部門:{department})" + (f":{reason}" if reason else "")
+        log_action = {"target": "transfer", "task": "調出", "who": department, "desc": reason}
+        return True, fields, note, None, log_action
+
+    if a_type == "報廢":
+        fields = {"status": "已報廢"}
+        note = "報廢" + (f":{reason}" if reason else "") + (f"(回報人:{person})" if person else "")
+        log_action = {"target": "transfer", "task": "報廢", "who": person, "desc": reason}
+        return True, fields, note, None, log_action
+
     return False, {}, "", f"未知類型:{a_type}", None
