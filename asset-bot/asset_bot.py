@@ -560,15 +560,30 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """群組裡 @機器人 的訊息入口(即使隱私模式開著,Telegram 也會把這種訊息送給 bot)"""
+    """群組裡的訊息入口 —— 只有『真的@到這個機器人』才處理,@到別人一律忽略"""
+    message = update.message
+    text = message.text or ""
+    bot_username = (context.bot.username or "").lower()
+
+    mentioned = False
+    cleaned = text
+    if message.entities:
+        for entity in message.entities:
+            if entity.type == "mention":
+                mention_text = text[entity.offset: entity.offset + entity.length]
+                if mention_text.lstrip("@").lower() == bot_username:
+                    mentioned = True
+                    cleaned = cleaned.replace(mention_text, "")
+
+    if not mentioned:
+        return  # 不是在叫這個機器人,安靜忽略,不要亂回話
+
+    cleaned = cleaned.strip()
     chat_id = update.effective_chat.id
-    text = update.message.text or ""
-    bot_username = context.bot.username
-    cleaned = text.replace(f"@{bot_username}", "").strip()
     if not cleaned:
         await start(update, context)
         return
-    await process_text(update.message, chat_id, cleaned)
+    await process_text(message, chat_id, cleaned)
 
 
 async def quick_update(message, chat_id: int, asset_id: str, field_label: str, value: str, forced_office: str = None):
@@ -679,7 +694,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & filters.Entity("mention"), mention_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_router))
     app.add_error_handler(error_handler)
     logger.info("資產清冊機器人啟動中...")
     app.run_polling()
