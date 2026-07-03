@@ -250,9 +250,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- 文字輸入處理(選單流程的下一步 + 快速指令) ----------
 
-async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    text = (update.message.text or "").strip()
+async def process_text(message, chat_id: int, text: str):
+    """文字指令的核心處理邏輯,私訊(text_router)跟群組 @mention 都會呼叫這裡"""
+    text = text.strip()
     if not text:
         return
 
@@ -267,18 +267,18 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             keyboard = [
                 [InlineKeyboardButton(name, callback_data=f"batchoffice:{name}")] for name in OFFICES
             ]
-            await update.message.reply_text(
+            await message.reply_text(
                 "偵測到這是一段異動清單,請先選擇這批資產屬於哪個辦公室:",
                 reply_markup=InlineKeyboardMarkup(keyboard),
             )
             return
-        await run_batch_preview(update.message, chat_id, office, text)
+        await run_batch_preview(message, chat_id, office, text)
         return
 
     # --- 選單流程中,正在等待輸入編號 ---
     if awaiting == "asset_id":
         state["awaiting"] = None
-        await show_record(update.message, chat_id, state["office"], text)
+        await show_record(message, chat_id, state["office"], text)
         return
 
     # --- 選單流程中,正在等待輸入某欄位新值 ---
@@ -287,16 +287,16 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         office, sheet_name, row, asset_id = state["office"], state["sheet"], state["row"], state["asset_id"]
         if field_key == "note":
             sheet_utils.append_note(office, sheet_name, row, text)
-            await update.message.reply_text(f"✅ {asset_id} 已新增備註紀錄:{text}")
+            await message.reply_text(f"✅ {asset_id} 已新增備註紀錄:{text}")
         else:
             sheet_utils.update_field(office, sheet_name, row, field_key, text)
             label = REVERSE_FIELD_LABELS.get(field_key, field_key)
-            await update.message.reply_text(f"✅ {asset_id} 的「{label}」已更新為:{text}")
+            await message.reply_text(f"✅ {asset_id} 的「{label}」已更新為:{text}")
         state["awaiting"] = None
-        await show_record(update.message, chat_id, office, asset_id)
+        await show_record(message, chat_id, office, asset_id)
         return
 
-    # --- 快速指令模式 ---
+    # --- 快速指令模式,或沒有任何指令關鍵字時,顯示簡短說明 ---
     parts = text.split()
     if not parts:
         return
@@ -305,57 +305,87 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if keyword == "查詢" and len(parts) >= 3:
         office, asset_id = parts[1], " ".join(parts[2:])
         if office not in OFFICES:
-            await update.message.reply_text(f"⚠️ 找不到辦公室:{office}")
+            await message.reply_text(f"⚠️ 找不到辦公室:{office}")
             return
-        await show_record(update.message, chat_id, office, asset_id)
+        await show_record(message, chat_id, office, asset_id)
 
     elif keyword == "改" and len(parts) >= 5:
         office, asset_id, field_label = parts[1], parts[2], parts[3]
         value = " ".join(parts[4:])
-        await quick_update(update, office, asset_id, field_label, value)
+        await quick_update(message, office, asset_id, field_label, value)
 
     elif keyword == "備註" and len(parts) >= 4:
         office, asset_id = parts[1], parts[2]
         note_text = " ".join(parts[3:])
-        await quick_note(update, office, asset_id, note_text)
+        await quick_note(message, office, asset_id, note_text)
+
+    else:
+        await message.reply_text(
+            "看不懂這個指令,可以:\n"
+            "・查詢 辦公室 編號\n"
+            "・改 辦公室 編號 欄位 新值\n"
+            "・備註 辦公室 編號 內容\n"
+            "・或直接貼一整段異動清單\n"
+            "・打 /start 用按鈕選單"
+        )
 
 
-async def quick_update(update: Update, office: str, asset_id: str, field_label: str, value: str):
+async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """私訊(或群組裡以 / 開頭以外的一般文字)入口"""
+    chat_id = update.effective_chat.id
+    text = update.message.text or ""
+    await process_text(update.message, chat_id, text)
+
+
+async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """群組裡 @機器人 的訊息入口(即使隱私模式開著,Telegram 也會把這種訊息送給 bot)"""
+    chat_id = update.effective_chat.id
+    text = update.message.text or ""
+    bot_username = context.bot.username
+    # 把開頭的 @botusername 拿掉,剩下的當作指令內容
+    cleaned = text.replace(f"@{bot_username}", "").strip()
+    if not cleaned:
+        await start(update, context)
+        return
+    await process_text(update.message, chat_id, cleaned)
+
+
+async def quick_update(message, office: str, asset_id: str, field_label: str, value: str):
     if office not in OFFICES:
-        await update.message.reply_text(f"⚠️ 找不到辦公室:{office}")
+        await message.reply_text(f"⚠️ 找不到辦公室:{office}")
         return
     field_key = FIELD_LABELS.get(field_label)
     if not field_key:
-        await update.message.reply_text(
+        await message.reply_text(
             f"⚠️ 欄位請填:{'、'.join(FIELD_LABELS.keys())}"
         )
         return
     found = sheet_utils.find_asset(office, asset_id)
     if not found:
-        await update.message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
+        await message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
         return
     sheet_name, row, record = found
 
     if field_key == "status":
         if value not in STATUS_OPTIONS:
-            await update.message.reply_text(f"⚠️ 使用狀況請填:{'、'.join(STATUS_OPTIONS)}")
+            await message.reply_text(f"⚠️ 使用狀況請填:{'、'.join(STATUS_OPTIONS)}")
             return
 
     sheet_utils.update_field(office, sheet_name, row, field_key, value)
-    await update.message.reply_text(f"✅ {asset_id} 的「{field_label}」已更新為:{value}")
+    await message.reply_text(f"✅ {asset_id} 的「{field_label}」已更新為:{value}")
 
 
-async def quick_note(update: Update, office: str, asset_id: str, note_text: str):
+async def quick_note(message, office: str, asset_id: str, note_text: str):
     if office not in OFFICES:
-        await update.message.reply_text(f"⚠️ 找不到辦公室:{office}")
+        await message.reply_text(f"⚠️ 找不到辦公室:{office}")
         return
     found = sheet_utils.find_asset(office, asset_id)
     if not found:
-        await update.message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
+        await message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
         return
     sheet_name, row, _ = found
     sheet_utils.append_note(office, sheet_name, row, note_text)
-    await update.message.reply_text(f"✅ {asset_id} 已新增備註紀錄:{note_text}")
+    await message.reply_text(f"✅ {asset_id} 已新增備註紀錄:{note_text}")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
@@ -370,6 +400,7 @@ def main():
     app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
+    app.add_handler(MessageHandler(filters.TEXT & filters.Entity("mention"), mention_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_router))
     app.add_error_handler(error_handler)
     logger.info("資產清冊機器人啟動中...")
