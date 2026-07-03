@@ -8,7 +8,21 @@
 import datetime
 import gspread
 from google.oauth2.service_account import Credentials
-from config import GOOGLE_SERVICE_ACCOUNT_FILE, OFFICES, DETAIL_SHEETS, COLUMNS, HEADER_ROW
+from config import (
+    GOOGLE_SERVICE_ACCOUNT_FILE,
+    OFFICES,
+    DETAIL_SHEETS,
+    COLUMNS,
+    HEADER_ROW,
+    LOCAL_LOG_SHEET,
+    TRANSFER_LOG_SHEET,
+)
+
+TAIPEI_TZ = datetime.timezone(datetime.timedelta(hours=8))
+
+
+def today_str():
+    return datetime.datetime.now(TAIPEI_TZ).strftime("%Y/%m/%d")
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
@@ -124,3 +138,49 @@ def get_note(office: str, sheet_name: str, row: int):
         return ws.get_note(f"{col}{row}") or ""
     except Exception:
         return ""
+
+
+def append_local_log(office: str, task: str, person: str, description: str, asset_id: str, name: str, spec: str):
+    """寫一筆到「本点管理」分頁:任務/日期/花名/說明/編號/名稱/規格"""
+    ws = get_worksheet(office, LOCAL_LOG_SHEET)
+    ws.append_row(
+        [task, today_str(), person, description, asset_id, name, spec],
+        value_input_option="USER_ENTERED",
+    )
+
+
+def append_transfer_log(office: str, task: str, department: str, description: str, asset_id: str, name: str, spec: str):
+    """寫一筆到「跨點調撥」分頁:任務/日期/部門/說明/編號/名稱/規格"""
+    ws = get_worksheet(office, TRANSFER_LOG_SHEET)
+    ws.append_row(
+        [task, today_str(), department, description, asset_id, name, spec],
+        value_input_option="USER_ENTERED",
+    )
+
+
+def create_asset(office: str, category: str, asset_id: str, name: str, spec: str, location: str):
+    """
+    在指定辦公室的 category 分頁(辦公室資產/資訊類資產)新增一整列全新資產。
+    使用狀況預設「庫存」,所在公司=office,所在區域=傳入值,其餘欄位留空。
+    回傳新資產所在的列號。
+    """
+    ws = get_worksheet(office, category)
+    values = ws.get_all_values()
+    target_row = len(values) + 1
+
+    field_values = {
+        "id": asset_id,
+        "name": name,
+        "spec": spec,
+        "status": "庫存",
+        "company": office,
+        "location": location,
+    }
+    max_col_index = max(_col_to_index(c) for c in COLUMNS.values())
+    full_row = [""] * max_col_index
+    for key, val in field_values.items():
+        idx = _col_to_index(COLUMNS[key]) - 1
+        full_row[idx] = val
+
+    ws.update(f"A{target_row}", [full_row])
+    return target_row
