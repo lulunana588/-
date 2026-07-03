@@ -18,6 +18,8 @@ def build_plan(action: dict):
     new_location = (action.get("new_location") or "").strip()
     new_keeper = (action.get("new_keeper") or "").strip()
     old_keeper = (action.get("old_keeper") or "").strip()
+    department = (action.get("department") or "").strip()
+    emp_id = (action.get("emp_id") or "").strip()
 
     if a_type == "入庫":
         fields = {"status": "庫存", "location": "倉庫", "keeper": "倉庫"}
@@ -28,6 +30,10 @@ def build_plan(action: dict):
         if not person or not new_location:
             return False, {}, "", "缺少領用人花名或所在區域"
         fields = {"status": "使用中", "keeper": person, "location": new_location}
+        if department:
+            fields["department"] = department
+        if emp_id:
+            fields["emp_id"] = emp_id
         note = f"領用(領用人:{person})"
         return True, fields, note, None
 
