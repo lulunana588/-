@@ -1,16 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-資產清冊管理機器人(逐筆版)
+資產清冊管理機器人(逐筆版,自動判別辦公室)
 按鈕模式:
-    /start -> 選辦公室 -> 輸入編號查詢 -> 選擇要修改的欄位 -> 輸入新值
-快速文字指令(不用斜線,直接傳文字):
-    查詢 商務中心 A-01-101
-    改 商務中心 A-01-101 所在區域 座位010
-    改 商務中心 A-01-101 使用部門 客服部
-    改 商務中心 A-01-101 員編 XS1234
-    改 商務中心 A-01-101 保管人 小美
-    改 商務中心 A-01-101 使用狀況 使用中
-    備註 商務中心 A-01-101 設備送修中
+    /start -> 輸入編號查詢 -> 選擇要修改的欄位 -> 輸入新值
+快速文字指令(不用斜線,直接傳文字;群組裡前面加 @機器人):
+    查詢 A-01-101
+    改 A-01-101 所在區域 座位010
+    改 A-01-101 使用部門 客服部
+    改 A-01-101 員編 XS1234
+    改 A-01-101 保管人 小美
+    改 A-01-101 使用狀況 使用中
+    備註 A-01-101 設備送修中
+    領用 A-01-101 小美 客服部 XS1234 座位010   (花名 部門 員編 所在區域)
+
+編號如果同時存在於兩間辦公室(少見),bot 會跳出按鈕請你手動選一次。
 """
 import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -40,16 +43,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# {chat_id: {"office":..., "sheet":..., "row":..., "asset_id":..., "awaiting":...}}
+# {chat_id: {"office":..., "sheet":..., "row":..., "asset_id":..., "awaiting":..., "pending":...}}
 USER_STATE = {}
 
 FIELD_LABELS = {**EDITABLE_FIELDS, "使用狀況": "status"}  # 顯示標籤 -> COLUMNS key
 REVERSE_FIELD_LABELS = {v: k for k, v in FIELD_LABELS.items()}
 
+FIELD_DISPLAY_LABELS = {
+    "status": "使用狀況",
+    "location": "所在區域",
+    "keeper": "保管人",
+    "department": "使用部門",
+    "emp_id": "員編",
+}
 
-def format_record(record: dict, note: str) -> str:
+
+def format_record(record: dict, office: str, note: str) -> str:
     lines = [
-        f"編號:{record['id']}",
+        f"編號:{record['id']}(辦公室:{office})",
         f"名稱:{record['name']}　規格:{record['spec'] or record['spec2']}",
         f"使用狀況:{record['status']}",
         f"所在區域:{record['location'] or '（未填）'}",
@@ -71,18 +82,8 @@ def record_keyboard():
         [InlineKeyboardButton("🙋 修改保管人", callback_data="edit:keeper")],
         [InlineKeyboardButton("📝 新增備註紀錄", callback_data="edit:note")],
         [InlineKeyboardButton("🔎 查詢別筆", callback_data="new_query")],
-        [InlineKeyboardButton("⬅️ 重新選辦公室", callback_data="restart")],
     ]
     return InlineKeyboardMarkup(keyboard)
-
-
-FIELD_DISPLAY_LABELS = {
-    "status": "使用狀況",
-    "location": "所在區域",
-    "keeper": "保管人",
-    "department": "使用部門",
-    "emp_id": "員編",
-}
 
 
 def looks_like_batch_text(text: str) -> bool:
@@ -92,7 +93,145 @@ def looks_like_batch_text(text: str) -> bool:
     return any(keyword in text for keyword in BATCH_ACTION_TYPES)
 
 
-async def run_batch_preview(message, chat_id: int, office: str, text: str):
+def resolve_asset(asset_id: str):
+    """
+    自動在所有辦公室搜尋編號。
+    回傳 ("ok", (office, sheet_name, row, record)) / ("not_found", None) / ("ambiguous", matches)
+    """
+    matches = sheet_utils.find_asset_any_office(asset_id)
+    if not matches:
+        return "not_found", None
+    if len(matches) > 1:
+        return "ambiguous", matches
+    office, sheet_name, row, record = matches[0]
+    return "ok", (office, sheet_name, row, record)
+
+
+async def ask_disambiguate(message, chat_id: int, asset_id: str, pending: dict):
+    """編號同時存在多間辦公室時,跳按鈕請使用者手動選一次"""
+    USER_STATE[chat_id] = {"awaiting": "disambiguate", "pending": pending}
+    keyboard = [
+        [InlineKeyboardButton(name, callback_data=f"disamb:{name}")] for name in OFFICES
+    ]
+    await message.reply_text(
+        f"⚠️ 編號 {asset_id} 在多間辦公室都有紀錄,請選擇要操作哪一間:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+# ---------- 按鈕選單模式 ----------
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    USER_STATE[chat_id] = {"awaiting": "asset_id"}
+    await update.message.reply_text("📋 資產清冊管理\n請輸入資產編號,例如 A-01-101")
+
+
+async def show_record(message, chat_id: int, asset_id: str, forced_office: str = None):
+    """message 需為一個具備 reply_text 的物件(Update.message 或 CallbackQuery.message)"""
+    if forced_office:
+        found = sheet_utils.find_asset(forced_office, asset_id)
+        if not found:
+            await message.reply_text(f"⚠️ 在「{forced_office}」找不到編號:{asset_id}")
+            return
+        office, sheet_name, row, record = forced_office, found[0], found[1], found[2]
+    else:
+        status, result = resolve_asset(asset_id)
+        if status == "not_found":
+            await message.reply_text(
+                f"⚠️ 找不到編號:{asset_id}\n請確認編號是否正確,或再輸入一次。"
+            )
+            return
+        if status == "ambiguous":
+            await ask_disambiguate(message, chat_id, asset_id, {"action": "query", "asset_id": asset_id})
+            return
+        office, sheet_name, row, record = result
+
+    note = sheet_utils.get_note(office, sheet_name, row)
+    USER_STATE[chat_id] = {
+        "office": office,
+        "sheet": sheet_name,
+        "row": row,
+        "asset_id": record["id"],
+        "awaiting": None,
+    }
+    text = format_record(record, office, note)
+    await message.reply_text(text, reply_markup=record_keyboard())
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    chat_id = query.message.chat_id
+    data = query.data
+    state = USER_STATE.setdefault(chat_id, {})
+
+    if data == "new_query":
+        state["awaiting"] = "asset_id"
+        await query.edit_message_text("請輸入資產編號,例如 A-01-101")
+
+    elif data.startswith("edit:"):
+        field_key = data.split(":", 1)[1]
+        if not state.get("row"):
+            await query.edit_message_text("⚠️ 請先查詢一筆資產。輸入 /start 重新開始。")
+            return
+        if field_key == "status":
+            found = sheet_utils.find_asset(state["office"], state["asset_id"])
+            if not found:
+                await query.edit_message_text("⚠️ 找不到這筆資產,可能已被刪除。")
+                return
+            _, _, record = found
+            new_status = "使用中" if record["status"] == "庫存" else "庫存"
+            sheet_utils.update_field(state["office"], state["sheet"], state["row"], "status", new_status)
+            await query.edit_message_text(f"✅ {state['asset_id']} 使用狀況已改為:{new_status}")
+            await show_record(query.message, chat_id, state["asset_id"], forced_office=state["office"])
+        else:
+            state["awaiting"] = f"field:{field_key}"
+            label = REVERSE_FIELD_LABELS.get(field_key, field_key)
+            await query.edit_message_text(f"請輸入「{label}」的新內容(資產編號:{state['asset_id']}):")
+
+    elif data.startswith("disamb:"):
+        office = data.split(":", 1)[1]
+        pending = state.get("pending") or {}
+        action = pending.get("action")
+        asset_id = pending.get("asset_id")
+        state["awaiting"] = None
+        state["pending"] = None
+
+        if action == "query":
+            await show_record(query.message, chat_id, asset_id, forced_office=office)
+        elif action == "update":
+            await quick_update(query.message, chat_id, asset_id, pending["field_label"], pending["value"], forced_office=office)
+        elif action == "note":
+            await quick_note(query.message, chat_id, asset_id, pending["note_text"], forced_office=office)
+        elif action == "checkout":
+            await quick_checkout(
+                query.message, chat_id, asset_id,
+                pending["person"], pending["department"], pending["emp_id"], pending["location"],
+                forced_office=office,
+            )
+
+    elif data == "batch_confirm":
+        pending = state.get("pending_batch") or []
+        success, skipped = 0, 0
+        for entry in pending:
+            if entry["ok"] and entry["found"]:
+                sheet_utils.update_fields(entry["office"], entry["sheet"], entry["row"], entry["fields"])
+                sheet_utils.append_note(entry["office"], entry["sheet"], entry["row"], entry["note"])
+                success += 1
+            else:
+                skipped += 1
+        state["pending_batch"] = None
+        await query.edit_message_text(f"✅ 已寫入 {success} 筆,略過 {skipped} 筆。")
+
+    elif data == "batch_cancel":
+        state["pending_batch"] = None
+        await query.edit_message_text("已取消,沒有寫入任何資料。")
+
+
+# ---------- 批次異動清單解析 + 預覽 ----------
+
+async def run_batch_preview(message, chat_id: int, text: str):
     try:
         actions = llm_parser.parse_batch_text(text)
     except Exception as e:
@@ -109,32 +248,41 @@ async def run_batch_preview(message, chat_id: int, office: str, text: str):
     for a in actions:
         asset_id = a["asset_id"]
         ok, fields, note, error_msg = batch_rules.build_plan(a)
-        found = sheet_utils.find_asset(office, asset_id)
+        status, result = resolve_asset(asset_id)
+
+        if status == "not_found":
+            pending.append({"asset_id": asset_id, "type": a["type"], "ok": False, "found": False})
+            lines.append(f"❌ {asset_id}({a['type']}):找不到此編號")
+            continue
+        if status == "ambiguous":
+            pending.append({"asset_id": asset_id, "type": a["type"], "ok": False, "found": False})
+            lines.append(f"⚠️ {asset_id}({a['type']}):此編號在多間辦公室都有,無法自動判斷,請用「改 編號 ...」單筆處理")
+            continue
+
+        office, sheet_name, row, record = result
         entry = {
             "asset_id": asset_id,
             "type": a["type"],
             "fields": fields,
             "note": note,
             "ok": ok,
-            "found": bool(found),
-            "sheet": found[0] if found else None,
-            "row": found[1] if found else None,
+            "found": True,
+            "office": office,
+            "sheet": sheet_name,
+            "row": row,
         }
         pending.append(entry)
 
-        if not found:
-            lines.append(f"❌ {asset_id}({a['type']}):在「{office}」找不到此編號")
-        elif not ok:
+        if not ok:
             lines.append(f"⚠️ {asset_id}({a['type']}):{error_msg},不會自動寫入")
         else:
             field_desc = "、".join(f"{FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
-            lines.append(f"✅ {asset_id}({a['type']}):{field_desc or '(欄位不變)'}\n　備註+「{note}」")
+            lines.append(f"✅ {asset_id}({a['type']},{office}):{field_desc or '(欄位不變)'}\n　備註+「{note}」")
 
     valid_count = sum(1 for e in pending if e["ok"] and e["found"])
     lines.append(f"\n共 {valid_count} 筆會被寫入,{len(pending) - valid_count} 筆會略過。")
 
     USER_STATE.setdefault(chat_id, {})["pending_batch"] = pending
-    USER_STATE[chat_id]["office"] = office
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -143,109 +291,6 @@ async def run_batch_preview(message, chat_id: int, office: str, text: str):
         ]
     )
     await message.reply_text("\n".join(lines), reply_markup=keyboard)
-
-
-# ---------- 按鈕選單模式 ----------
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    chat_id = update.effective_chat.id
-    USER_STATE[chat_id] = {}
-    keyboard = [[InlineKeyboardButton(name, callback_data=f"office:{name}")] for name in OFFICES]
-    await update.message.reply_text(
-        "📋 資產清冊管理\n請選擇辦公室:", reply_markup=InlineKeyboardMarkup(keyboard)
-    )
-
-
-async def show_record(message, chat_id: int, office: str, asset_id: str):
-    """message 需為一個具備 reply_text 的物件(Update.message 或 CallbackQuery.message)"""
-    found = sheet_utils.find_asset(office, asset_id)
-    if not found:
-        await message.reply_text(
-            f"⚠️ 在「{office}」找不到編號:{asset_id}\n請確認編號是否正確,或再輸入一次。"
-        )
-        return
-
-    sheet_name, row, record = found
-    note = sheet_utils.get_note(office, sheet_name, row)
-    USER_STATE[chat_id] = {
-        "office": office,
-        "sheet": sheet_name,
-        "row": row,
-        "asset_id": record["id"],
-        "awaiting": None,
-    }
-    text = format_record(record, note)
-    await message.reply_text(text, reply_markup=record_keyboard())
-
-
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    chat_id = query.message.chat_id
-    data = query.data
-    state = USER_STATE.setdefault(chat_id, {})
-
-    if data.startswith("office:"):
-        state["office"] = data.split(":", 1)[1]
-        state["awaiting"] = "asset_id"
-        await query.edit_message_text(f"辦公室:{state['office']}\n請輸入資產編號,例如 A-01-101")
-
-    elif data == "new_query":
-        state["awaiting"] = "asset_id"
-        await query.edit_message_text(f"辦公室:{state.get('office','')}\n請輸入資產編號,例如 A-01-101")
-
-    elif data == "restart":
-        USER_STATE[chat_id] = {}
-        keyboard = [[InlineKeyboardButton(name, callback_data=f"office:{name}")] for name in OFFICES]
-        await query.edit_message_text("請選擇辦公室:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("edit:"):
-        field_key = data.split(":", 1)[1]
-        if not state.get("row"):
-            await query.edit_message_text("⚠️ 請先查詢一筆資產。輸入 /start 重新開始。")
-            return
-        if field_key == "status":
-            found = sheet_utils.find_asset(state["office"], state["asset_id"])
-            if not found:
-                await query.edit_message_text("⚠️ 找不到這筆資產,可能已被刪除。")
-                return
-            _, _, record = found
-            new_status = "使用中" if record["status"] == "庫存" else "庫存"
-            sheet_utils.update_field(state["office"], state["sheet"], state["row"], "status", new_status)
-            await query.edit_message_text(f"✅ {state['asset_id']} 使用狀況已改為:{new_status}")
-            await show_record(query.message, chat_id, state["office"], state["asset_id"])
-        else:
-            state["awaiting"] = f"field:{field_key}"
-            label = REVERSE_FIELD_LABELS.get(field_key, field_key)
-            await query.edit_message_text(f"請輸入「{label}」的新內容(資產編號:{state['asset_id']}):")
-
-    elif data.startswith("batchoffice:"):
-        office = data.split(":", 1)[1]
-        pending_text = state.get("pending_batch_text")
-        state["office"] = office
-        if not pending_text:
-            await query.edit_message_text("⚠️ 找不到待解析的文字,請重新貼上異動清單。")
-            return
-        await query.edit_message_text(f"辦公室:{office}\n解析中,請稍候...")
-        await run_batch_preview(query.message, chat_id, office, pending_text)
-
-    elif data == "batch_confirm":
-        pending = state.get("pending_batch") or []
-        office = state.get("office")
-        success, skipped = 0, 0
-        for entry in pending:
-            if entry["ok"] and entry["found"]:
-                sheet_utils.update_fields(office, entry["sheet"], entry["row"], entry["fields"])
-                sheet_utils.append_note(office, entry["sheet"], entry["row"], entry["note"])
-                success += 1
-            else:
-                skipped += 1
-        state["pending_batch"] = None
-        await query.edit_message_text(f"✅ 已寫入 {success} 筆,略過 {skipped} 筆。")
-
-    elif data == "batch_cancel":
-        state["pending_batch"] = None
-        await query.edit_message_text("已取消,沒有寫入任何資料。")
 
 
 # ---------- 文字輸入處理(選單流程的下一步 + 快速指令) ----------
@@ -259,26 +304,15 @@ async def process_text(message, chat_id: int, text: str):
     state = USER_STATE.get(chat_id, {})
     awaiting = state.get("awaiting")
 
-    # --- 批次異動清單貼上偵測(優先於其他判斷,但要先確認 awaiting 不是正在等別的輸入)---
+    # --- 批次異動清單貼上偵測 ---
     if not awaiting and looks_like_batch_text(text):
-        office = state.get("office")
-        if not office:
-            USER_STATE.setdefault(chat_id, {})["pending_batch_text"] = text
-            keyboard = [
-                [InlineKeyboardButton(name, callback_data=f"batchoffice:{name}")] for name in OFFICES
-            ]
-            await message.reply_text(
-                "偵測到這是一段異動清單,請先選擇這批資產屬於哪個辦公室:",
-                reply_markup=InlineKeyboardMarkup(keyboard),
-            )
-            return
-        await run_batch_preview(message, chat_id, office, text)
+        await run_batch_preview(message, chat_id, text)
         return
 
     # --- 選單流程中,正在等待輸入編號 ---
     if awaiting == "asset_id":
         state["awaiting"] = None
-        await show_record(message, chat_id, state["office"], text)
+        await show_record(message, chat_id, text)
         return
 
     # --- 選單流程中,正在等待輸入某欄位新值 ---
@@ -293,38 +327,41 @@ async def process_text(message, chat_id: int, text: str):
             label = REVERSE_FIELD_LABELS.get(field_key, field_key)
             await message.reply_text(f"✅ {asset_id} 的「{label}」已更新為:{text}")
         state["awaiting"] = None
-        await show_record(message, chat_id, office, asset_id)
+        await show_record(message, chat_id, asset_id, forced_office=office)
         return
 
-    # --- 快速指令模式,或沒有任何指令關鍵字時,顯示簡短說明 ---
+    # --- 快速指令模式 ---
     parts = text.split()
     if not parts:
         return
     keyword = parts[0]
 
-    if keyword == "查詢" and len(parts) >= 3:
-        office, asset_id = parts[1], " ".join(parts[2:])
-        if office not in OFFICES:
-            await message.reply_text(f"⚠️ 找不到辦公室:{office}")
-            return
-        await show_record(message, chat_id, office, asset_id)
+    if keyword == "查詢" and len(parts) >= 2:
+        asset_id = " ".join(parts[1:])
+        await show_record(message, chat_id, asset_id)
 
-    elif keyword == "改" and len(parts) >= 5:
-        office, asset_id, field_label = parts[1], parts[2], parts[3]
-        value = " ".join(parts[4:])
-        await quick_update(message, office, asset_id, field_label, value)
+    elif keyword == "改" and len(parts) >= 4:
+        asset_id, field_label = parts[1], parts[2]
+        value = " ".join(parts[3:])
+        await quick_update(message, chat_id, asset_id, field_label, value)
 
-    elif keyword == "備註" and len(parts) >= 4:
-        office, asset_id = parts[1], parts[2]
-        note_text = " ".join(parts[3:])
-        await quick_note(message, office, asset_id, note_text)
+    elif keyword == "備註" and len(parts) >= 3:
+        asset_id = parts[1]
+        note_text = " ".join(parts[2:])
+        await quick_note(message, chat_id, asset_id, note_text)
+
+    elif keyword == "領用" and len(parts) >= 6:
+        asset_id, person, department, emp_id = parts[1], parts[2], parts[3], parts[4]
+        location = " ".join(parts[5:])
+        await quick_checkout(message, chat_id, asset_id, person, department, emp_id, location)
 
     else:
         await message.reply_text(
             "看不懂這個指令,可以:\n"
-            "・查詢 辦公室 編號\n"
-            "・改 辦公室 編號 欄位 新值\n"
-            "・備註 辦公室 編號 內容\n"
+            "・查詢 編號\n"
+            "・改 編號 欄位 新值\n"
+            "・備註 編號 內容\n"
+            "・領用 編號 花名 部門 員編 所在區域\n"
             "・或直接貼一整段異動清單\n"
             "・打 /start 用按鈕選單"
         )
@@ -342,7 +379,6 @@ async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     text = update.message.text or ""
     bot_username = context.bot.username
-    # 把開頭的 @botusername 拿掉,剩下的當作指令內容
     cleaned = text.replace(f"@{bot_username}", "").strip()
     if not cleaned:
         await start(update, context)
@@ -350,42 +386,99 @@ async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await process_text(update.message, chat_id, cleaned)
 
 
-async def quick_update(message, office: str, asset_id: str, field_label: str, value: str):
-    if office not in OFFICES:
-        await message.reply_text(f"⚠️ 找不到辦公室:{office}")
-        return
+async def quick_update(message, chat_id: int, asset_id: str, field_label: str, value: str, forced_office: str = None):
     field_key = FIELD_LABELS.get(field_label)
     if not field_key:
-        await message.reply_text(
-            f"⚠️ 欄位請填:{'、'.join(FIELD_LABELS.keys())}"
-        )
+        await message.reply_text(f"⚠️ 欄位請填:{'、'.join(FIELD_LABELS.keys())}")
         return
-    found = sheet_utils.find_asset(office, asset_id)
-    if not found:
-        await message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
+    if field_key == "status" and value not in STATUS_OPTIONS:
+        await message.reply_text(f"⚠️ 使用狀況請填:{'、'.join(STATUS_OPTIONS)}")
         return
-    sheet_name, row, record = found
 
-    if field_key == "status":
-        if value not in STATUS_OPTIONS:
-            await message.reply_text(f"⚠️ 使用狀況請填:{'、'.join(STATUS_OPTIONS)}")
+    if forced_office:
+        found = sheet_utils.find_asset(forced_office, asset_id)
+        if not found:
+            await message.reply_text(f"⚠️ 在「{forced_office}」找不到編號:{asset_id}")
             return
+        office, sheet_name, row = forced_office, found[0], found[1]
+    else:
+        status, result = resolve_asset(asset_id)
+        if status == "not_found":
+            await message.reply_text(f"⚠️ 找不到編號:{asset_id}")
+            return
+        if status == "ambiguous":
+            await ask_disambiguate(
+                message, chat_id, asset_id,
+                {"action": "update", "asset_id": asset_id, "field_label": field_label, "value": value},
+            )
+            return
+        office, sheet_name, row, _ = result
 
     sheet_utils.update_field(office, sheet_name, row, field_key, value)
-    await message.reply_text(f"✅ {asset_id} 的「{field_label}」已更新為:{value}")
+    await message.reply_text(f"✅ {asset_id}({office})的「{field_label}」已更新為:{value}")
 
 
-async def quick_note(message, office: str, asset_id: str, note_text: str):
-    if office not in OFFICES:
-        await message.reply_text(f"⚠️ 找不到辦公室:{office}")
-        return
-    found = sheet_utils.find_asset(office, asset_id)
-    if not found:
-        await message.reply_text(f"⚠️ 在「{office}」找不到編號:{asset_id}")
-        return
-    sheet_name, row, _ = found
+async def quick_note(message, chat_id: int, asset_id: str, note_text: str, forced_office: str = None):
+    if forced_office:
+        found = sheet_utils.find_asset(forced_office, asset_id)
+        if not found:
+            await message.reply_text(f"⚠️ 在「{forced_office}」找不到編號:{asset_id}")
+            return
+        office, sheet_name, row = forced_office, found[0], found[1]
+    else:
+        status, result = resolve_asset(asset_id)
+        if status == "not_found":
+            await message.reply_text(f"⚠️ 找不到編號:{asset_id}")
+            return
+        if status == "ambiguous":
+            await ask_disambiguate(
+                message, chat_id, asset_id,
+                {"action": "note", "asset_id": asset_id, "note_text": note_text},
+            )
+            return
+        office, sheet_name, row, _ = result
+
     sheet_utils.append_note(office, sheet_name, row, note_text)
-    await message.reply_text(f"✅ {asset_id} 已新增備註紀錄:{note_text}")
+    await message.reply_text(f"✅ {asset_id}({office})已新增備註紀錄:{note_text}")
+
+
+async def quick_checkout(message, chat_id: int, asset_id: str, person: str, department: str, emp_id: str, location: str, forced_office: str = None):
+    """領用:設定使用狀況=使用中、保管人=花名、使用部門、員編、所在區域,並加備註紀錄"""
+    if forced_office:
+        found = sheet_utils.find_asset(forced_office, asset_id)
+        if not found:
+            await message.reply_text(f"⚠️ 在「{forced_office}」找不到編號:{asset_id}")
+            return
+        office, sheet_name, row = forced_office, found[0], found[1]
+    else:
+        status, result = resolve_asset(asset_id)
+        if status == "not_found":
+            await message.reply_text(f"⚠️ 找不到編號:{asset_id}")
+            return
+        if status == "ambiguous":
+            await ask_disambiguate(
+                message, chat_id, asset_id,
+                {
+                    "action": "checkout", "asset_id": asset_id, "person": person,
+                    "department": department, "emp_id": emp_id, "location": location,
+                },
+            )
+            return
+        office, sheet_name, row, _ = result
+
+    fields = {
+        "status": "使用中",
+        "keeper": person,
+        "department": department,
+        "emp_id": emp_id,
+        "location": location,
+    }
+    sheet_utils.update_fields(office, sheet_name, row, fields)
+    sheet_utils.append_note(office, sheet_name, row, f"領用(領用人:{person})")
+    await message.reply_text(
+        f"✅ {asset_id}({office})已登記領用:\n"
+        f"保管人:{person}　使用部門:{department}　員編:{emp_id}　所在區域:{location}"
+    )
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
