@@ -1,0 +1,15 @@
+[Unit]
+Description=資產清冊管理 Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/asset-bot
+Environment=ASSET_BOT_TOKEN=請填入你的BotToken
+Environment=GROQ_API_KEY=請填入你的GroqKey
+ExecStart=/usr/bin/python3 /root/asset-bot/asset_bot.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
