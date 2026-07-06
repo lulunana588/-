@@ -131,12 +131,32 @@ BLACK_TEXT = {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}}
 
 
 def _apply_location_color(ws, row: int, value: str):
-    """所在區域寫入「外借」時套紅字,其他值恢復黑字"""
-    col = COLUMNS["location"]
-    cell = f"{col}{row}"
-    color = RED_TEXT if (value or "").strip() == "外借" else BLACK_TEXT
+    """
+    所在區域寫入「外借」時套紅字,其他值恢復黑字。
+    直接用 Sheets API 的 fields 遮罩只更新 foregroundColor 這一個屬性,
+    避免連動重置字體大小等其他既有格式。
+    """
+    col_index = _col_to_index(COLUMNS["location"])
+    color = RED_TEXT["foregroundColor"] if (value or "").strip() == "外借" else BLACK_TEXT["foregroundColor"]
+    request = {
+        "requests": [
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "startRowIndex": row - 1,
+                        "endRowIndex": row,
+                        "startColumnIndex": col_index - 1,
+                        "endColumnIndex": col_index,
+                    },
+                    "cell": {"userEnteredFormat": {"textFormat": {"foregroundColor": color}}},
+                    "fields": "userEnteredFormat.textFormat.foregroundColor",
+                }
+            }
+        ]
+    }
     try:
-        ws.format(cell, {"textFormat": color})
+        ws.spreadsheet.batch_update(request)
     except Exception:
         pass  # 顏色套用失敗不影響資料寫入本身
 
