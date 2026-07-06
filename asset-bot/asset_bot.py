@@ -332,7 +332,7 @@ async def run_batch_preview(message, chat_id: int, text: str):
         if not ok:
             lines.append(f"⚠️ {asset_id}({a['type']}):{error_msg},不會自動寫入")
         else:
-            field_desc = "、".join(f"{FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
+            field_desc = "、".join(f"{FIELD_DISPLAY_LABELS.get(k,k)}→{v or '(清空)'}" for k, v in fields.items())
             extra = "、另記一筆到「本点管理」" if log_action and log_action["target"] == "local" else (
                 "、另記一筆到「跨點調撥」" if log_action else ""
             )
