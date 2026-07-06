@@ -26,7 +26,7 @@ def build_plan(action: dict):
     emp_id = (action.get("emp_id") or "").strip()
 
     if a_type == "入庫":
-        fields = {"status": "庫存", "location": "倉庫", "keeper": "倉庫"}
+        fields = {"status": "庫存", "location": "倉庫", "keeper": "倉庫", "department": "", "emp_id": ""}
         note = f"入庫(原使用人:{person})" if person else "入庫"
         log_action = {"target": "local", "task": "退回", "who": person, "desc": "設備入庫"}
         return True, fields, note, None, log_action
