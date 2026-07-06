@@ -299,13 +299,18 @@ async def run_batch_preview(message, chat_id: int, text: str):
 
         office, sheet_name, row, record = result
 
-        # 變更保管人若沒給新所在區域,自動用新保管人現有其他資產的所在區域來推斷
-        if a["type"] == "變更保管人" and not (a.get("new_location") or "").strip():
+        # 變更保管人若沒給新所在區域/部門/員編,自動用新保管人現有其他資產的資料來補齊
+        if a["type"] == "變更保管人":
             new_keeper = (a.get("new_keeper") or "").strip()
             if new_keeper:
-                found_loc = sheet_utils.find_keeper_location(office, new_keeper)
-                if found_loc:
-                    a["new_location"] = found_loc
+                ref = sheet_utils.find_keeper_reference(office, new_keeper)
+                if ref:
+                    if not (a.get("new_location") or "").strip() and ref["location"]:
+                        a["new_location"] = ref["location"]
+                    if not (a.get("department") or "").strip() and ref["department"]:
+                        a["department"] = ref["department"]
+                    if not (a.get("emp_id") or "").strip() and ref["emp_id"]:
+                        a["emp_id"] = ref["emp_id"]
 
         ok, fields, note, error_msg, log_action = batch_rules.build_plan(a)
         entry = {
