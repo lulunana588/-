@@ -77,6 +77,29 @@ def find_asset(office: str, asset_id: str):
     return None
 
 
+def find_keeper_location(office: str, keeper_name: str):
+    """
+    在該辦公室的所有 DETAIL_SHEETS 中尋找「保管人」等於 keeper_name 的任一筆資產,
+    回傳該筆的所在區域(找不到則回傳 None)。用於「變更保管人」沒有明講新區域時,
+    自動推斷新保管人目前所在的區域。
+    """
+    target = keeper_name.strip()
+    if not target:
+        return None
+    keeper_idx = _col_to_index(COLUMNS["keeper"]) - 1
+    location_idx = _col_to_index(COLUMNS["location"]) - 1
+    for sheet_name in DETAIL_SHEETS:
+        ws = get_worksheet(office, sheet_name)
+        values = ws.get_all_values()
+        for i, row in enumerate(values):
+            if i + 1 <= HEADER_ROW:
+                continue
+            if keeper_idx < len(row) and row[keeper_idx].strip() == target:
+                if location_idx < len(row) and row[location_idx].strip():
+                    return row[location_idx].strip()
+    return None
+
+
 def find_asset_any_office(asset_id: str):
     """
     不指定辦公室,自動在所有 OFFICES 底下搜尋這個編號。
