@@ -77,17 +77,20 @@ def find_asset(office: str, asset_id: str):
     return None
 
 
-def find_keeper_location(office: str, keeper_name: str):
+def find_keeper_reference(office: str, keeper_name: str):
     """
     在該辦公室的所有 DETAIL_SHEETS 中尋找「保管人」等於 keeper_name 的任一筆資產,
-    回傳該筆的所在區域(找不到則回傳 None)。用於「變更保管人」沒有明講新區域時,
-    自動推斷新保管人目前所在的區域。
+    回傳 {"location":..., "department":..., "emp_id":...}(找不到的欄位為空字串)。
+    找不到任何符合的保管人時回傳 None。用於「變更保管人」沒有明講新區域/部門/員編時,
+    自動帶入這個人現有其他資產上的區域/部門/員編。
     """
     target = keeper_name.strip()
     if not target:
         return None
     keeper_idx = _col_to_index(COLUMNS["keeper"]) - 1
     location_idx = _col_to_index(COLUMNS["location"]) - 1
+    department_idx = _col_to_index(COLUMNS["department"]) - 1
+    emp_id_idx = _col_to_index(COLUMNS["emp_id"]) - 1
     for sheet_name in DETAIL_SHEETS:
         ws = get_worksheet(office, sheet_name)
         values = ws.get_all_values()
@@ -95,8 +98,15 @@ def find_keeper_location(office: str, keeper_name: str):
             if i + 1 <= HEADER_ROW:
                 continue
             if keeper_idx < len(row) and row[keeper_idx].strip() == target:
-                if location_idx < len(row) and row[location_idx].strip():
-                    return row[location_idx].strip()
+                def safe_get(idx):
+                    return row[idx].strip() if idx < len(row) else ""
+                ref = {
+                    "location": safe_get(location_idx),
+                    "department": safe_get(department_idx),
+                    "emp_id": safe_get(emp_id_idx),
+                }
+                if any(ref.values()):
+                    return ref
     return None
 
 
@@ -116,11 +126,28 @@ def find_asset_any_office(asset_id: str):
     return matches
 
 
+RED_TEXT = {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}}
+BLACK_TEXT = {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}}
+
+
+def _apply_location_color(ws, row: int, value: str):
+    """所在區域寫入「外借」時套紅字,其他值恢復黑字"""
+    col = COLUMNS["location"]
+    cell = f"{col}{row}"
+    color = RED_TEXT if (value or "").strip() == "外借" else BLACK_TEXT
+    try:
+        ws.format(cell, {"textFormat": color})
+    except Exception:
+        pass  # 顏色套用失敗不影響資料寫入本身
+
+
 def update_field(office: str, sheet_name: str, row: int, field_key: str, value: str):
     """更新單一欄位(所在區域/使用部門/員編/保管人/使用狀況等)"""
     ws = get_worksheet(office, sheet_name)
     col = COLUMNS[field_key]
     ws.update(f"{col}{row}", [[value]])
+    if field_key == "location":
+        _apply_location_color(ws, row, value)
 
 
 def update_fields(office: str, sheet_name: str, row: int, fields: dict):
@@ -133,6 +160,8 @@ def update_fields(office: str, sheet_name: str, row: int, fields: dict):
         col = COLUMNS[field_key]
         data.append({"range": f"{col}{row}", "values": [[value]]})
     ws.batch_update(data)
+    if "location" in fields:
+        _apply_location_color(ws, row, fields["location"])
 
 
 def append_note(office: str, sheet_name: str, row: int, text: str):
