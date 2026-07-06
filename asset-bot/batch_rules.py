@@ -65,6 +65,10 @@ def build_plan(action: dict):
         if not new_keeper or not new_location:
             return False, {}, "", "缺少新保管人或新所在區域", None
         fields = {"keeper": new_keeper, "location": new_location}
+        if department:
+            fields["department"] = department
+        if emp_id:
+            fields["emp_id"] = emp_id
         note = f"變更保管人:{old_keeper or '原保管人'}→{new_keeper}"
         return True, fields, note, None, None
 
