@@ -283,7 +283,7 @@ async def run_batch_preview(message, chat_id: int, text: str):
         return
 
     pending = []
-    lines = [f"📋 解析出 {len(actions)} 筆異動,請確認:\n"]
+    lines = [f"📋 解析出 {len(actions)} 筆異動,已直接寫入:\n"]
     for a in actions:
         asset_id = a["asset_id"]
         status, result = resolve_asset(asset_id)
@@ -338,18 +338,35 @@ async def run_batch_preview(message, chat_id: int, text: str):
             )
             lines.append(f"✅ {asset_id}({a['type']},{office}):{field_desc or '(欄位不變)'}{extra}\n　備註+「{note}」")
 
-    valid_count = sum(1 for e in pending if e["ok"] and e["found"])
-    lines.append(f"\n共 {valid_count} 筆會被寫入,{len(pending) - valid_count} 筆會略過。")
+    success, skipped = execute_pending_batch(pending)
+    lines.append(f"\n共 {success} 筆已寫入,{skipped} 筆已略過。")
+    await message.reply_text("\n".join(lines))
 
-    USER_STATE.setdefault(chat_id, {})["pending_batch"] = pending
 
-    keyboard = InlineKeyboardMarkup(
-        [
-            [InlineKeyboardButton("✅ 確認寫入", callback_data="batch_confirm")],
-            [InlineKeyboardButton("❌ 取消", callback_data="batch_cancel")],
-        ]
-    )
-    await message.reply_text("\n".join(lines), reply_markup=keyboard)
+def execute_pending_batch(pending: list):
+    """實際把 pending 清單寫入試算表(含本点管理/跨點調撥),回傳 (success, skipped)"""
+    success, skipped = 0, 0
+    for entry in pending:
+        if entry["ok"] and entry["found"]:
+            sheet_utils.update_fields(entry["office"], entry["sheet"], entry["row"], entry["fields"])
+            sheet_utils.append_note(entry["office"], entry["sheet"], entry["row"], entry["note"])
+            log_action = entry.get("log_action")
+            if log_action:
+                who = log_action["who"] or entry["office"]
+                if log_action["target"] == "local":
+                    sheet_utils.append_local_log(
+                        entry["office"], log_action["task"], who, log_action["desc"],
+                        entry["asset_id"], entry["record_name"], entry["record_spec"],
+                    )
+                elif log_action["target"] == "transfer":
+                    sheet_utils.append_transfer_log(
+                        entry["office"], log_action["task"], who, log_action["desc"],
+                        entry["asset_id"], entry["record_name"], entry["record_spec"],
+                    )
+            success += 1
+        else:
+            skipped += 1
+    return success, skipped
 
 
 def parse_field_edit_lines(text: str):
