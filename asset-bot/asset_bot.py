@@ -286,7 +286,6 @@ async def run_batch_preview(message, chat_id: int, text: str):
     lines = [f"📋 解析出 {len(actions)} 筆異動,請確認:\n"]
     for a in actions:
         asset_id = a["asset_id"]
-        ok, fields, note, error_msg, log_action = batch_rules.build_plan(a)
         status, result = resolve_asset(asset_id)
 
         if status == "not_found":
@@ -299,6 +298,16 @@ async def run_batch_preview(message, chat_id: int, text: str):
             continue
 
         office, sheet_name, row, record = result
+
+        # 變更保管人若沒給新所在區域,自動用新保管人現有其他資產的所在區域來推斷
+        if a["type"] == "變更保管人" and not (a.get("new_location") or "").strip():
+            new_keeper = (a.get("new_keeper") or "").strip()
+            if new_keeper:
+                found_loc = sheet_utils.find_keeper_location(office, new_keeper)
+                if found_loc:
+                    a["new_location"] = found_loc
+
+        ok, fields, note, error_msg, log_action = batch_rules.build_plan(a)
         entry = {
             "asset_id": asset_id,
             "type": a["type"],
