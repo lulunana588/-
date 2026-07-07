@@ -164,6 +164,25 @@ _PAYMENT_FIELD_ALIASES = {
     "备注": "note",
 }
 
+_PAYMENT_NAME_LINE_RE = re.compile(r"^\s*(款項名稱|名稱|項目)\s*[:：]", re.MULTILINE)
+
+
+def _split_payment_blocks(remainder: str):
+    """
+    把一則訊息切成多筆款項的區塊，每次看到新的一行「款項名稱:」（或「名稱:」「項目:」）
+    就當作下一筆的開始，不用特地空行分隔。只有一筆時原封不動回傳單一區塊。
+    """
+    matches = list(_PAYMENT_NAME_LINE_RE.finditer(remainder))
+    if len(matches) <= 1:
+        return [remainder]
+
+    blocks = []
+    for i, m in enumerate(matches):
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(remainder)
+        blocks.append(remainder[start:end].strip())
+    return blocks
+
 
 def _parse_quick_payment_command(remainder: str):
     """
@@ -283,6 +302,10 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TYPE, remainder: str):
+    blocks = _split_payment_blocks(remainder)
+    if len(blocks) > 1:
+        return await _handle_quick_payment_batch(update, context, blocks)
+
     parsed = _parse_quick_payment_command(remainder)
     if not parsed:
         await update.effective_message.reply_text(
@@ -426,14 +449,94 @@ async def quick_payment_near_match(update: Update, context: ContextTypes.DEFAULT
     await query.edit_message_text(f"{BOT_DISPLAY_NAME}\n⏳ 處理中，請稍候...")
 
     if query.data == "qpnear_update":
-        result_state = await _apply_payment_update(
+        return await _apply_payment_update(
             query, pending["row"], pending["parsed"], pending["operator"], pending["note_for_sheet"]
         )
-    else:
-        result_state = await _apply_payment_add(
-            query, pending["parsed"], pending["operator"], pending["note_for_sheet"]
+    return await _apply_payment_add(
+        query, pending["parsed"], pending["operator"], pending["note_for_sheet"]
+    )
+
+
+async def _process_one_payment_block(update: Update, parsed: dict) -> str:
+    """
+    批次模式專用：處理單一筆款項（找既有的就編輯、找不到就新增），
+    回傳一行結果文字，不單獨發訊息（批次會統一彙整成一則訊息）。
+    金額相近但不完全相同的狀況，批次模式不彈確認視窗，直接新增並在結果裡加警示，
+    事後請自行到表格確認是否重複。
+    """
+    operator = _operator_name(update)
+    note_for_sheet = f"{parsed['note']}｜{operator}" if parsed["note"] else operator
+
+    try:
+        exact = sheets.find_pending_payment_exact(parsed["name"], parsed["amount"])
+    except Exception:
+        logger.exception("批次款項查找既有款項失敗")
+        exact = []
+
+    if len(exact) > 1:
+        return f"❓ {parsed['name']}（NT${parsed['amount']}）：找到多筆同名同金額還沒付的，請改用選單處理"
+
+    if len(exact) == 1:
+        try:
+            result = sheets.update_payment_fields(
+                exact[0],
+                progress=parsed["progress"],
+                status=parsed["status"],
+                paid_date=parsed["paid_date"],
+                note=note_for_sheet,
+            )
+        except Exception as e:
+            logger.exception("批次款項更新失敗")
+            return f"❌ {parsed['name']}：更新失敗（{e}）"
+        extra = f"，實付{result['paid_date']}" if result["paid_date"] else ""
+        return f"✏️ 編號{result['id']} {result['name']}（NT${result['amount']}）→ {result['status']}{extra}（編輯既有）"
+
+    warn = ""
+    try:
+        near = sheets.find_near_pending_payment(
+            parsed["name"], parsed["amount"], config.PAYMENT_AMOUNT_TOLERANCE
         )
-    return result_state
+        if near:
+            warn = f"⚠️ 金額與既有一筆（NT${near[0]['amount']:,}）相近，請確認是否重複；"
+    except Exception:
+        logger.exception("批次款項查找相近既有款項失敗")
+
+    try:
+        result = sheets.add_payment_record(
+            name=parsed["name"],
+            amount=parsed["amount"],
+            submit_date=parsed["submit_date"],
+            progress=parsed["progress"],
+            status=parsed["status"],
+            paid_date=parsed["paid_date"],
+            note=note_for_sheet,
+        )
+    except Exception as e:
+        logger.exception("批次款項新增失敗")
+        return f"❌ {parsed['name']}：新增失敗（{e}）"
+    extra = f"，實付{result['paid_date']}" if result["paid_date"] else ""
+    return f"{warn}🆕 編號{result['id']} {result['name']}（NT${result['amount']}）→ {result['status']}{extra}（新增）"
+
+
+async def _handle_quick_payment_batch(update: Update, context: ContextTypes.DEFAULT_TYPE, blocks: list):
+    processing_msg = await update.effective_message.reply_text(
+        f"{BOT_DISPLAY_NAME}\n🔄 動作：批次處理款項（共 {len(blocks)} 筆）\n⏳ 處理中，請稍候..."
+    )
+
+    result_lines = []
+    for i, block in enumerate(blocks, start=1):
+        parsed = _parse_quick_payment_command(block)
+        if not parsed:
+            result_lines.append(f"{i}. ❌ 看不懂這筆資料（款項名稱/金額必填），已略過")
+            continue
+        line = await _process_one_payment_block(update, parsed)
+        result_lines.append(f"{i}. {line}")
+
+    await processing_msg.edit_text(
+        f"{BOT_DISPLAY_NAME}\n"
+        f"🔄 批次款項處理完成（共 {len(blocks)} 筆）　📅 {sheets.today_str()}\n\n"
+        + "\n".join(result_lines)
+    )
     return ConversationHandler.END
 
 
