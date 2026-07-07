@@ -267,10 +267,11 @@ def add_payment_record(
     status: str = "待付",
     paid_date: str = "",
     note: str = "",
+    operator: str = "",
 ):
     """
     新增一筆款項紀錄。編號自動遞增。
-    status/paid_date/note 預設留空（待付狀態），若快速指令直接標明「已付」則會一併寫入。
+    欄位順序：編號/送件日期/操作人/款項名稱/金額/進度/付款狀態/實付日期/備註
     """
     ws = get_payment_worksheet()
     all_values = ws.get_all_values()
@@ -288,8 +289,8 @@ def add_payment_record(
         target_row = len(all_values) + 1
 
     ws.update(
-        f"A{target_row}:H{target_row}",
-        [[new_id, submit_date, name, amount, progress, status, paid_date, note]],
+        f"A{target_row}:I{target_row}",
+        [[new_id, submit_date, operator, name, amount, progress, status, paid_date, note]],
     )
     return {
         "id": new_id,
@@ -323,9 +324,9 @@ def find_near_pending_payment(name: str, amount: str, tolerance: int):
         row = all_values[i]
         if not row or not row[0].strip():
             continue
-        row_name = row[2].strip() if len(row) > 2 else ""
-        row_amount_raw = row[3].strip().replace(",", "") if len(row) > 3 else ""
-        row_status = row[5].strip() if len(row) > 5 else ""
+        row_name = row[3].strip() if len(row) > 3 else ""
+        row_amount_raw = row[4].strip().replace(",", "") if len(row) > 4 else ""
+        row_status = row[6].strip() if len(row) > 6 else ""
         if row_name != name or row_status == "已付":
             continue
         try:
@@ -355,11 +356,11 @@ def get_pending_payment_index():
         row = all_values[i]
         if not row or not row[0].strip():
             continue
-        status = row[5].strip() if len(row) > 5 else ""
+        status = row[6].strip() if len(row) > 6 else ""
         if status == "已付":
             continue
-        name = row[2].strip() if len(row) > 2 else ""
-        amount_raw = row[3].strip().replace(",", "") if len(row) > 3 else ""
+        name = row[3].strip() if len(row) > 3 else ""
+        amount_raw = row[4].strip().replace(",", "") if len(row) > 4 else ""
         try:
             amount = int(amount_raw)
         except ValueError:
@@ -384,37 +385,48 @@ def find_pending_payment_exact(name: str, amount: str):
         row = all_values[i]
         if not row or not row[0].strip():
             continue
-        row_name = row[2].strip() if len(row) > 2 else ""
-        row_amount = row[3].strip().replace(",", "") if len(row) > 3 else ""
-        row_status = row[5].strip() if len(row) > 5 else ""
+        row_name = row[3].strip() if len(row) > 3 else ""
+        row_amount = row[4].strip().replace(",", "") if len(row) > 4 else ""
+        row_status = row[6].strip() if len(row) > 6 else ""
         if row_name == name and row_amount == amount and row_status != "已付":
             matches.append(i + 1)
     return matches
 
 
-def update_payment_fields(row: int, progress: str = None, status: str = None, paid_date: str = None, note: str = None):
+def update_payment_fields(
+    row: int,
+    progress: str = None,
+    status: str = None,
+    paid_date: str = None,
+    note: str = None,
+    operator: str = None,
+):
     """
-    更新既有款項列的進度/付款狀態/實付日期/備註（只更新有提供值的欄位，其餘保留原值）。
+    更新既有款項列的操作人/進度/付款狀態/實付日期/備註（只更新有提供值的欄位，其餘保留原值）。
     """
     ws = get_payment_worksheet()
     current = ws.row_values(row)
 
-    cur_progress = current[4] if len(current) > 4 else ""
-    cur_status = current[5] if len(current) > 5 else ""
-    cur_paid_date = current[6] if len(current) > 6 else ""
-    cur_note = current[7] if len(current) > 7 else ""
+    cur_operator = current[2] if len(current) > 2 else ""
+    cur_progress = current[5] if len(current) > 5 else ""
+    cur_status = current[6] if len(current) > 6 else ""
+    cur_paid_date = current[7] if len(current) > 7 else ""
+    cur_note = current[8] if len(current) > 8 else ""
 
+    new_operator = operator if operator else cur_operator
     new_progress = progress if progress else cur_progress
     new_status = status if status else cur_status
     new_paid_date = paid_date if paid_date is not None and paid_date != "" else cur_paid_date
     new_note = note if note else cur_note
 
-    ws.update(f"E{row}:H{row}", [[new_progress, new_status, new_paid_date, new_note]])
+    if operator:
+        ws.update(f"C{row}", [[new_operator]])
+    ws.update(f"F{row}:I{row}", [[new_progress, new_status, new_paid_date, new_note]])
 
     return {
         "id": current[0] if current else "",
-        "name": current[2] if len(current) > 2 else "",
-        "amount": current[3] if len(current) > 3 else "",
+        "name": current[3] if len(current) > 3 else "",
+        "amount": current[4] if len(current) > 4 else "",
         "progress": new_progress,
         "status": new_status,
         "paid_date": new_paid_date,
@@ -435,7 +447,7 @@ def find_payment_records(query: str, limit: int = 8):
         if not row or not row[0].strip():
             continue
         row_id = row[0].strip()
-        name = row[2].strip() if len(row) > 2 else ""
+        name = row[3].strip() if len(row) > 3 else ""
         if query == row_id:
             results.insert(0, {"row": i + 1, "values": row})  # 精準比對排最前面
         elif query and query in name:
@@ -445,22 +457,24 @@ def find_payment_records(query: str, limit: int = 8):
     return results[:limit]
 
 
-def mark_payment_paid(row: int, paid_date: str = None, note: str = None):
-    """把付款狀態改為已付，並帶入實付日期；若有給 note 則附加到備註欄"""
+def mark_payment_paid(row: int, paid_date: str = None, note: str = None, operator: str = None):
+    """把付款狀態改為已付，並帶入實付日期；若有給 note 則附加到備註欄；operator 則寫入操作人欄（覆蓋）"""
     ws = get_payment_worksheet()
     paid_date = paid_date or today_str()
     current = ws.row_values(row)
-    old_note = current[7] if len(current) > 7 else ""
+    old_note = current[8] if len(current) > 8 else ""
 
-    ws.update(f"F{row}:G{row}", [["已付", paid_date]])
+    ws.update(f"G{row}:H{row}", [["已付", paid_date]])
     if note:
         combined_note = f"{old_note}；{note}" if old_note else note
-        ws.update(f"H{row}", [[combined_note]])
+        ws.update(f"I{row}", [[combined_note]])
+    if operator:
+        ws.update(f"C{row}", [[operator]])
 
     return {
         "id": current[0] if current else "",
-        "name": current[2] if len(current) > 2 else "",
-        "amount": current[3] if len(current) > 3 else "",
+        "name": current[3] if len(current) > 3 else "",
+        "amount": current[4] if len(current) > 4 else "",
         "paid_date": paid_date,
     }
 
@@ -485,8 +499,8 @@ def get_pending_payments():
     for row in all_values[header_idx + 1 :]:
         if not row or not row[0].strip():
             continue
-        status = row[5].strip() if len(row) > 5 else ""
-        progress = row[4].strip() if len(row) > 4 else ""
+        status = row[6].strip() if len(row) > 6 else ""
+        progress = row[5].strip() if len(row) > 5 else ""
 
         needs_tracking = (status != "已付") or (
             progress == _NEEDS_TRACKING_EVEN_IF_PAID_PROGRESS
@@ -494,8 +508,8 @@ def get_pending_payments():
         if not needs_tracking:
             continue
 
-        name = row[2].strip() if len(row) > 2 else ""
-        amount_raw = row[3].strip() if len(row) > 3 else "0"
+        name = row[3].strip() if len(row) > 3 else ""
+        amount_raw = row[4].strip() if len(row) > 4 else "0"
         try:
             amount = int(amount_raw.replace(",", ""))
         except ValueError:
