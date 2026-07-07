@@ -373,7 +373,7 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         return await start(update, context)
 
     operator = _operator_name(update)
-    note_for_sheet = f"{parsed['note']}｜{operator}" if parsed["note"] else operator
+    note_for_sheet = parsed["note"]
 
     try:
         matches = sheets.find_pending_payment_exact(parsed["name"], parsed["amount"])
@@ -442,6 +442,7 @@ async def _apply_payment_update(update_or_query, row, parsed, operator, note_for
             status=parsed["status"],
             paid_date=parsed["paid_date"],
             note=note_for_sheet,
+            operator=operator,
         )
     except Exception as e:
         logger.exception("快速指令更新既有款項失敗")
@@ -475,6 +476,7 @@ async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet):
             status=parsed["status"],
             paid_date=parsed["paid_date"],
             note=note_for_sheet,
+            operator=operator,
         )
     except Exception as e:
         logger.exception("快速指令新增款項失敗")
@@ -523,7 +525,7 @@ async def _process_one_payment_block(update: Update, parsed: dict, snapshot: lis
     事後請自行到表格確認是否重複。
     """
     operator = _operator_name(update)
-    note_for_sheet = f"{parsed['note']}｜{operator}" if parsed["note"] else operator
+    note_for_sheet = parsed["note"]
 
     try:
         target_amount = int(parsed["amount"])
@@ -551,6 +553,7 @@ async def _process_one_payment_block(update: Update, parsed: dict, snapshot: lis
                 status=parsed["status"],
                 paid_date=parsed["paid_date"],
                 note=note_for_sheet,
+                operator=operator,
             )
         except Exception as e:
             logger.exception("批次款項更新失敗")
@@ -580,6 +583,7 @@ async def _process_one_payment_block(update: Update, parsed: dict, snapshot: lis
             status=parsed["status"],
             paid_date=parsed["paid_date"],
             note=note_for_sheet,
+            operator=operator,
         )
     except Exception as e:
         logger.exception("批次款項新增失敗")
@@ -884,7 +888,7 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
             amount=context.user_data["pay_amount"],
             submit_date=context.user_data["pay_date"],
             progress=progress,
-            note=operator,
+            operator=operator,
         )
     except Exception as e:
         logger.exception("新增款項失敗")
@@ -926,8 +930,8 @@ async def pay_update_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = []
     for m in matches:
         v = m["values"]
-        pay_status = v[5] if len(v) > 5 else ""
-        label = f"#{v[0]} {v[2]}（{pay_status}）"
+        pay_status = v[6] if len(v) > 6 else ""
+        label = f"#{v[0]} {v[3]}（{pay_status}）"
         keyboard.append([InlineKeyboardButton(label, callback_data=f"payrow_{m['row']}")])
 
     await update.message.reply_text(
@@ -948,16 +952,16 @@ async def pay_update_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["pay_target_row"] = int(row_key)
     context.user_data["pay_target_values"] = values
 
-    pay_status = values[5] if len(values) > 5 else ""
+    pay_status = values[6] if len(values) > 6 else ""
     if pay_status == "已付":
         await query.edit_message_text(
-            f"#{values[0]} {values[2]} 目前狀態已經是「已付」了，不需要重複更新。\n"
+            f"#{values[0]} {values[3]} 目前狀態已經是「已付」了，不需要重複更新。\n"
             f"輸入 /start 可返回主選單。"
         )
         return ConversationHandler.END
 
     await query.edit_message_text(
-        f"#{values[0]} {values[2]}（NT${values[3]}）\n\n"
+        f"#{values[0]} {values[3]}（NT${values[4]}）\n\n"
         f"確定要標記為「已付」嗎？若要附加備註，請直接輸入文字；\n"
         f"不需要備註請輸入「略過」。"
     )
@@ -968,7 +972,6 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     note = update.message.text.strip()
     note = None if note in ("略過", "skip", "") else note
     operator = _operator_name(update)
-    combined_note = f"{note}｜{operator}" if note else operator
 
     row = context.user_data["pay_target_row"]
     processing = await update.message.reply_text(
@@ -976,7 +979,7 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result = sheets.mark_payment_paid(row, note=combined_note)
+        result = sheets.mark_payment_paid(row, note=note, operator=operator)
     except Exception as e:
         logger.exception("更新付款狀態失敗")
         await processing.edit_text(f"❌ 更新失敗：{e}")
