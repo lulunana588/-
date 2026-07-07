@@ -82,14 +82,11 @@ def _strip_mention(text: str, bot_username: str) -> str:
 def _parse_quick_water_command(remainder: str, locations: list):
     """
     嘗試解析一行快速指令，格式固定為：
-      「地點 桶裝水 送水 5 桶」→ 扣5桶（出庫）
-      「地點 桶裝水 儲值 100 桶」→ 補100桶（入庫）
-    「桶裝水」與「送水」/「儲值」兩個關鍵字都一定要出現才會處理，
+      「地點 送水 5 桶」→ 扣5桶（出庫）
+      「地點 儲值 100 桶」→ 補100桶（入庫）
+    「桶裝水」三個字可加可不加，但「送水」/「儲值」兩個關鍵字一定要出現其中一個（不能兩個都出現或都沒有），
     避免隨口打幾個字就誤觸發，比對不到就回傳 None（改成打開選單）。
     """
-    if _WATER_KEYWORD not in remainder:
-        return None
-
     has_out = _WATER_OUT_WORD in remainder
     has_in = _WATER_IN_WORD in remainder
     if has_out == has_in:
@@ -254,7 +251,7 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not remainder:
         return await start(update, context)
 
-    if "桶裝水" in remainder:
+    if _WATER_KEYWORD in remainder or _WATER_OUT_WORD in remainder or _WATER_IN_WORD in remainder:
         return await _handle_quick_water(update, context, remainder)
     if "款項名稱" in remainder:
         return await _handle_quick_payment(update, context, remainder)
@@ -270,7 +267,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await start(update, context)
 
     lines = [ln.strip() for ln in remainder.splitlines() if ln.strip()]
-    water_lines = [ln for ln in lines if _WATER_KEYWORD in ln]
+    water_lines = [ln for ln in lines if _WATER_OUT_WORD in ln or _WATER_IN_WORD in ln]
 
     if len(water_lines) > 1:
         return await _handle_quick_water_batch(update, context, water_lines, locations)
@@ -280,7 +277,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.effective_message.reply_text(
             f"{BOT_DISPLAY_NAME}\n"
             f"沒看懂「{remainder}」這個指令，格式要像這樣：\n"
-            f"「地點 桶裝水 送水 5 桶」（扣桶）或「地點 桶裝水 儲值 100 桶」（補桶）\n"
+            f"「地點 送水 5 桶」（扣桶）或「地點 儲值 100 桶」（補桶），「桶裝水」三個字可加可不加\n"
             f"（多筆的話一行一筆，分開換行即可）\n"
             f"先幫您打開選單操作："
         )
