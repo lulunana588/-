@@ -490,7 +490,7 @@ def get_pending_payments():
 # 綜辦文件繳回追蹤表
 # =========================================================
 
-_DOC_TRACKING_STATUSES = ("待繳回綜辦",)
+_DOC_TRACKING_STATUSES = ("待回綜辦", "待繳回綜辦")
 
 
 def get_doc_worksheet():
