@@ -230,23 +230,41 @@ def append_transfer_log(office: str, task: str, department: str, description: st
     )
 
 
-def create_asset(office: str, category: str, asset_id: str, name: str, spec: str, location: str):
+def create_asset(office: str, category: str, asset_id: str, name: str, spec: str, location: str,
+                  department: str = "", emp_id: str = "", keeper: str = "", status: str = "使用中"):
     """
     在指定辦公室的 category 分頁(辦公室資產/資訊類資產)新增一整列全新資產。
-    使用狀況預設「庫存」,所在公司=office,所在區域=傳入值,其餘欄位留空。
+    所在公司=office,其餘欄位依傳入值填寫。
+    找空白列時掃描編號欄(A欄)第一個真正空白的列,而不是單純用總列數+1,
+    避免因試算表尾端空白列被 API 截斷而誤判、進而覆蓋到既有資料。
     回傳新資產所在的列號。
     """
     ws = get_worksheet(office, category)
     values = ws.get_all_values()
-    target_row = len(values) + 1
+    id_idx = _col_to_index(COLUMNS["id"]) - 1
+
+    target_row = None
+    for i, row in enumerate(values):
+        row_num = i + 1
+        if row_num <= HEADER_ROW:
+            continue
+        cell = row[id_idx].strip() if id_idx < len(row) else ""
+        if not cell:
+            target_row = row_num
+            break
+    if target_row is None:
+        target_row = len(values) + 1
 
     field_values = {
         "id": asset_id,
         "name": name,
         "spec": spec,
-        "status": "庫存",
+        "status": status,
         "company": office,
         "location": location,
+        "department": department,
+        "emp_id": emp_id,
+        "keeper": keeper,
     }
     max_col_index = max(_col_to_index(c) for c in COLUMNS.values())
     full_row = [""] * max_col_index
@@ -255,4 +273,6 @@ def create_asset(office: str, category: str, asset_id: str, name: str, spec: str
         full_row[idx] = val
 
     ws.update(f"A{target_row}", [full_row])
+    if location:
+        _apply_location_color(ws, target_row, location)
     return target_row
