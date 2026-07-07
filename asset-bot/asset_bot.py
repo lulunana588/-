@@ -252,6 +252,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row = sheet_utils.create_asset(
                 pending["office"], pending["category"], pending["asset_id"],
                 pending["name"], pending["spec"], pending["location"],
+                department=pending.get("department", ""),
+                emp_id=pending.get("emp_id", ""),
+                keeper=pending.get("keeper", ""),
             )
             sheet_utils.append_transfer_log(
                 pending["office"], "購入", pending["office"], pending.get("desc", "新購入"),
@@ -311,6 +314,24 @@ async def run_batch_preview(message, chat_id: int, text: str):
                         a["department"] = ref["department"]
                     if not (a.get("emp_id") or "").strip() and ref["emp_id"]:
                         a["emp_id"] = ref["emp_id"]
+
+        # 領用時,部門/員編一律改抓表格內這個花名現有的資料,不採用 TG 訊息裡打的值
+        if a["type"] == "領用":
+            person = (a.get("person") or "").strip()
+            a["department"] = ""
+            a["emp_id"] = ""
+            if person:
+                ref = sheet_utils.find_keeper_reference(office, person)
+                if ref:
+                    a["department"] = ref["department"]
+                    a["emp_id"] = ref["emp_id"]
+
+        # 領用一律不採用 TG 訊息裡打的部門/員編,強制改用該花名在表格內現有的部門/員編
+        if a["type"] == "領用":
+            person_name = (a.get("person") or "").strip()
+            ref = sheet_utils.find_keeper_reference(office, person_name) if person_name else None
+            a["department"] = ref["department"] if ref else ""
+            a["emp_id"] = ref["emp_id"] if ref else ""
 
         ok, fields, note, error_msg, log_action = batch_rules.build_plan(a)
         entry = {
@@ -442,12 +463,21 @@ async def prepare_purchase(message, chat_id: int, text: str):
     name = data.get("名稱", "").strip()
     spec = data.get("規格", "").strip()
     location = data.get("所在區域", "").strip()
+    department = data.get("部門", "").strip()
+    emp_id = data.get("員編", "").strip()
+    keeper = data.get("花名", "").strip()
 
-    missing = [k for k, v in [("辦公室", office), ("分類", category), ("編號", asset_id), ("名稱", name), ("所在區域", location)] if not v]
+    missing = [
+        k for k, v in [
+            ("辦公室", office), ("分類", category), ("編號", asset_id), ("名稱", name),
+            ("所在區域", location), ("部門", department), ("員編", emp_id), ("花名", keeper),
+        ] if not v
+    ]
     if missing:
         await message.reply_text(
-            "⚠️ 購入需要填:辦公室/分類/編號/名稱/所在區域(規格選填),缺少:" + "、".join(missing) +
-            "\n\n格式範例:\n購入\n辦公室:商務中心\n分類:辦公室資產\n編號:A-01-500\n名稱:辦公椅\n規格:黑色網布\n所在區域:座位099"
+            "⚠️ 購入需要填:辦公室/分類/編號/名稱/所在區域/部門/員編/花名(規格選填),缺少:" + "、".join(missing) +
+            "\n\n格式範例:\n購入\n辦公室:商務中心\n分類:辦公室資產\n編號:A-01-500\n名稱:辦公椅\n"
+            "規格:黑色網布\n所在區域:座位099\n部門:客服部\n員編:XS1234\n花名:小美"
         )
         return
     if office not in OFFICES:
@@ -468,13 +498,17 @@ async def prepare_purchase(message, chat_id: int, text: str):
         "name": name,
         "spec": spec,
         "location": location,
+        "department": department,
+        "emp_id": emp_id,
+        "keeper": keeper,
         "desc": "新購入",
     }
     USER_STATE[chat_id] = {"pending_single": pending}
     await message.reply_text(
         "📋 購入預覽(將新增全新資產):\n"
         f"辦公室:{office}\n分類:{category}\n編號:{asset_id}\n名稱:{name}\n"
-        f"規格:{spec or '(未填)'}\n所在區域:{location}\n使用狀況:庫存\n\n確認要新增嗎?",
+        f"規格:{spec or '(未填)'}\n所在區域:{location}\n部門:{department}\n員編:{emp_id}\n"
+        f"花名(保管人):{keeper}\n使用狀況:使用中\n\n確認要新增嗎?",
         reply_markup=confirm_cancel_keyboard(),
     )
 
