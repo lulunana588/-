@@ -269,12 +269,19 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         logger.exception("快速指令讀取桶裝水表失敗，改開選單")
         return await start(update, context)
 
+    lines = [ln.strip() for ln in remainder.splitlines() if ln.strip()]
+    water_lines = [ln for ln in lines if _WATER_KEYWORD in ln]
+
+    if len(water_lines) > 1:
+        return await _handle_quick_water_batch(update, context, water_lines, locations)
+
     parsed = _parse_quick_water_command(remainder, locations)
     if not parsed:
         await update.effective_message.reply_text(
             f"{BOT_DISPLAY_NAME}\n"
             f"沒看懂「{remainder}」這個指令，格式要像這樣：\n"
             f"「地點 桶裝水 送水 5 桶」（扣桶）或「地點 桶裝水 儲值 100 桶」（補桶）\n"
+            f"（多筆的話一行一筆，分開換行即可）\n"
             f"先幫您打開選單操作："
         )
         return await start(update, context)
@@ -303,6 +310,52 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"📋 已同步登記到「{result.get('detail_tab', result['location'])}」分頁（剩餘 {result.get('detail_balance', result['new_stock'])}桶）\n"
         f"👤 操作人：{operator}\n"
         f"已更新"
+    )
+    return ConversationHandler.END
+
+
+async def _process_one_water_line(line: str, locations: list, operator: str) -> str:
+    """批次模式專用：處理單一行桶裝水指令，回傳一行結果文字"""
+    parsed = _parse_quick_water_command(line, locations)
+    if not parsed:
+        return f"❌ 看不懂「{line}」，已略過"
+
+    loc, delta = parsed
+    action_label = "入庫" if delta > 0 else "出庫"
+    try:
+        result = sheets.record_water_transaction(loc, delta, note=operator)
+    except Exception as e:
+        logger.exception("批次桶裝水更新失敗")
+        return f"❌ {loc['location']}：更新失敗（{e}）"
+
+    return (
+        f"✅ {result['location']} {action_label} → {result['old_stock']}桶→{result['new_stock']}桶"
+        f"（{result['status']}，已同步{result.get('detail_tab', result['location'])}分頁）"
+    )
+
+
+async def _handle_quick_water_batch(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, water_lines: list, locations: list
+):
+    processing_msg = await update.effective_message.reply_text(
+        f"{BOT_DISPLAY_NAME}\n🔄 動作：批次桶裝水登記（共 {len(water_lines)} 筆）\n⏳ 處理中，請稍候..."
+    )
+
+    operator = _operator_name(update)
+    result_lines = []
+    for i, line in enumerate(water_lines, start=1):
+        line_result = await _process_one_water_line(line, locations, operator)
+        result_lines.append(f"{i}. {line_result}")
+
+    flagged = sum(1 for line in result_lines if "❌" in line)
+    header_note = f"🔺 有 {flagged} 筆需要您額外確認（標記❌），建議優先查看\n\n" if flagged else ""
+
+    await processing_msg.edit_text(
+        f"{BOT_DISPLAY_NAME}\n"
+        f"🔄 批次桶裝水登記完成（共 {len(water_lines)} 筆）　📅 {sheets.today_str()}\n"
+        f"👤 操作人：{operator}\n\n"
+        f"{header_note}"
+        + "\n".join(result_lines)
     )
     return ConversationHandler.END
 
@@ -559,9 +612,15 @@ async def _handle_quick_payment_batch(update: Update, context: ContextTypes.DEFA
         line = await _process_one_payment_block(update, parsed, snapshot, used_rows)
         result_lines.append(f"{i}. {line}")
 
+    flagged = sum(1 for line in result_lines if "⚠️" in line or "❓" in line or "❌" in line)
+    header_note = (
+        f"🔺 有 {flagged} 筆需要您額外確認（標記⚠️/❓/❌），建議優先查看\n\n" if flagged else ""
+    )
+
     await processing_msg.edit_text(
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 批次款項處理完成（共 {len(blocks)} 筆）　📅 {sheets.today_str()}\n\n"
+        f"{header_note}"
         + "\n".join(result_lines)
     )
     return ConversationHandler.END
