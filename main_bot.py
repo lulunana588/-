@@ -293,7 +293,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"⏳ 處理中，請稍候..."
     )
     try:
-        result = sheets.record_water_transaction(loc, delta, note=operator)
+        result = sheets.record_water_transaction(loc, delta)
     except Exception as e:
         logger.exception("快速指令更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
@@ -320,7 +320,7 @@ async def _process_one_water_line(line: str, locations: list, operator: str) -> 
     loc, delta = parsed
     action_label = "入庫" if delta > 0 else "出庫"
     try:
-        result = sheets.record_water_transaction(loc, delta, note=operator)
+        result = sheets.record_water_transaction(loc, delta)
     except Exception as e:
         logger.exception("批次桶裝水更新失敗")
         return f"❌ {loc['location']}：更新失敗（{e}）"
@@ -770,7 +770,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     try:
-        result = sheets.record_water_transaction(loc, delta, note=operator)
+        result = sheets.record_water_transaction(loc, delta)
     except Exception as e:
         logger.exception("更新桶裝水庫存失敗")
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
