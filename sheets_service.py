@@ -339,6 +339,35 @@ def find_near_pending_payment(name: str, amount: str, tolerance: int):
     return matches
 
 
+def get_pending_payment_index():
+    """
+    取得目前所有「非已付」款項的索引快照，給批次處理比對用。
+    只在批次開始前讀一次，避免同一批裡有重複名稱+金額的項目時，
+    後面那筆誤判成在編輯前面那筆剛新增的（應該各自成立一筆）。
+    回傳 [{row, name, amount}, ...]（amount 是 int）
+    """
+    ws = get_payment_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _payment_header_row_idx(all_values)
+
+    index = []
+    for i in range(header_idx + 1, len(all_values)):
+        row = all_values[i]
+        if not row or not row[0].strip():
+            continue
+        status = row[5].strip() if len(row) > 5 else ""
+        if status == "已付":
+            continue
+        name = row[2].strip() if len(row) > 2 else ""
+        amount_raw = row[3].strip().replace(",", "") if len(row) > 3 else ""
+        try:
+            amount = int(amount_raw)
+        except ValueError:
+            continue
+        index.append({"row": i + 1, "name": name, "amount": amount})
+    return index
+
+
 def find_pending_payment_exact(name: str, amount: str):
     """
     找出款項名稱、金額都完全相同，且目前狀態不是「已付」的既有列。
