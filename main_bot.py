@@ -164,13 +164,19 @@ _PAYMENT_FIELD_ALIASES = {
     "备注": "note",
 }
 
-_PAYMENT_NAME_LINE_RE = re.compile(r"^\s*(款項名稱|名稱|項目)\s*[:：]", re.MULTILINE)
+_PAYMENT_NAME_LINE_RE = re.compile(r"^.{0,4}?(款項名稱|名稱|項目)\s*[:：]", re.MULTILINE)
+
+
+def _clean_field_key(raw_key: str) -> str:
+    """把欄位名稱前面可能出現的圖釘/emoji等非文字符號去掉，只留中文字/英數字"""
+    return re.sub(r"^[^\w\u4e00-\u9fff]+", "", raw_key).strip()
 
 
 def _split_payment_blocks(remainder: str):
     """
-    把一則訊息切成多筆款項的區塊，每次看到新的一行「款項名稱:」（或「名稱:」「項目:」）
-    就當作下一筆的開始，不用特地空行分隔。只有一筆時原封不動回傳單一區塊。
+    把一則訊息切成多筆款項的區塊，每次看到新的一行「款項名稱:」（或「名稱:」「項目:」，
+    前面可以有 📌 之類的符號/emoji）就當作下一筆的開始，不用特地空行分隔。
+    只有一筆時原封不動回傳單一區塊。
     """
     matches = list(_PAYMENT_NAME_LINE_RE.finditer(remainder))
     if len(matches) <= 1:
@@ -178,8 +184,8 @@ def _split_payment_blocks(remainder: str):
 
     blocks = []
     for i, m in enumerate(matches):
-        start = m.start()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(remainder)
+        start = m.start(1)  # 從關鍵字本身開始切，前面不相關的符號留給前一筆（不影響解析）
+        end = matches[i + 1].start(1) if i + 1 < len(matches) else len(remainder)
         blocks.append(remainder[start:end].strip())
     return blocks
 
@@ -191,10 +197,10 @@ def _parse_quick_payment_command(remainder: str):
     """
     fields = {}
     for line in remainder.splitlines():
-        m = re.match(r"\s*([^:：]{1,10})[:：]\s*(.+?)\s*$", line)
+        m = re.match(r"\s*(.{1,12}?)[:：]\s*(.+?)\s*$", line)
         if not m:
             continue
-        raw_key, value = m.group(1).strip(), m.group(2).strip()
+        raw_key, value = _clean_field_key(m.group(1)), m.group(2).strip()
         key = _PAYMENT_FIELD_ALIASES.get(raw_key)
         if key and value:
             fields[key] = value
@@ -457,10 +463,12 @@ async def quick_payment_near_match(update: Update, context: ContextTypes.DEFAULT
     )
 
 
-async def _process_one_payment_block(update: Update, parsed: dict) -> str:
+async def _process_one_payment_block(update: Update, parsed: dict, snapshot: list, used_rows: set) -> str:
     """
     批次模式專用：處理單一筆款項（找既有的就編輯、找不到就新增），
     回傳一行結果文字，不單獨發訊息（批次會統一彙整成一則訊息）。
+    比對用的 snapshot 是批次開始前讀的快照，不會即時重查，
+    這樣同一批裡出現名稱+金額都相同的兩筆，才會各自成立一筆，不會互相誤判成同一筆。
     金額相近但不完全相同的狀況，批次模式不彈確認視窗，直接新增並在結果裡加警示，
     事後請自行到表格確認是否重複。
     """
@@ -468,18 +476,27 @@ async def _process_one_payment_block(update: Update, parsed: dict) -> str:
     note_for_sheet = f"{parsed['note']}｜{operator}" if parsed["note"] else operator
 
     try:
-        exact = sheets.find_pending_payment_exact(parsed["name"], parsed["amount"])
-    except Exception:
-        logger.exception("批次款項查找既有款項失敗")
-        exact = []
+        target_amount = int(parsed["amount"])
+    except ValueError:
+        target_amount = None
 
-    if len(exact) > 1:
+    exact_rows = [
+        item["row"]
+        for item in snapshot
+        if item["name"] == parsed["name"]
+        and item["amount"] == target_amount
+        and item["row"] not in used_rows
+    ]
+
+    if len(exact_rows) > 1:
         return f"❓ {parsed['name']}（NT${parsed['amount']}）：找到多筆同名同金額還沒付的，請改用選單處理"
 
-    if len(exact) == 1:
+    if len(exact_rows) == 1:
+        row = exact_rows[0]
+        used_rows.add(row)
         try:
             result = sheets.update_payment_fields(
-                exact[0],
+                row,
                 progress=parsed["progress"],
                 status=parsed["status"],
                 paid_date=parsed["paid_date"],
@@ -492,14 +509,17 @@ async def _process_one_payment_block(update: Update, parsed: dict) -> str:
         return f"✏️ 編號{result['id']} {result['name']}（NT${result['amount']}）→ {result['status']}{extra}（編輯既有）"
 
     warn = ""
-    try:
-        near = sheets.find_near_pending_payment(
-            parsed["name"], parsed["amount"], config.PAYMENT_AMOUNT_TOLERANCE
-        )
-        if near:
-            warn = f"⚠️ 金額與既有一筆（NT${near[0]['amount']:,}）相近，請確認是否重複；"
-    except Exception:
-        logger.exception("批次款項查找相近既有款項失敗")
+    if target_amount is not None:
+        near_rows = [
+            item
+            for item in snapshot
+            if item["name"] == parsed["name"]
+            and item["row"] not in used_rows
+            and item["amount"] != target_amount
+            and abs(item["amount"] - target_amount) <= config.PAYMENT_AMOUNT_TOLERANCE
+        ]
+        if near_rows:
+            warn = f"⚠️ 金額與既有一筆（NT${near_rows[0]['amount']:,}）相近，請確認是否重複；"
 
     try:
         result = sheets.add_payment_record(
@@ -523,13 +543,20 @@ async def _handle_quick_payment_batch(update: Update, context: ContextTypes.DEFA
         f"{BOT_DISPLAY_NAME}\n🔄 動作：批次處理款項（共 {len(blocks)} 筆）\n⏳ 處理中，請稍候..."
     )
 
+    try:
+        snapshot = sheets.get_pending_payment_index()
+    except Exception:
+        logger.exception("批次款項讀取既有索引失敗")
+        snapshot = []
+    used_rows = set()
+
     result_lines = []
     for i, block in enumerate(blocks, start=1):
         parsed = _parse_quick_payment_command(block)
         if not parsed:
             result_lines.append(f"{i}. ❌ 看不懂這筆資料（款項名稱/金額必填），已略過")
             continue
-        line = await _process_one_payment_block(update, parsed)
+        line = await _process_one_payment_block(update, parsed, snapshot, used_rows)
         result_lines.append(f"{i}. {line}")
 
     await processing_msg.edit_text(
