@@ -95,7 +95,10 @@ def _parse_quick_water_command(remainder: str, locations: list):
     if has_out == has_in:
         return None  # 兩個字都有，或兩個字都沒有 -> 語意不明確，不要亂猜
 
-    qty_match = re.search(r"(\d+)", remainder)
+    # 只抓「桶」字前面緊鄰的數字（可以有空格），避免誤抓訊息裡其他無關數字
+    # （例如帳號、電話、地址門牌號）。
+    # （2026/07/08 加強：原本抓訊息裡第一個數字，曾誤把 @lulunana588 裡的588當成桶數）
+    qty_match = re.search(r"(\d+)\s*桶", remainder)
     if not qty_match:
         return None
     qty = int(qty_match.group(1))
