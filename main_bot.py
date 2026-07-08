@@ -1121,8 +1121,26 @@ async def send_payment_reminder(context: ContextTypes.DEFAULT_TYPE):
 # 組裝 Application
 # =========================================================
 
+async def _on_startup(application: Application):
+    """機器人啟動完成（VPS重開機或服務被重啟時）私訊通知，讓您知道它還活著"""
+    if not config.REMINDER_CHAT_ID:
+        return
+    try:
+        now = datetime.datetime.now(ZoneInfo("Asia/Taipei")).strftime("%Y/%m/%d %H:%M")
+        await application.bot.send_message(
+            chat_id=config.REMINDER_CHAT_ID,
+            text=(
+                f"{BOT_DISPLAY_NAME}\n"
+                f"✅ 機器人重新上線了　🕐 {now}（台灣時間）\n"
+                f"（VPS 重開機或服務被重啟時會自動發這則通知）"
+            ),
+        )
+    except Exception:
+        logger.exception("發送上線通知失敗")
+
+
 def build_app() -> Application:
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(_on_startup).build()
 
     mention_filter = filters.Entity(MessageEntity.MENTION) & filters.TEXT
 
