@@ -63,9 +63,8 @@ async def _reject(update: Update):
 # =========================================================
 
 _WATER_KEYWORD = "桶裝水"
-# 「送水」「儲值」都代表水公司補貨、庫存增加 -> 一律視為入庫
-# （2026/07/08 修正：原本把「送水」誤判成出庫扣桶，造成補貨被當成消耗）
-_WATER_IN_WORDS = ("送水", "儲值")
+_WATER_OUT_WORD = "送水"  # 送水 = 扣桶（出庫）
+_WATER_IN_WORD = "儲值"   # 儲值 = 補桶（入庫）
 
 
 def _operator_name(update: Update) -> str:
@@ -91,9 +90,10 @@ def _parse_quick_water_command(remainder: str, locations: list):
     「桶裝水」三個字可加可不加，但「送水」/「儲值」兩個關鍵字至少要出現一個，
     避免隨口打幾個字就誤觸發，比對不到就回傳 None（改成打開選單）。
     """
-    matched_words = [w for w in _WATER_IN_WORDS if w in remainder]
-    if not matched_words:
-        return None  # 沒有「送水」或「儲值」關鍵字 -> 語意不明確，不要亂猜
+    has_out = _WATER_OUT_WORD in remainder
+    has_in = _WATER_IN_WORD in remainder
+    if has_out == has_in:
+        return None  # 兩個字都有，或兩個字都沒有 -> 語意不明確，不要亂猜
 
     qty_match = re.search(r"(\d+)", remainder)
     if not qty_match:
@@ -102,11 +102,11 @@ def _parse_quick_water_command(remainder: str, locations: list):
     if qty <= 0:
         return None
 
-    delta_sign = 1  # 送水／儲值都是補貨，一律入庫
+    delta_sign = -1 if has_out else 1
 
     # 把關鍵字、桶、數字、標點都拿掉，剩下的當作「地點關鍵字」
     core = remainder
-    for w in (_WATER_KEYWORD, *_WATER_IN_WORDS, "桶"):
+    for w in (_WATER_KEYWORD, _WATER_OUT_WORD, _WATER_IN_WORD, "桶"):
         core = core.replace(w, "")
     core = re.sub(r"[\d\s　、，,()（）]+", "", core)
 
@@ -254,7 +254,7 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not remainder:
         return await start(update, context)
 
-    if _WATER_KEYWORD in remainder or any(w in remainder for w in _WATER_IN_WORDS):
+    if _WATER_KEYWORD in remainder or _WATER_OUT_WORD in remainder or _WATER_IN_WORD in remainder:
         return await _handle_quick_water(update, context, remainder)
     if "款項名稱" in remainder:
         return await _handle_quick_payment(update, context, remainder)
@@ -270,7 +270,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         return await start(update, context)
 
     lines = [ln.strip() for ln in remainder.splitlines() if ln.strip()]
-    water_lines = [ln for ln in lines if any(w in ln for w in _WATER_IN_WORDS)]
+    water_lines = [ln for ln in lines if _WATER_OUT_WORD in ln or _WATER_IN_WORD in ln]
 
     if len(water_lines) > 1:
         return await _handle_quick_water_batch(update, context, water_lines, locations)
@@ -280,7 +280,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.effective_message.reply_text(
             f"{BOT_DISPLAY_NAME}\n"
             f"沒看懂「{remainder}」這個指令，格式要像這樣：\n"
-            f"「地點 送水 10 桶」或「地點 儲值 100 桶」都代表補貨入庫，「桶裝水」三個字可加可不加\n"
+            f"「地點 送水 5 桶」（扣桶）或「地點 儲值 100 桶」（補桶），「桶裝水」三個字可加可不加\n"
             f"（多筆的話一行一筆，分開換行即可）\n"
             f"先幫您打開選單操作："
         )
