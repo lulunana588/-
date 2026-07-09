@@ -284,6 +284,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
             f"{BOT_DISPLAY_NAME}\n"
             f"沒看懂「{remainder}」這個指令，格式要像這樣：\n"
             f"「地點 送水 5 桶」（扣桶）或「地點 儲值 100 桶」（補桶），「桶裝水」三個字可加可不加\n"
+            f"商務中心、共享服務中心宏國辦有兩個廠商，請加註「華生」或「水寶貝」，例如「商務中心 華生 送水5桶」\n"
             f"（多筆的話一行一筆，分開換行即可）\n"
             f"先幫您打開選單操作："
         )
