@@ -198,8 +198,10 @@ def append_water_log(location_name: str, delta: int, note: str = ""):
     # (+2 是因為 header_idx / last_filled_idx 是 0-indexed，且要寫在下一列)
 
     new_balance = max(0, prev_balance + delta)
-    add_qty = delta if delta > 0 else ""
-    minus_qty = -delta if delta < 0 else ""
+    # 送水（出庫）時加值桶數掛0；儲值（入庫）時扣除桶數掛0——不留空白，方便閱讀與後續加總計算
+    # （2026/07/09 修正：原本用 "" 空字串，改成明確填 0）
+    add_qty = delta if delta > 0 else 0
+    minus_qty = -delta if delta < 0 else 0
 
     start_cell = rowcol_to_a1(target_row, col_start)
     end_cell = rowcol_to_a1(target_row, col_start + 4)
