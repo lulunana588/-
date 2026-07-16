@@ -210,6 +210,20 @@ def append_water_log(location_name: str, delta: int, note: str = ""):
         [[today_str(), note, add_qty, minus_qty, new_balance]],
     )
 
+    # 比照人工登記的樣式套用格式，避免透過程式寫入的列「素顏」沒有顏色/粗體
+    # （2026/07/16 新增：ws.update() 只會寫入內容，不會自動套用格式，要另外呼叫 format()）
+    add_cell = rowcol_to_a1(target_row, col_start + 2)
+    minus_cell = rowcol_to_a1(target_row, col_start + 3)
+    balance_cell = rowcol_to_a1(target_row, col_start + 4)
+
+    add_color = (
+        {"red": 0.0, "green": 0.0, "blue": 0.8} if add_qty > 0
+        else {"red": 0.0, "green": 0.0, "blue": 0.0}
+    )
+    ws.format(add_cell, {"textFormat": {"foregroundColor": add_color, "bold": False}})
+    ws.format(minus_cell, {"textFormat": {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "bold": False}})
+    ws.format(balance_cell, {"textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}, "bold": True}})
+
     return {"tab": tab_title, "new_balance": new_balance}
 
 
