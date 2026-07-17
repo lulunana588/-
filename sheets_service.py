@@ -3,6 +3,7 @@
 
 import re
 import datetime
+import logging
 import gspread
 from gspread.utils import rowcol_to_a1
 from google.oauth2.service_account import Credentials
@@ -157,6 +158,45 @@ def get_water_detail_worksheet(tab_title: str):
     return sh.worksheet(tab_title)
 
 
+def _copy_row_height(ws, from_row: int, to_row: int):
+    """
+    讀取 from_row 目前實際的列高（像素），套用到 to_row。
+    用「複製前一列的實際高度」而不是寫死固定數字，
+    這樣就算之後有人手動微調過列高，新增的列也會自動跟著對齊，不用每次都手動回報數字。
+    抓不到高度資訊時直接跳過，不強制設定（避免因為格式異常而讓整個寫入流程失敗）。
+    """
+    try:
+        meta = ws.spreadsheet.fetch_sheet_metadata(
+            params={
+                "ranges": [f"'{ws.title}'!A{from_row}:A{from_row}"],
+                "fields": "sheets.data.rowMetadata",
+            }
+        )
+        row_metadata = meta["sheets"][0]["data"][0].get("rowMetadata", [])
+        if not row_metadata:
+            return
+        pixel_size = row_metadata[0].get("pixelSize")
+        if not pixel_size:
+            return
+
+        request = {
+            "updateDimensionProperties": {
+                "range": {
+                    "sheetId": ws.id,
+                    "dimension": "ROWS",
+                    "startIndex": to_row - 1,
+                    "endIndex": to_row,
+                },
+                "properties": {"pixelSize": pixel_size},
+                "fields": "pixelSize",
+            }
+        }
+        ws.spreadsheet.batch_update({"requests": [request]})
+    except Exception:
+        # 列高調整失敗不影響資料正確性，記錄下來但不中斷整體流程
+        logging.getLogger(__name__).exception("複製列高失敗，略過（不影響資料本身）")
+
+
 def append_water_log(location_name: str, delta: int, note: str = ""):
     """
     在該地點的個別分頁新增一筆逐日記錄，比照人工登記的格式。
@@ -223,6 +263,10 @@ def append_water_log(location_name: str, delta: int, note: str = ""):
     ws.format(add_cell, {"textFormat": {"foregroundColor": add_color, "bold": False}})
     ws.format(minus_cell, {"textFormat": {"foregroundColor": {"red": 0.8, "green": 0.0, "blue": 0.0}, "bold": False}})
     ws.format(balance_cell, {"textFormat": {"foregroundColor": {"red": 0.0, "green": 0.0, "blue": 0.0}, "bold": True}})
+
+    # 複製「前一列」目前實際的列高，避免新增的列因套用預設高度而看起來特別高
+    # （2026/07/16 新增）
+    _copy_row_height(ws, from_row=target_row - 1, to_row=target_row)
 
     return {"tab": tab_title, "new_balance": new_balance}
 
