@@ -212,22 +212,52 @@ def get_note(office: str, sheet_name: str, row: int):
         return ""
 
 
+def _apply_grid_borders(ws, row: int, num_cols: int):
+    """幫指定列(A~第num_cols欄)補上跟其他列一致的細黑框線"""
+    border_style = {"style": "SOLID", "width": 1, "color": {"red": 0, "green": 0, "blue": 0}}
+    request = {
+        "requests": [
+            {
+                "updateBorders": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "startRowIndex": row - 1,
+                        "endRowIndex": row,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": num_cols,
+                    },
+                    "top": border_style,
+                    "bottom": border_style,
+                    "left": border_style,
+                    "right": border_style,
+                    "innerHorizontal": border_style,
+                    "innerVertical": border_style,
+                }
+            }
+        ]
+    }
+    try:
+        ws.spreadsheet.batch_update(request)
+    except Exception:
+        pass  # 框線套用失敗不影響資料寫入本身
+
+
 def append_local_log(office: str, task: str, person: str, description: str, asset_id: str, name: str, spec: str):
     """寫一筆到「本点管理」分頁:任務/日期/花名/說明/編號/名稱/規格"""
     ws = get_worksheet(office, LOCAL_LOG_SHEET)
-    ws.append_row(
-        [task, today_str(), person, description, asset_id, name, spec],
-        value_input_option="USER_ENTERED",
-    )
+    values = ws.get_all_values()
+    target_row = len(values) + 1
+    ws.update(f"A{target_row}", [[task, today_str(), person, description, asset_id, name, spec]], value_input_option="USER_ENTERED")
+    _apply_grid_borders(ws, target_row, 7)
 
 
 def append_transfer_log(office: str, task: str, department: str, description: str, asset_id: str, name: str, spec: str):
     """寫一筆到「跨點調撥」分頁:任務/日期/部門/說明/編號/名稱/規格"""
     ws = get_worksheet(office, TRANSFER_LOG_SHEET)
-    ws.append_row(
-        [task, today_str(), department, description, asset_id, name, spec],
-        value_input_option="USER_ENTERED",
-    )
+    values = ws.get_all_values()
+    target_row = len(values) + 1
+    ws.update(f"A{target_row}", [[task, today_str(), department, description, asset_id, name, spec]], value_input_option="USER_ENTERED")
+    _apply_grid_borders(ws, target_row, 7)
 
 
 def create_asset(office: str, category: str, asset_id: str, name: str, spec: str, location: str,
