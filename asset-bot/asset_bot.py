@@ -316,6 +316,7 @@ async def run_batch_preview(message, chat_id: int, text: str):
                         a["emp_id"] = ref["emp_id"]
 
         # 領用時,部門/員編一律改抓表格內這個花名現有的資料,不採用 TG 訊息裡打的值
+        # 如果訊息裡也沒給所在區域,一併用這個人現有的區域來補齊
         if a["type"] == "領用":
             person = (a.get("person") or "").strip()
             a["department"] = ""
@@ -325,6 +326,8 @@ async def run_batch_preview(message, chat_id: int, text: str):
                 if ref:
                     a["department"] = ref["department"]
                     a["emp_id"] = ref["emp_id"]
+                    if not (a.get("new_location") or "").strip() and ref["location"]:
+                        a["new_location"] = ref["location"]
 
         # 領用一律不採用 TG 訊息裡打的部門/員編,強制改用該花名在表格內現有的部門/員編
         if a["type"] == "領用":
