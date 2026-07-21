@@ -193,6 +193,14 @@ def _split_payment_blocks(remainder: str):
     return blocks
 
 
+_NOTE_REQUIRED_PROGRESS_KEYWORD = "缺件待補"
+
+
+def _progress_requires_note(progress: str) -> bool:
+    """進度含「缺件待補」時，備註必填，說明具體缺什麼件，避免只留一個曖昧的狀態"""
+    return _NOTE_REQUIRED_PROGRESS_KEYWORD in (progress or "")
+
+
 def _parse_quick_payment_command(remainder: str):
     """
     嘗試解析多行「款項名稱: xxx / 金額: xxx / 進度: xxx / 付款狀態: xxx」格式的快速新增指令。
@@ -379,6 +387,15 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         )
         return await start(update, context)
 
+    if _progress_requires_note(parsed["progress"]) and not parsed["note"]:
+        await update.effective_message.reply_text(
+            f"{BOT_DISPLAY_NAME}\n"
+            f"「{parsed['name']}」進度選了「{parsed['progress']}」，麻煩補充備註說明缺什麼件，例如：\n"
+            f"款項名稱: {parsed['name']}\n金額: {parsed['amount']}\n進度: {parsed['progress']}\n備註: 缺XX正本\n\n"
+            f"這筆先不登記，補齊備註後請重新發一次完整內容："
+        )
+        return ConversationHandler.END
+
     operator = _operator_name(update)
     note_for_sheet = parsed["note"]
 
@@ -533,6 +550,9 @@ async def _process_one_payment_block(update: Update, parsed: dict, snapshot: lis
     """
     operator = _operator_name(update)
     note_for_sheet = parsed["note"]
+
+    if _progress_requires_note(parsed["progress"]) and not note_for_sheet:
+        return f"❓ {parsed['name']}：進度是「{parsed['progress']}」但沒填備註，請補充缺什麼件後重新送出，已略過"
 
     try:
         target_amount = int(parsed["amount"])
