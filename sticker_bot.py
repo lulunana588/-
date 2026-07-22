@@ -275,7 +275,19 @@ def handle_message(msg):
         return
 
     product_id = m.group(1)
-    threading.Thread(target=process_line_pack, args=(chat_id, user_id, product_id), daemon=True).start()
+    send_message(chat_id, "已收到網址，處理中，請稍候…")
+
+    def safe_process():
+        try:
+            process_line_pack(chat_id, user_id, product_id)
+        except Exception as e:
+            log.exception(f"處理貼圖包 {product_id} 發生未預期錯誤")
+            try:
+                send_message(chat_id, f"處理過程中發生錯誤，已中止：\n{e}")
+            except Exception:
+                pass
+
+    threading.Thread(target=safe_process, daemon=True).start()
 
 
 # ============ 主迴圈 ============
