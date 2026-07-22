@@ -751,6 +751,18 @@ async def quick_checkout(message, chat_id: int, asset_id: str, person: str, depa
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
     logger.error("Exception while handling update:", exc_info=context.error)
+
+    # httpx/telegram 的暫時性網路錯誤,底層 polling 機制會自動重試恢復,
+    # 不算真正的異常,不需要每次都跳通知打擾使用者。
+    error_type_name = type(context.error).__name__
+    TRANSIENT_ERRORS = {
+        "ReadError", "ConnectError", "ConnectTimeout", "ReadTimeout",
+        "WriteError", "PoolTimeout", "RemoteProtocolError",
+        "NetworkError", "TimedOut",
+    }
+    if error_type_name in TRANSIENT_ERRORS:
+        return
+
     try:
         await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=f"⚠️ 資產機器人發生錯誤:{context.error}")
     except Exception:
@@ -758,7 +770,15 @@ async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-    app = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+    app = (
+        ApplicationBuilder()
+        .token(TELEGRAM_BOT_TOKEN)
+        .get_updates_read_timeout(60)
+        .get_updates_connect_timeout(30)
+        .read_timeout(30)
+        .connect_timeout(30)
+        .build()
+    )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & filters.Entity("mention"), mention_handler))
