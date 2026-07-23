@@ -36,6 +36,7 @@ import logging
 import tempfile
 import subprocess
 import threading
+import queue
 
 import requests
 from PIL import Image
@@ -252,6 +253,25 @@ def process_line_pack(chat_id, user_id, product_id):
             pass
 
 
+# ============ 任務佇列：一次只處理一個貼圖包，避免互搶資源 ============
+JOB_QUEUE = queue.Queue()
+
+
+def worker_loop():
+    while True:
+        chat_id, user_id, product_id = JOB_QUEUE.get()
+        try:
+            process_line_pack(chat_id, user_id, product_id)
+        except Exception as e:
+            log.exception(f"處理貼圖包 {product_id} 發生未預期錯誤")
+            try:
+                send_message(chat_id, f"處理過程中發生錯誤，已中止：\n{e}")
+            except Exception:
+                pass
+        finally:
+            JOB_QUEUE.task_done()
+
+
 # ============ 訊息處理 ============
 def handle_message(msg):
     chat_id = msg["chat"]["id"]
@@ -275,19 +295,12 @@ def handle_message(msg):
         return
 
     product_id = m.group(1)
-    send_message(chat_id, "已收到網址，處理中，請稍候…")
-
-    def safe_process():
-        try:
-            process_line_pack(chat_id, user_id, product_id)
-        except Exception as e:
-            log.exception(f"處理貼圖包 {product_id} 發生未預期錯誤")
-            try:
-                send_message(chat_id, f"處理過程中發生錯誤，已中止：\n{e}")
-            except Exception:
-                pass
-
-    threading.Thread(target=safe_process, daemon=True).start()
+    pending = JOB_QUEUE.qsize()
+    if pending == 0:
+        send_message(chat_id, "已收到網址，處理中，請稍候…")
+    else:
+        send_message(chat_id, f"已收到網址，前面還有 {pending} 個任務，會依序處理，請稍候…")
+    JOB_QUEUE.put((chat_id, user_id, product_id))
 
 
 # ============ 主迴圈 ============
@@ -296,6 +309,8 @@ def main():
     me = tg_call("getMe")
     BOT_USERNAME = me["username"]
     log.info(f"貼圖搬運工啟動，@{BOT_USERNAME}")
+
+    threading.Thread(target=worker_loop, daemon=True).start()
 
     offset = None
     while True:
