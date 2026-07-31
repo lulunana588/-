@@ -61,3 +61,28 @@ GROQ_MODEL = "llama-3.3-70b-versatile"
 
 # 批次異動支援的類型(用同一套 LLM 解析 + 預覽確認;購入因為要新建資料,走獨立指令流程)
 BATCH_ACTION_TYPES = ["入庫", "領用", "故障", "換座位", "變更保管人", "遺失", "調入", "調出", "報廢"]
+
+# ====== 門號(SIM卡)管理設定 ======
+SIM_OFFICES = {
+    "商務中心": {
+        "spreadsheet_id": "1sVKtu5ellpAlJAQlAbKR1B2XOfeRpjv9tW1akT3o5TY",
+        "sheet_name": "商務中心",
+        "columns": {"name": "A", "carrier": "B", "number": "C", "type": "D", "note": "E"},
+    },
+    "共享服務中心": {
+        "spreadsheet_id": "1lnUK0AEaURfp1jsYfpYfS72Y0uPUecZ4w32VVMvTsqs",
+        "sheet_name": "共享服務中心(宏國)",
+        "columns": {"name": "A", "carrier": "B", "number": "C", "plan_type": "D", "type": "E", "note": "F"},
+    },
+}
+
+SIM_TYPE_OPTIONS = ["公務機", "測試機", "外事號", "庫存", "死號"]
+
+# 門號批次指令的觸發關鍵字(比對時要用完整詞,避免跟資產的「入庫/領用/遺失」混淆)
+SIM_ACTION_KEYWORDS = {
+    "入庫": ["門號入庫", "不使用入庫", "離職入庫"],
+    "領用": ["門號領用", "入職領用"],
+    "轉移": ["門號轉移"],
+    "死號": ["死號回報", "死號入庫"],
+    "遺失": ["人員門號遺失", "門號遺失"],
+}

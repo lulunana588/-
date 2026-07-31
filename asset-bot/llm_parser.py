@@ -84,3 +84,66 @@ def parse_batch_text(text: str):
         a["asset_id"] = str(a["asset_id"]).strip()
         valid_actions.append(a)
     return valid_actions
+
+
+# ====== 門號(SIM卡)異動清單解析 ======
+
+SIM_SYSTEM_PROMPT = """你是門號(SIM卡)異動清單的文字解析器。使用者會貼上一段包含一或多筆門號異動的文字,
+可能包含以下幾種標題(前面可能有📍符號),請把它們正規化成 type 欄位對應的五種類型:
+
+- 「門號入庫」「不使用入庫」「離職入庫」→ type: "入庫"(通常會提到花名,是原本使用這支門號的人)
+- 「門號領用」「入職領用」→ type: "領用"(花名是要領用這支門號的人)
+- 「門號轉移」→ type: "轉移"(通常會提到新使用人跟原使用人,格式可能像「花名:新人(原:舊人)」)
+- 「死號回報」「死號入庫」→ type: "死號"(可能會提到原因)
+- 「人員門號遺失」「門號遺失」→ type: "遺失"(可能會提到原因)
+
+請把文字拆解成一個 JSON 物件,格式為:
+{"actions": [ ... ]}
+
+actions 陣列中每一個門號都是一個獨立物件,輸出以下欄位(沒有的欄位就不要輸出該key):
+
+- type: "入庫" | "領用" | "轉移" | "死號" | "遺失" (必填)
+- phone_number: 門號,例如 "0906-112-633"(必填,保留原始格式含連字號)
+- person: 該筆異動標示的花名(入庫=原使用人、領用=新領用人、轉移=新使用人)
+- old_person: 轉移類型如果有明確寫出原使用人才填
+- reason: 死號或遺失的原因(若有)
+
+規則:
+1. 一個標題底下如果列了多支門號,要展開成多筆各自獨立的 action,共用同一個 person 等資訊。
+2. 只輸出你能從文字中清楚判讀出來的欄位,不確定的欄位不要編造,直接省略。
+3. 只回傳 JSON,不要有任何其他文字、不要用 markdown code fence。
+"""
+
+SIM_TYPES = ["入庫", "領用", "轉移", "死號", "遺失"]
+
+
+def parse_sim_batch_text(text: str):
+    """呼叫 Groq API 解析門號異動文字,回傳 actions list(每個是 dict)"""
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": GROQ_MODEL,
+        "messages": [
+            {"role": "system", "content": SIM_SYSTEM_PROMPT},
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0,
+        "response_format": {"type": "json_object"},
+    }
+    resp = requests.post(GROQ_URL, headers=headers, json=payload, timeout=30)
+    resp.raise_for_status()
+    content = resp.json()["choices"][0]["message"]["content"]
+    parsed = json.loads(content)
+    actions = parsed.get("actions", [])
+
+    valid_actions = []
+    for a in actions:
+        if not a.get("type") or not a.get("phone_number"):
+            continue
+        if a["type"] not in SIM_TYPES:
+            continue
+        a["phone_number"] = str(a["phone_number"]).strip()
+        valid_actions.append(a)
+    return valid_actions

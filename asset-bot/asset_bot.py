@@ -34,10 +34,14 @@ from config import (
     EDITABLE_FIELDS,
     BATCH_ACTION_TYPES,
     DETAIL_SHEETS,
+    SIM_OFFICES,
+    SIM_ACTION_KEYWORDS,
 )
 import sheet_utils
 import llm_parser
 import batch_rules
+import sim_utils
+import sim_rules
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -431,6 +435,64 @@ def looks_like_field_edit(text: str) -> bool:
     return any(("：" in line or ":" in line) for line in text.splitlines() if line.strip())
 
 
+SIM_FIELD_DISPLAY_LABELS = {"name": "姓名", "type": "類型"}
+
+
+def detect_sim_action_type(text: str):
+    """檢查文字裡有沒有門號異動的關鍵字,回傳正規化後的 type("入庫"/"領用"/"轉移"/"死號"/"遺失")或 None"""
+    for norm_type, keywords in SIM_ACTION_KEYWORDS.items():
+        if any(keyword in text for keyword in keywords):
+            return norm_type
+    return None
+
+
+def looks_like_sim_batch_text(text: str) -> bool:
+    return detect_sim_action_type(text) is not None
+
+
+async def run_sim_batch_preview(message, chat_id: int, text: str):
+    try:
+        actions = llm_parser.parse_sim_batch_text(text)
+    except Exception as e:
+        logger.error("門號批次解析失敗: %s", e)
+        await message.reply_text(f"⚠️ 門號解析失敗,請確認格式或稍後再試。\n({e})")
+        return
+
+    if not actions:
+        await message.reply_text("⚠️ 沒有解析出任何可辨識的門號異動項目,請確認貼上的內容格式。")
+        return
+
+    lines = [f"📱 解析出 {len(actions)} 筆門號異動,已直接寫入:\n"]
+    success, skipped = 0, 0
+    for a in actions:
+        phone = a["phone_number"]
+        ok, fields, note, error_msg = sim_rules.build_plan(a)
+        matches = sim_utils.find_sim_any_office(phone)
+
+        if not matches:
+            lines.append(f"❌ {phone}({a['type']}):找不到此門號")
+            skipped += 1
+            continue
+        if len(matches) > 1:
+            lines.append(f"⚠️ {phone}({a['type']}):此門號在多間辦公室都有,無法自動判斷,略過")
+            skipped += 1
+            continue
+        if not ok:
+            lines.append(f"⚠️ {phone}({a['type']}):{error_msg},不會自動寫入")
+            skipped += 1
+            continue
+
+        office, row, record = matches[0]
+        sim_utils.update_sim_fields(office, row, fields)
+        sim_utils.append_sim_note(office, row, note)
+        field_desc = "、".join(f"{SIM_FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
+        lines.append(f"✅ {phone}({a['type']},{office}):{field_desc}\n　附註+「{note}」")
+        success += 1
+
+    lines.append(f"\n共 {success} 筆已寫入,{skipped} 筆已略過。")
+    await message.reply_text("\n".join(lines))
+
+
 # ---------- 文字輸入處理(選單流程的下一步 + 快速指令) ----------
 
 def confirm_cancel_keyboard():
@@ -524,6 +586,11 @@ async def process_text(message, chat_id: int, text: str):
 
     state = USER_STATE.get(chat_id, {})
     awaiting = state.get("awaiting")
+
+    # --- 門號異動清單貼上偵測(要排在資產批次偵測之前,避免「入庫/領用/遺失」關鍵字互相誤判)---
+    if not awaiting and looks_like_sim_batch_text(text):
+        await run_sim_batch_preview(message, chat_id, text)
+        return
 
     # --- 批次異動清單貼上偵測 ---
     if not awaiting and looks_like_batch_text(text):
