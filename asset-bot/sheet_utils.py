@@ -192,10 +192,9 @@ def append_note(office: str, sheet_name: str, row: int, text: str):
     ws = get_worksheet(office, sheet_name)
     col = COLUMNS["note"]
     cell = f"{col}{row}"
-    today = datetime.datetime.now().strftime("%Y/%m/%d")
-    new_line = f"{today} {text}"
+    new_line = f"{today_str()} {text}"
     try:
-        existing = ws.get_note(cell) or ""
+        existing = (ws.get_note(cell) or "").rstrip()
     except Exception:
         existing = ""
     combined = f"{existing}\n{new_line}" if existing else new_line
@@ -242,6 +241,36 @@ def _apply_grid_borders(ws, row: int, num_cols: int):
         pass  # 框線套用失敗不影響資料寫入本身
 
 
+def _apply_center_alignment(ws, row: int, num_cols: int):
+    """幫指定列(A~第num_cols欄)套用水平置中、垂直置中,跟其他列格式一致"""
+    request = {
+        "requests": [
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": ws.id,
+                        "startRowIndex": row - 1,
+                        "endRowIndex": row,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": num_cols,
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "horizontalAlignment": "CENTER",
+                            "verticalAlignment": "MIDDLE",
+                        }
+                    },
+                    "fields": "userEnteredFormat.horizontalAlignment,userEnteredFormat.verticalAlignment",
+                }
+            }
+        ]
+    }
+    try:
+        ws.spreadsheet.batch_update(request)
+    except Exception:
+        pass  # 對齊套用失敗不影響資料寫入本身
+
+
 def append_local_log(office: str, task: str, person: str, description: str, asset_id: str, name: str, spec: str):
     """寫一筆到「本点管理」分頁:任務/日期/花名/說明/編號/名稱/規格"""
     ws = get_worksheet(office, LOCAL_LOG_SHEET)
@@ -249,6 +278,7 @@ def append_local_log(office: str, task: str, person: str, description: str, asse
     target_row = len(values) + 1
     ws.update(f"A{target_row}", [[task, today_str(), person, description, asset_id, name, spec]], value_input_option="USER_ENTERED")
     _apply_grid_borders(ws, target_row, 7)
+    _apply_center_alignment(ws, target_row, 7)
 
 
 def append_transfer_log(office: str, task: str, department: str, description: str, asset_id: str, name: str, spec: str):
@@ -258,6 +288,7 @@ def append_transfer_log(office: str, task: str, department: str, description: st
     target_row = len(values) + 1
     ws.update(f"A{target_row}", [[task, today_str(), department, description, asset_id, name, spec]], value_input_option="USER_ENTERED")
     _apply_grid_borders(ws, target_row, 7)
+    _apply_center_alignment(ws, target_row, 7)
 
 
 def create_asset(office: str, category: str, asset_id: str, name: str, spec: str, location: str,
