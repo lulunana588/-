@@ -17,6 +17,8 @@ def build_plan(action: dict):
     if a_type == "入庫":
         fields = {"name": "庫存", "type": "庫存"}
         note = f"入庫(原使用人:{person})" if person else "入庫"
+        if reason:
+            note += f"、附註:{reason}"
         return True, fields, note, None
 
     if a_type == "領用":
@@ -24,6 +26,8 @@ def build_plan(action: dict):
             return False, {}, "", "缺少領用人花名"
         fields = {"name": person, "type": "公務機"}
         note = f"領用(領用人:{person})"
+        if reason:
+            note += f"、附註:{reason}"
         return True, fields, note, None
 
     if a_type == "轉移":
@@ -34,6 +38,8 @@ def build_plan(action: dict):
             note = f"轉移:{old_person}→{person}"
         else:
             note = f"轉移(改為:{person})"
+        if reason:
+            note += f"、附註:{reason}"
         return True, fields, note, None
 
     if a_type == "死號":
