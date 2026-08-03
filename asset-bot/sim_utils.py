@@ -1,51 +1,68 @@
 # -*- coding: utf-8 -*-
 """
 門號(SIM卡)試算表讀寫工具
-商務中心 / 共享服務中心 各自一份試算表,欄位結構略有不同(共享服務中心多一個「門號類型」欄),
-統一用 SIM_OFFICES[office]["columns"] 這個 dict 來對應欄位代號 -> 欄位字母。
+
+改用 Google Sheets API 的輕量 values.* 端點直接讀寫(不透過 gspread 的
+open_by_key,因為那個方式會先抓整份試算表的完整中繼資料,商務中心門號資訊
+這份表用了進階的下拉標籤/chips功能,完整讀取中繼資料時 Google 那邊常常
+回傳 500 錯誤。改成只針對需要的欄位範圍直接讀寫,就不會碰到那個問題)。
 """
 import re
 import datetime
-import gspread
+import urllib.parse
+import requests
+import google.auth.transport.requests
 from google.oauth2.service_account import Credentials
 from config import GOOGLE_SERVICE_ACCOUNT_FILE, SIM_OFFICES
 
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 TAIPEI_TZ = datetime.timezone(datetime.timedelta(hours=8))
+SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 
-_client = None
-_ws_cache = {}
+_creds = None
 
 
 def today_str():
     return datetime.datetime.now(TAIPEI_TZ).strftime("%Y/%m/%d")
 
 
-def get_client():
-    global _client
-    if _client is None:
-        creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES)
-        _client = gspread.authorize(creds)
-    return _client
+def _get_access_token():
+    global _creds
+    if _creds is None:
+        _creds = Credentials.from_service_account_file(GOOGLE_SERVICE_ACCOUNT_FILE, scopes=SCOPES)
+    if not _creds.valid:
+        _creds.refresh(google.auth.transport.requests.Request())
+    return _creds.token
 
 
-def get_sim_worksheet(office: str):
-    key = office
-    if key not in _ws_cache:
-        info = SIM_OFFICES[office]
-        try:
-            sh = get_client().open_by_key(info["spreadsheet_id"])
-        except Exception as e:
-            raise RuntimeError(
-                f"開啟門號試算表失敗 [office={office}, spreadsheet_id={info['spreadsheet_id']}]: {e}"
-            ) from e
-        try:
-            _ws_cache[key] = sh.worksheet(info["sheet_name"])
-        except Exception as e:
-            raise RuntimeError(
-                f"找不到分頁 [office={office}, sheet_name={info['sheet_name']}]: {e}"
-            ) from e
-    return _ws_cache[key]
+def _headers():
+    return {"Authorization": f"Bearer {_get_access_token()}", "Content-Type": "application/json"}
+
+
+def _sheet_range(office: str, a1_range: str) -> str:
+    sheet_name = SIM_OFFICES[office]["sheet_name"]
+    return f"'{sheet_name}'!{a1_range}"
+
+
+def _get_values(office: str, a1_range: str):
+    spreadsheet_id = SIM_OFFICES[office]["spreadsheet_id"]
+    encoded_range = urllib.parse.quote(_sheet_range(office, a1_range), safe="")
+    url = f"{SHEETS_API}/{spreadsheet_id}/values/{encoded_range}"
+    resp = requests.get(url, headers=_headers(), timeout=20)
+    if not resp.ok:
+        raise RuntimeError(f"讀取門號試算表失敗 [office={office}]: {resp.status_code} {resp.text[:200]}")
+    return resp.json().get("values", [])
+
+
+def _update_values(office: str, a1_range: str, values):
+    spreadsheet_id = SIM_OFFICES[office]["spreadsheet_id"]
+    encoded_range = urllib.parse.quote(_sheet_range(office, a1_range), safe="")
+    url = f"{SHEETS_API}/{spreadsheet_id}/values/{encoded_range}"
+    params = {"valueInputOption": "USER_ENTERED"}
+    resp = requests.put(url, headers=_headers(), params=params, json={"values": values}, timeout=20)
+    if not resp.ok:
+        raise RuntimeError(f"寫入門號試算表失敗 [office={office}]: {resp.status_code} {resp.text[:200]}")
+    return resp.json()
 
 
 def _col_to_index(col_letter: str) -> int:
@@ -76,12 +93,10 @@ def find_sim(office: str, phone_number: str):
         return None
     columns = SIM_OFFICES[office]["columns"]
     number_idx = _col_to_index(columns["number"]) - 1
-    ws = get_sim_worksheet(office)
-    values = ws.get_all_values()
+
+    values = _get_values(office, "A2:Z5000")
     for i, row in enumerate(values):
-        row_num = i + 1
-        if row_num <= 1:
-            continue
+        row_num = i + 2  # 從第2列開始(第1列是標題)
         if number_idx < len(row) and _normalize_number(row[number_idx]) == target:
             return row_num, _row_to_record(office, row)
     return None
@@ -103,15 +118,10 @@ def find_sim_any_office(phone_number: str):
 
 def update_sim_fields(office: str, row: int, fields: dict):
     """一次更新多個欄位(例如 {'name': '小美', 'type': '公務機'})"""
-    if not fields:
-        return
     columns = SIM_OFFICES[office]["columns"]
-    ws = get_sim_worksheet(office)
-    data = []
     for field_key, value in fields.items():
         col = columns[field_key]
-        data.append({"range": f"{col}{row}", "values": [[value]]})
-    ws.batch_update(data)
+        _update_values(office, f"{col}{row}", [[value]])
 
 
 def append_sim_note(office: str, row: int, text: str):
@@ -121,13 +131,9 @@ def append_sim_note(office: str, row: int, text: str):
     """
     columns = SIM_OFFICES[office]["columns"]
     col = columns["note"]
-    ws = get_sim_worksheet(office)
-    cell = f"{col}{row}"
-    try:
-        existing = (ws.acell(cell).value or "").rstrip()
-    except Exception:
-        existing = ""
+    existing_values = _get_values(office, f"{col}{row}")
+    existing = (existing_values[0][0].rstrip() if existing_values and existing_values[0] else "")
     new_line = f"{today_str()} {text}"
     combined = f"{existing}\n{new_line}" if existing else new_line
-    ws.update(cell, [[combined]], value_input_option="USER_ENTERED")
+    _update_values(office, f"{col}{row}", [[combined]])
     return combined
