@@ -33,8 +33,18 @@ def get_sim_worksheet(office: str):
     key = office
     if key not in _ws_cache:
         info = SIM_OFFICES[office]
-        sh = get_client().open_by_key(info["spreadsheet_id"])
-        _ws_cache[key] = sh.worksheet(info["sheet_name"])
+        try:
+            sh = get_client().open_by_key(info["spreadsheet_id"])
+        except Exception as e:
+            raise RuntimeError(
+                f"開啟門號試算表失敗 [office={office}, spreadsheet_id={info['spreadsheet_id']}]: {e}"
+            ) from e
+        try:
+            _ws_cache[key] = sh.worksheet(info["sheet_name"])
+        except Exception as e:
+            raise RuntimeError(
+                f"找不到分頁 [office={office}, sheet_name={info['sheet_name']}]: {e}"
+            ) from e
     return _ws_cache[key]
 
 
