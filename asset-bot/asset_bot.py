@@ -674,6 +674,11 @@ async def process_text(message, chat_id: int, text: str):
         location = " ".join(parts[5:])
         await quick_checkout(message, chat_id, asset_id, person, department, emp_id, location)
 
+    elif keyword == "門號備註" and len(parts) >= 3:
+        phone = parts[1]
+        note_text = " ".join(parts[2:])
+        await quick_sim_note(message, phone, note_text)
+
     else:
         await message.reply_text(
             "看不懂這個指令,可以:\n"
@@ -682,7 +687,9 @@ async def process_text(message, chat_id: int, text: str):
             "・備註 編號 內容\n"
             "・領用 編號 花名 部門 員編 所在區域\n"
             "・購入(多行標籤:值格式,新建資產)\n"
+            "・門號備註 門號 內容\n"
             "・或直接貼一整段異動清單(入庫/領用/故障/換座位/變更保管人/遺失/調入/調出/報廢)\n"
+            "・或直接貼一整段門號異動清單(門號入庫/門號領用/門號轉移/死號回報/門號遺失)\n"
             "・打 /start 用按鈕選單"
         )
 
@@ -814,6 +821,20 @@ async def quick_checkout(message, chat_id: int, asset_id: str, person: str, depa
         f"✅ {asset_id}({office})已登記領用:\n"
         f"保管人:{person}　使用部門:{department}　員編:{emp_id}　所在區域:{location}"
     )
+
+
+async def quick_sim_note(message, phone: str, note_text: str):
+    """門號備註 門號 內容 —— 幫指定門號的附註(插入備註)加一行日期+說明"""
+    matches = sim_utils.find_sim_any_office(phone)
+    if not matches:
+        await message.reply_text(f"⚠️ 找不到門號:{phone}")
+        return
+    if len(matches) > 1:
+        await message.reply_text(f"⚠️ 門號 {phone} 在多間辦公室都有,無法自動判斷,請聯繫管理員手動處理。")
+        return
+    office, row, _ = matches[0]
+    combined = sim_utils.append_sim_note(office, row, note_text)
+    await message.reply_text(f"✅ {phone}({office})已新增備註:{note_text}")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
