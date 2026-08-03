@@ -116,6 +116,77 @@ def find_sim_any_office(phone_number: str):
     return matches
 
 
+_sheet_gid_cache = {}
+
+
+def _get_sheet_gid(office: str):
+    """輕量查詢分頁的數字 gid(只要 sheetId+title,不會像完整中繼資料那樣容易 500)"""
+    if office in _sheet_gid_cache:
+        return _sheet_gid_cache[office]
+    spreadsheet_id = SIM_OFFICES[office]["spreadsheet_id"]
+    sheet_name = SIM_OFFICES[office]["sheet_name"]
+    url = f"{SHEETS_API}/{spreadsheet_id}"
+    params = {"fields": "sheets.properties(sheetId,title)"}
+    resp = requests.get(url, headers=_headers(), params=params, timeout=20)
+    if not resp.ok:
+        raise RuntimeError(f"查詢門號分頁資訊失敗 [office={office}]: {resp.status_code} {resp.text[:200]}")
+    for sheet in resp.json().get("sheets", []):
+        props = sheet.get("properties", {})
+        if props.get("title") == sheet_name:
+            _sheet_gid_cache[office] = props.get("sheetId")
+            return _sheet_gid_cache[office]
+    raise RuntimeError(f"找不到分頁 [office={office}, sheet_name={sheet_name}]")
+
+
+def _get_note(office: str, row: int, col_letter: str) -> str:
+    """讀取單一儲存格目前的插入備註(note)內容"""
+    spreadsheet_id = SIM_OFFICES[office]["spreadsheet_id"]
+    range_a1 = _sheet_range(office, f"{col_letter}{row}")
+    url = f"{SHEETS_API}/{spreadsheet_id}"
+    params = {"ranges": range_a1, "fields": "sheets.data.rowData.values.note"}
+    resp = requests.get(url, headers=_headers(), params=params, timeout=20)
+    if not resp.ok:
+        return ""
+    try:
+        row_data = resp.json()["sheets"][0]["data"][0].get("rowData", [])
+        if not row_data:
+            return ""
+        values = row_data[0].get("values", [])
+        if not values:
+            return ""
+        return (values[0].get("note") or "").rstrip()
+    except (KeyError, IndexError):
+        return ""
+
+
+def _set_note(office: str, row: int, col_letter: str, note_text: str):
+    """幫單一儲存格設定插入備註(note),不會動到儲存格本身顯示的文字"""
+    spreadsheet_id = SIM_OFFICES[office]["spreadsheet_id"]
+    gid = _get_sheet_gid(office)
+    col_idx = _col_to_index(col_letter)
+    body = {
+        "requests": [
+            {
+                "updateCells": {
+                    "range": {
+                        "sheetId": gid,
+                        "startRowIndex": row - 1,
+                        "endRowIndex": row,
+                        "startColumnIndex": col_idx - 1,
+                        "endColumnIndex": col_idx,
+                    },
+                    "rows": [{"values": [{"note": note_text}]}],
+                    "fields": "note",
+                }
+            }
+        ]
+    }
+    url = f"{SHEETS_API}/{spreadsheet_id}:batchUpdate"
+    resp = requests.post(url, headers=_headers(), json=body, timeout=20)
+    if not resp.ok:
+        raise RuntimeError(f"寫入門號備註失敗 [office={office}]: {resp.status_code} {resp.text[:200]}")
+
+
 def update_sim_fields(office: str, row: int, fields: dict):
     """一次更新多個欄位(例如 {'name': '小美', 'type': '公務機'})"""
     columns = SIM_OFFICES[office]["columns"]
@@ -126,14 +197,13 @@ def update_sim_fields(office: str, row: int, fields: dict):
 
 def append_sim_note(office: str, row: int, text: str):
     """
-    在附註欄「累加」一行「日期 說明」,保留歷史紀錄(直接寫在儲存格文字裡,
-    因為這份表原本的附註就是用顯示文字,不是用註解)。
+    在附註欄的「插入備註」(hover 顯示的 note)累加一行「日期 說明」,保留歷史紀錄,
+    不會覆蓋或動到儲存格本身顯示的文字。
     """
     columns = SIM_OFFICES[office]["columns"]
     col = columns["note"]
-    existing_values = _get_values(office, f"{col}{row}")
-    existing = (existing_values[0][0].rstrip() if existing_values and existing_values[0] else "")
+    existing = _get_note(office, row, col)
     new_line = f"{today_str()} {text}"
     combined = f"{existing}\n{new_line}" if existing else new_line
-    _update_values(office, f"{col}{row}", [[combined]])
+    _set_note(office, row, col, combined)
     return combined
