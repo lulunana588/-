@@ -187,6 +187,17 @@ def _set_note(office: str, row: int, col_letter: str, note_text: str):
         raise RuntimeError(f"寫入門號備註失敗 [office={office}]: {resp.status_code} {resp.text[:200]}")
 
 
+def set_note_display_text(office: str, row: int, text: str):
+    """
+    直接覆寫備註欄「儲存格本身顯示的文字」(跟 _set_note / append_sim_note
+    操作的 hover 插入備註是兩件事,互不影響)。
+    用在需要讓人一眼從表格上就看到目前狀態文字的情境。
+    """
+    columns = SIM_OFFICES[office]["columns"]
+    col = columns["note"]
+    _update_values(office, f"{col}{row}", [[text]])
+
+
 def update_sim_fields(office: str, row: int, fields: dict):
     """一次更新多個欄位(例如 {'name': '小美', 'type': '公務機'})"""
     columns = SIM_OFFICES[office]["columns"]
