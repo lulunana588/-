@@ -485,6 +485,9 @@ async def run_sim_batch_preview(message, chat_id: int, text: str):
         office, row, record = matches[0]
         sim_utils.update_sim_fields(office, row, fields)
         sim_utils.append_sim_note(office, row, note)
+        reason = (a.get("reason") or "").strip()
+        if reason:
+            sim_utils.set_note_display_text(office, row, reason)
         field_desc = "、".join(f"{SIM_FIELD_DISPLAY_LABELS.get(k,k)}→{v}" for k, v in fields.items())
         lines.append(f"✅ {phone}({a['type']},{office}):{field_desc}\n　附註+「{note}」")
         success += 1
@@ -824,7 +827,7 @@ async def quick_checkout(message, chat_id: int, asset_id: str, person: str, depa
 
 
 async def quick_sim_note(message, phone: str, note_text: str):
-    """門號備註 門號 內容 —— 幫指定門號的附註(插入備註)加一行日期+說明"""
+    """門號備註 門號 內容 —— 更新附註顯示文字,同時在插入備註累加一行日期+說明"""
     matches = sim_utils.find_sim_any_office(phone)
     if not matches:
         await message.reply_text(f"⚠️ 找不到門號:{phone}")
@@ -833,8 +836,9 @@ async def quick_sim_note(message, phone: str, note_text: str):
         await message.reply_text(f"⚠️ 門號 {phone} 在多間辦公室都有,無法自動判斷,請聯繫管理員手動處理。")
         return
     office, row, _ = matches[0]
-    combined = sim_utils.append_sim_note(office, row, note_text)
-    await message.reply_text(f"✅ {phone}({office})已新增備註:{note_text}")
+    sim_utils.set_note_display_text(office, row, note_text)
+    sim_utils.append_sim_note(office, row, note_text)
+    await message.reply_text(f"✅ {phone}({office})已更新備註:{note_text}")
 
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE):
