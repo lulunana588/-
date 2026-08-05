@@ -218,14 +218,19 @@ def append_water_log(location_name: str, delta: int, note: str = ""):
 
     balance_col = col_start + 4  # 剩餘數量欄，相對日期欄 +4
 
-    # 找這個區塊目前最後一筆的「剩餘數量」，當作這次加減的起始庫存
+    # 找這個區塊「真正」最後一筆的「剩餘數量」，當作這次加減的起始庫存。
+    # 注意：不能一遇到空白列就中斷（原本的寫法），因為分頁裡可能存在人工留白的間隔列
+    # （例如舊資料跟新資料中間留一行分隔），一中斷就會把新紀錄插在半路、
+    # 且抓到錯誤（偏舊）的庫存基準去計算，跟總覽表對不起來。
+    # 改成掃到整個區塊最底，記錄「最後一個有日期的列」才是真正的最後一筆。
+    # （2026/08/05 修正）
     prev_balance = 0
     last_filled_idx = header_idx
     for i in range(header_idx + 1, len(values)):
         row = values[i]
         date_cell = row[col_start - 1] if len(row) >= col_start else ""
         if not date_cell.strip():
-            break
+            continue  # 空白列（人工留白間隔）直接跳過，繼續往下找，不中斷
         last_filled_idx = i
         bal_cell = row[balance_col - 1] if len(row) >= balance_col else ""
         if bal_cell.strip():
