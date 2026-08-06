@@ -707,13 +707,14 @@ async def text_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def mention_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """群組裡的訊息入口 —— 只有『真的@到這個機器人』才處理,@到別人一律忽略"""
     message = update.message
-    text = message.text or ""
+    text = message.text or message.caption or ""
+    entities = message.entities or message.caption_entities
     bot_username = (context.bot.username or "").lower()
 
     mentioned = False
     cleaned = text
-    if message.entities:
-        for entity in message.entities:
+    if entities:
+        for entity in entities:
             if entity.type == "mention":
                 mention_text = text[entity.offset: entity.offset + entity.length]
                 if mention_text.lstrip("@").lower() == bot_username:
@@ -873,7 +874,13 @@ def main():
     )
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & filters.Entity("mention"), mention_handler))
+    app.add_handler(
+        MessageHandler(
+            (filters.TEXT & filters.Entity("mention"))
+            | (filters.PHOTO & filters.CaptionEntity("mention")),
+            mention_handler,
+        )
+    )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, text_router))
     app.add_error_handler(error_handler)
     logger.info("資產清冊機器人啟動中...")
