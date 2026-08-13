@@ -31,9 +31,9 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tasks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_date TEXT NOT NULL,          -- 事項所屬日期 YYYY-MM-DD
+                task_date TEXT NOT NULL,
                 content TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'pending',  -- pending / done
+                status TEXT NOT NULL DEFAULT 'pending',
                 created_at TEXT NOT NULL,
                 completed_at TEXT
             )
@@ -41,7 +41,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS leaves (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                leave_date TEXT NOT NULL,         -- 請假日期 YYYY-MM-DD
+                leave_date TEXT NOT NULL,
                 person_name TEXT NOT NULL,
                 note TEXT,
                 created_at TEXT NOT NULL
@@ -70,8 +70,17 @@ def get_tasks_for_date(task_date: str):
         return [dict(r) for r in rows]
 
 
+def get_tasks_for_range(start_date: str, end_date: str):
+    """回傳 start_date ~ end_date（含）之間的所有事項，依日期分組"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE task_date BETWEEN ? AND ? ORDER BY task_date, status, id",
+            (start_date, end_date),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def get_overdue_tasks(before_date: str):
-    """狀態仍是 pending，但事項日期早於 before_date 的，視為逾期"""
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM tasks WHERE status = 'pending' AND task_date < ? ORDER BY task_date, id",
@@ -96,7 +105,6 @@ def delete_task(task_id: int) -> bool:
 
 
 def push_task_to_date(task_id: int, new_date: str) -> bool:
-    """把逾期事項手動推到新日期（不會自動發生，只由使用者觸發）"""
     with get_conn() as conn:
         cur = conn.execute(
             "UPDATE tasks SET task_date = ? WHERE id = ?", (new_date, task_id)
@@ -119,6 +127,16 @@ def get_leaves_for_date(leave_date: str):
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM leaves WHERE leave_date = ? ORDER BY id", (leave_date,)
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_leaves_for_range(start_date: str, end_date: str):
+    """回傳 start_date ~ end_date（含）之間的所有請假紀錄，依日期分組"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM leaves WHERE leave_date BETWEEN ? AND ? ORDER BY leave_date, id",
+            (start_date, end_date),
         ).fetchall()
         return [dict(r) for r in rows]
 
