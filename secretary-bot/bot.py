@@ -2,7 +2,6 @@
 秘書Bot 主程式
 指令：
   /today            查看今天的行事曆（隨時可查，不用等10點）
-  /week             查看本週行事曆
   /done <id>        標記事項完成
   /del <id>         刪除事項
   /push <id> <日期>  把逾期事項手動推到新日期（例如 /push 12 8/16）
@@ -36,8 +35,12 @@ WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
 QUERY_BUTTON_TEXT = "📅 查詢今日"
 WEEK_BUTTON_TEXT = "🗓 查詢本週"
-MAIN_KEYBOARD = ReplyKeyboardMarkup([[QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT]], resize_keyboard=True)
+MONTH_BUTTON_TEXT = "🗂 查詢本月"
+MAIN_KEYBOARD = ReplyKeyboardMarkup(
+    [[QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT], [MONTH_BUTTON_TEXT]], resize_keyboard=True
+)
 WEEK_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "week_card.png")
+MONTH_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "month_card.png")
 
 
 def is_owner(update: Update) -> bool:
@@ -69,10 +72,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "指令：\n"
         "/today 查看今天行事曆\n"
         "/week 查看本週行事曆\n"
+        "/month 查看本月行事曆\n"
         "/done <編號> 標記完成\n"
         "/del <編號> 刪除事項\n"
         "/push <編號> <日期> 把逾期事項推到新日期\n\n"
-        "下面也有「查詢今日」「查詢本週」按鈕，隨時按隨時看。",
+        "下面也有「查詢今日」「查詢本週」「查詢本月」按鈕，隨時按隨時看。",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -109,12 +113,50 @@ async def send_week_card(update: Update):
         await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
 
 
+async def build_month_card_path() -> str:
+    now = datetime.now(TW_TZ)
+    year, month = now.year, now.month
+
+    first_day = datetime(year, month, 1)
+    if month == 12:
+        next_month_first = datetime(year + 1, 1, 1)
+    else:
+        next_month_first = datetime(year, month + 1, 1)
+    last_day = next_month_first - timedelta(days=1)
+
+    start_str = first_day.strftime("%Y-%m-%d")
+    end_str = last_day.strftime("%Y-%m-%d")
+
+    leaves = db.get_leaves_for_range(start_str, end_str)
+    tasks = db.get_tasks_for_range(start_str, end_str)
+
+    weekday_zh_map = {}
+    d = first_day
+    while d <= last_day:
+        weekday_zh_map[d.strftime("%Y-%m-%d")] = WEEKDAY_ZH[d.weekday()]
+        d += timedelta(days=1)
+
+    img = card_renderer.render_month_card(year, month, leaves, tasks, weekday_zh_map)
+    card_renderer.save_card(img, MONTH_CARD_PATH)
+    return MONTH_CARD_PATH
+
+
+async def send_month_card(update: Update):
+    path = await build_month_card_path()
+    with open(path, "rb") as f:
+        await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
+
+
 async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_today_card(update)
 
 
 async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_week_card(update)
+
+
+async def cmd_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_month_card(update)
 
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -183,6 +225,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_week_card(update)
         return
 
+    if text == MONTH_BUTTON_TEXT:
+        await send_month_card(update)
+        return
+
     result = parser.parse_input(text)
 
     if result["type"] == "task":
@@ -243,6 +289,7 @@ def main():
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("today", cmd_today))
     app.add_handler(CommandHandler("week", cmd_week))
+    app.add_handler(CommandHandler("month", cmd_month))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("del", cmd_del))
     app.add_handler(CommandHandler("push", cmd_push))
