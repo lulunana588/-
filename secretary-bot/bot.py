@@ -33,9 +33,9 @@ logger = logging.getLogger("secretary-bot")
 TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
-QUERY_BUTTON_TEXT = "📅 查詢今日"
-WEEK_BUTTON_TEXT = "🗓 查詢本週"
-MONTH_BUTTON_TEXT = "🗂 查詢本月"
+QUERY_BUTTON_TEXT = "查詢今日"
+WEEK_BUTTON_TEXT = "查詢本週"
+MONTH_BUTTON_TEXT = "查詢本月"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [[QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT], [MONTH_BUTTON_TEXT]], resize_keyboard=True
 )
@@ -217,16 +217,15 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text.strip()
 
-    if text == QUERY_BUTTON_TEXT:
-        await send_today_card(update)
+    # 用關鍵字比對而非完全相等，避免emoji編碼差異導致按鈕誤判成待辦事項
+    if "查詢" in text and "本月" in text:
+        await send_month_card(update)
         return
-
-    if text == WEEK_BUTTON_TEXT:
+    if "查詢" in text and "本週" in text:
         await send_week_card(update)
         return
-
-    if text == MONTH_BUTTON_TEXT:
-        await send_month_card(update)
+    if "查詢" in text and "今日" in text:
+        await send_today_card(update)
         return
 
     result = parser.parse_input(text)
