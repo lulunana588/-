@@ -187,3 +187,91 @@ def render_week_card(week_start: str, week_end: str, days: list) -> Image.Image:
         y += 12
 
     return img
+
+
+# ───────────────── 本月行事曆 ─────────────────
+
+MONTH_LINE_H = 30
+
+
+def _group_by_date(leaves: list, tasks: list):
+    """把整月的leaves/tasks依日期分組，回傳 {date_str: {"leaves": [...], "tasks": [...]}}"""
+    grouped = {}
+    for lv in leaves:
+        grouped.setdefault(lv["leave_date"], {"leaves": [], "tasks": []})["leaves"].append(lv)
+    for t in tasks:
+        grouped.setdefault(t["task_date"], {"leaves": [], "tasks": []})["tasks"].append(t)
+    return grouped
+
+
+def _estimate_month_height(active_days: list):
+    h = 110  # 標題+摘要區
+    if not active_days:
+        return h + 60
+    for _, data in active_days:
+        h += 40  # 日期列標頭
+        n_leaves = len(data["leaves"])
+        n_tasks = len(data["tasks"])
+        if n_leaves:
+            h += MONTH_LINE_H
+        if n_tasks:
+            h += n_tasks * MONTH_LINE_H
+        h += 16
+    h += PADDING
+    return h
+
+
+def render_month_card(year: int, month: int, leaves: list, tasks: list, weekday_zh_map: dict) -> Image.Image:
+    """
+    leaves/tasks: 整月範圍查詢出來的原始清單（db.get_leaves_for_range / get_tasks_for_range）
+    weekday_zh_map: {date_str: "一"} 用來標示星期幾
+    只畫出「有請假或有待辦」的日子，空白日子不畫，避免圖片過長。
+    """
+    grouped = _group_by_date(leaves, tasks)
+    active_days = sorted(grouped.items())  # [(date_str, {"leaves":[], "tasks":[]}), ...]
+
+    height = _estimate_month_height(active_days)
+    img = Image.new("RGB", (WIDTH, height), config.COLOR_BG)
+    draw = ImageDraw.Draw(img)
+
+    y = PADDING
+    draw.text((PADDING, y), f"{year}年{month}月 行事曆", font=_font(28, bold=True), fill=config.COLOR_MINT)
+    total_tasks = len(tasks)
+    total_leaves = len(leaves)
+    summary = f"共 {total_tasks} 項待辦、{total_leaves} 筆請假"
+    draw.text((WIDTH - PADDING - draw.textlength(summary, font=_font(16)), y + 8),
+              summary, font=_font(16), fill=config.COLOR_TEXT_DIM)
+    y += 46
+    draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=config.COLOR_MINT_DIM, width=2)
+    y += 30
+
+    if not active_days:
+        draw.text((PADDING, y), "這個月目前沒有任何待辦或請假紀錄", font=_font(19), fill=config.COLOR_TEXT_DIM)
+        return img
+
+    for date_str, data in active_days:
+        weekday_zh = weekday_zh_map.get(date_str, "")
+        date_disp = f"{date_str}（{weekday_zh}）" if weekday_zh else date_str
+        draw.text((PADDING, y), date_disp, font=_font(19, bold=True), fill=config.COLOR_TEXT)
+        y += 32
+
+        if data["leaves"]:
+            names = "、".join(
+                f"{lv['person_name']}" + (f"({lv['note']})" if lv.get("note") else "")
+                for lv in data["leaves"]
+            )
+            draw.text((PADDING + 14, y), f"請假：{names}", font=_font(16), fill=config.COLOR_YELLOW)
+            y += MONTH_LINE_H
+
+        for t in data["tasks"]:
+            done = t["status"] == "done"
+            color = config.COLOR_TEXT_DIM if done else config.COLOR_TEXT
+            _draw_checkbox(draw, PADDING + 14, y, done, color)
+            draw.text((PADDING + 38, y - 2), f"#{t['id']} {t['content']}", font=_font(16), fill=color)
+            y += MONTH_LINE_H
+
+        y += 10
+        draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=(40, 46, 54), width=1)
+        y += 14
+
+    return img
