@@ -1,6 +1,5 @@
 """
-產生「今日行事曆」PNG卡片
-版面順序：標題 → 請假同仁 → 今日待辦 → 逾期事項
+產生「今日行事曆」PNG卡片、「本週行事曆」PNG卡片
 不使用emoji字元（避免字型缺emoji時顯示方框亂碼），改用手繪圖形。
 """
 from PIL import Image, ImageDraw, ImageFont
@@ -10,6 +9,7 @@ WIDTH = 900
 PADDING = 40
 LINE_H = 44
 CHECKBOX_SIZE = 16
+WEEK_LINE_H = 30
 
 
 def _font(size, bold=False):
@@ -117,3 +117,59 @@ def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list,
 
 def save_card(img: Image.Image, path: str):
     img.save(path)
+
+
+# ───────────────── 本週行事曆 ─────────────────
+
+def _estimate_week_height(days: list):
+    h = 90
+    for day in days:
+        h += 46
+        n_leaves = len(day["leaves"])
+        n_tasks = len(day["tasks"])
+        h += max(n_leaves, 1) * WEEK_LINE_H if n_leaves else WEEK_LINE_H
+        h += max(n_tasks, 1) * WEEK_LINE_H if n_tasks else WEEK_LINE_H
+        h += 18
+    h += PADDING
+    return h
+
+
+def render_week_card(week_start: str, week_end: str, days: list) -> Image.Image:
+    height = _estimate_week_height(days)
+    img = Image.new("RGB", (WIDTH, height), config.COLOR_BG)
+    draw = ImageDraw.Draw(img)
+
+    y = PADDING
+    draw.text((PADDING, y), "本週行事曆", font=_font(28, bold=True), fill=config.COLOR_MINT)
+    range_disp = f"{week_start} ～ {week_end}"
+    draw.text((WIDTH - PADDING - draw.textlength(range_disp, font=_font(18)), y + 6),
+              range_disp, font=_font(18), fill=config.COLOR_TEXT_DIM)
+    y += 46
+    draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=config.COLOR_MINT_DIM, width=2)
+    y += 24
+
+    for day in days:
+        date_disp = f"{day['date']}（{day['weekday_zh']}）"
+        draw.text((PADDING, y), date_disp, font=_font(20, bold=True), fill=config.COLOR_TEXT)
+        y += 34
+
+        if day["leaves"]:
+            names = "、".join(
+                f"{lv['person_name']}" + (f"({lv['note']})" if lv.get("note") else "")
+                for lv in day["leaves"]
+            )
+            draw.text((PADDING + 14, y), f"請假：{names}", font=_font(17), fill=config.COLOR_YELLOW)
+            y += WEEK_LINE_H
+        else:
+            draw.text((PADDING + 14, y), "請假：無", font=_font(17), fill=config.COLOR_TEXT_DIM)
+            y += WEEK_LINE_H
+
+        if day["tasks"]:
+            for t in day["tasks"]:
+                done = t["status"] == "done"
+                color = config.COLOR_TEXT_DIM if done else config.COLOR_TEXT
+                _draw_checkbox(draw, PADDING + 14, y + 2, done, color)
+                draw.text((PADDING + 38, y), f"#{t['id']} {t['content']}", font=_font(17), fill=color)
+                y += WEEK_LINE_H
+        else:
+            draw.text((PADDING + 14, y), "待辦：無",
