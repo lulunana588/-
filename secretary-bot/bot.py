@@ -2,6 +2,7 @@
 秘書Bot 主程式
 指令：
   /today            查看今天的行事曆（隨時可查，不用等10點）
+  /week             查看本週行事曆
   /done <id>        標記事項完成
   /del <id>         刪除事項
   /push <id> <日期>  把逾期事項手動推到新日期（例如 /push 12 8/16）
@@ -15,7 +16,7 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from telegram import Update
+from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, ContextTypes, filters,
 )
@@ -32,6 +33,11 @@ logger = logging.getLogger("secretary-bot")
 
 TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
+
+QUERY_BUTTON_TEXT = "📅 查詢今日"
+WEEK_BUTTON_TEXT = "🗓 查詢本週"
+MAIN_KEYBOARD = ReplyKeyboardMarkup([[QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT]], resize_keyboard=True)
+WEEK_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "week_card.png")
 
 
 def is_owner(update: Update) -> bool:
@@ -62,16 +68,53 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「8/15 蕾蕾 請假」→ 登記請假\n\n"
         "指令：\n"
         "/today 查看今天行事曆\n"
+        "/week 查看本週行事曆\n"
         "/done <編號> 標記完成\n"
         "/del <編號> 刪除事項\n"
-        "/push <編號> <日期> 把逾期事項推到新日期"
+        "/push <編號> <日期> 把逾期事項推到新日期\n\n"
+        "下面也有「查詢今日」「查詢本週」按鈕，隨時按隨時看。",
+        reply_markup=MAIN_KEYBOARD,
     )
 
 
-async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def send_today_card(update: Update):
     path = await build_today_card_path()
     with open(path, "rb") as f:
-        await update.message.reply_photo(photo=f)
+        await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
+
+
+async def build_week_card_path() -> str:
+    now = datetime.now(TW_TZ)
+    monday = now - timedelta(days=now.weekday())
+    days = []
+    for i in range(7):
+        d = monday + timedelta(days=i)
+        date_str = d.strftime("%Y-%m-%d")
+        days.append({
+            "date": date_str,
+            "weekday_zh": WEEKDAY_ZH[d.weekday()],
+            "leaves": db.get_leaves_for_date(date_str),
+            "tasks": db.get_tasks_for_date(date_str),
+        })
+    week_start = days[0]["date"]
+    week_end = days[-1]["date"]
+    img = card_renderer.render_week_card(week_start, week_end, days)
+    card_renderer.save_card(img, WEEK_CARD_PATH)
+    return WEEK_CARD_PATH
+
+
+async def send_week_card(update: Update):
+    path = await build_week_card_path()
+    with open(path, "rb") as f:
+        await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
+
+
+async def cmd_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_today_card(update)
+
+
+async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await send_week_card(update)
 
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -130,22 +173,39 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("這是Luna的專屬秘書Bot，暫不開放其他人登記事項喔🙏")
         return
 
-    result = parser.parse_input(update.message.text)
+    text = update.message.text.strip()
+
+    if text == QUERY_BUTTON_TEXT:
+        await send_today_card(update)
+        return
+
+    if text == WEEK_BUTTON_TEXT:
+        await send_week_card(update)
+        return
+
+    result = parser.parse_input(text)
 
     if result["type"] == "task":
         task_id = db.add_task(result["date"], result["content"])
-        await update.message.reply_text(f"已新增待辦 #{task_id}：{result['date']} {result['content']}")
+        await update.message.reply_text(
+            f"已新增待辦 #{task_id}：{result['date']} {result['content']}",
+            reply_markup=MAIN_KEYBOARD,
+        )
 
     elif result["type"] == "leave":
         note_disp = f"（{result['note']}）" if result.get("note") else ""
         db.add_leave(result["date"], result["person"], result.get("note"))
-        await update.message.reply_text(f"已登記請假：{result['date']} {result['person']} 請假{note_disp}")
+        await update.message.reply_text(
+            f"已登記請假：{result['date']} {result['person']} 請假{note_disp}",
+            reply_markup=MAIN_KEYBOARD,
+        )
 
     else:
         await update.message.reply_text(
             "看不太懂這句話🤔 可以用：\n"
             "「8/15 交採購報表」（待辦）\n"
-            "「8/15 蕾蕾 請假」（請假）"
+            "「8/15 蕾蕾 請假」（請假）",
+            reply_markup=MAIN_KEYBOARD,
         )
 
 
@@ -157,7 +217,11 @@ async def scheduled_push(app: Application):
         return
     path = await build_today_card_path()
     with open(path, "rb") as f:
-        await app.bot.send_photo(chat_id=config.TELEGRAM_CHAT_ID, photo=f, caption="早安 Luna，今天的行事曆來了 ☀️")
+        await app.bot.send_photo(
+            chat_id=config.TELEGRAM_CHAT_ID, photo=f,
+            caption="早安 Luna，今天的行事曆來了 ☀️",
+            reply_markup=MAIN_KEYBOARD,
+        )
     logger.info("已推播今日行事曆")
 
 
@@ -178,6 +242,7 @@ def main():
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("today", cmd_today))
+    app.add_handler(CommandHandler("week", cmd_week))
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("del", cmd_del))
     app.add_handler(CommandHandler("push", cmd_push))
