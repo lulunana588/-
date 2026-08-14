@@ -368,6 +368,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"已新增待辦 #{task_id}：{result['date']} {result['content']}",
             reply_markup=MAIN_KEYBOARD,
         )
+        if result["date"] == db.today_str():
+            await send_today_card(update)
 
     elif result["type"] == "leave":
         note_disp = f"（{result['note']}）" if result.get("note") else ""
@@ -376,6 +378,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"已登記請假：{result['date']} {result['person']} 請假{note_disp}",
             reply_markup=MAIN_KEYBOARD,
         )
+        if result["date"] == db.today_str():
+            await send_today_card(update)
 
     elif result["type"] == "leave_range":
         start = datetime.strptime(result["start_date"], "%Y-%m-%d")
@@ -390,6 +394,8 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"已登記請假：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['person']} 請假{note_disp}",
             reply_markup=MAIN_KEYBOARD,
         )
+        if result["start_date"] <= db.today_str() <= result["end_date"]:
+            await send_today_card(update)
 
     else:
         await update.message.reply_text(
