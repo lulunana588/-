@@ -107,9 +107,13 @@ def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list,
         draw.text((PADDING + 26, y), f"逾期未完成（{len(overdue)}）", font=_font(20, bold=True), fill=config.COLOR_RED)
         y += 40
         for t in overdue:
-            _draw_checkbox(draw, PADDING + 10, y + 4, False, config.COLOR_ORANGE)
-            line = f"#{t['id']}  {t['content']}　（原訂 {t['task_date']}）"
-            draw.text((PADDING + 36, y), line, font=_font(19), fill=config.COLOR_ORANGE)
+            days = t.get("overdue_days")
+            urgent = isinstance(days, int) and days >= 3
+            color = config.COLOR_RED if urgent else config.COLOR_ORANGE
+            _draw_checkbox(draw, PADDING + 10, y + 4, False, color)
+            day_disp = f"，已逾期{days}天" if isinstance(days, int) else ""
+            line = f"#{t['id']}  {t['content']}　（原訂 {t['task_date']}{day_disp}）"
+            draw.text((PADDING + 36, y), line, font=_font(19, bold=urgent), fill=color)
             y += LINE_H
 
     return img
