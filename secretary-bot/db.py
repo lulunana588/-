@@ -53,6 +53,16 @@ def init_db():
                 value TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS templates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rule_type TEXT NOT NULL,      -- 'weekly' / 'monthly_day' / 'monthly_last'
+                rule_value INTEGER,           -- weekly: 0=一...6=日；monthly_day: 幾號；monthly_last: NULL
+                content TEXT NOT NULL,
+                last_generated_date TEXT,     -- 避免同一天重複產生
+                created_at TEXT NOT NULL
+            )
+        """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leaves_date ON leaves(leave_date)")
 
@@ -202,3 +212,50 @@ def delete_leave(leave_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM leaves WHERE id = ?", (leave_id,))
         return cur.rowcount > 0
+
+
+def get_leaves_by_person(person_name: str, start_date: str = None, end_date: str = None):
+    """依人名（模糊比對）查詢請假紀錄，可選日期範圍"""
+    with get_conn() as conn:
+        if start_date and end_date:
+            rows = conn.execute(
+                "SELECT * FROM leaves WHERE person_name LIKE ? AND leave_date BETWEEN ? AND ? "
+                "ORDER BY leave_date",
+                (f"%{person_name}%", start_date, end_date),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM leaves WHERE person_name LIKE ? ORDER BY leave_date",
+                (f"%{person_name}%",),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+
+# ───────────────── 重複性任務模板 ─────────────────
+
+def add_template(rule_type: str, rule_value, content: str) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO templates (rule_type, rule_value, content, created_at) VALUES (?, ?, ?, ?)",
+            (rule_type, rule_value, content, datetime.now(TW_TZ).isoformat()),
+        )
+        return cur.lastrowid
+
+
+def get_all_templates():
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM templates ORDER BY id").fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_template(template_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
+        return cur.rowcount > 0
+
+
+def mark_template_generated(template_id: int, date_str: str):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE templates SET last_generated_date = ? WHERE id = ?", (date_str, template_id)
+        )
