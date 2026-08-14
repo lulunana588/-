@@ -47,12 +47,13 @@ MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
 MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
 MANAGE_TEMPLATE_BUTTON_TEXT = "管理重複任務"
 STATS_BUTTON_TEXT = "本月統計"
+WEEK_STATS_BUTTON_TEXT = "本週統計"
 HEALTH_BUTTON_TEXT = "服務健康自檢"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
         [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
-        [MANAGE_TEMPLATE_BUTTON_TEXT, STATS_BUTTON_TEXT],
+        [MANAGE_TEMPLATE_BUTTON_TEXT, WEEK_STATS_BUTTON_TEXT, STATS_BUTTON_TEXT],
         [HEALTH_BUTTON_TEXT],
     ],
     resize_keyboard=True,
@@ -61,6 +62,11 @@ WEEK_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "week_card.pn
 MONTH_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "month_card.png")
 MANAGE_TASK_LOOKAHEAD_DAYS = 30
 MANAGE_LEAVE_LOOKAHEAD_DAYS = 60
+MANAGE_TASK_PAGE_SIZE = 8
+MANAGE_LEAVE_PAGE_SIZE = 8
+
+# 例如「搜尋 採購」「找待辦 採購」
+SEARCH_PATTERN = re.compile(r"^(?:搜尋|搜索|找待辦)\s*(.+)$")
 
 
 def is_owner(update: Update) -> bool:
@@ -117,7 +123,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「8/15 蕾蕾 特休」「8/15 蕾蕾、小菁 事假」→ 登記請假（支援多假別、多人）\n"
         "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
         "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n"
-        "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n\n"
+        "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n"
+        "・「找待辦 採購」「搜尋 採購」→ 依關鍵字搜尋所有待辦（含已完成）\n\n"
         "帳單追收提醒也會自動整合進來（跟你VPS上的bill_reminder.py共用同一份規則，"
         "不用另外設定，該追的帳單到了會自動出現在當天的待辦裡）。\n\n"
         "指令：\n"
@@ -126,9 +133,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/month 查看本月行事曆\n"
         "/done <編號> 標記完成\n"
         "/del <編號> 刪除事項\n"
-        "/push <編號> <日期> 把逾期事項推到新日期\n\n"
+        "/push <編號> <日期> 把逾期事項推到新日期\n"
+        "/find <關鍵字> 搜尋待辦\n\n"
         "下面按鈕也都能用，不用打指令：\n"
-        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／管理重複任務／本月統計",
+        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／管理重複任務／本週統計／本月統計",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -218,9 +226,17 @@ async def cmd_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ───────────────── 管理待辦（按鈕清單） ─────────────────
 
-def build_manage_task_keyboard():
-    """列出所有未完成事項（含逾期），每項附「完成」「刪除」兩顆按鈕"""
-    tasks = db.get_all_pending_tasks()
+def build_manage_task_keyboard(page: int = 0):
+    """列出未完成事項（含逾期），每項附「完成」「刪除」兩顆按鈕。
+    未完成事項數量沒有上限，長期累積可能撐爆Telegram單則訊息的按鈕數量，
+    所以這裡固定每頁只顯示MANAGE_TASK_PAGE_SIZE項，附上下頁按鈕翻頁。"""
+    all_tasks = db.get_all_pending_tasks()
+    total = len(all_tasks)
+    total_pages = max(1, (total + MANAGE_TASK_PAGE_SIZE - 1) // MANAGE_TASK_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start = page * MANAGE_TASK_PAGE_SIZE
+    tasks = all_tasks[start:start + MANAGE_TASK_PAGE_SIZE]
+
     rows = []
     for t in tasks:
         label = t["content"]
@@ -229,15 +245,25 @@ def build_manage_task_keyboard():
         date_disp = t["task_date"][5:]  # MM-DD
         rows.append([InlineKeyboardButton(f"{date_disp}　{label}", callback_data="noop")])
         rows.append([
-            InlineKeyboardButton("✓ 完成", callback_data=f"mgdone|{t['id']}"),
-            InlineKeyboardButton("✕ 刪除", callback_data=f"mgtdel|{t['id']}"),
+            InlineKeyboardButton("✓ 完成", callback_data=f"mgdone|{t['id']}|{page}"),
+            InlineKeyboardButton("✕ 刪除", callback_data=f"mgtdel|{t['id']}|{page}"),
         ])
-    return tasks, InlineKeyboardMarkup(rows) if rows else None
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("‹ 上一頁", callback_data=f"mgtpage|{page - 1}"))
+        nav.append(InlineKeyboardButton(f"第{page + 1}/{total_pages}頁", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("下一頁 ›", callback_data=f"mgtpage|{page + 1}"))
+        rows.append(nav)
+
+    return all_tasks, InlineKeyboardMarkup(rows) if rows else None, total
 
 
-async def send_manage_task_list(message_or_query):
-    tasks, keyboard = build_manage_task_keyboard()
-    text = "點「完成」或「刪除」管理事項：" if tasks else "目前沒有未完成的待辦事項"
+async def send_manage_task_list(message_or_query, page: int = 0):
+    all_tasks, keyboard, total = build_manage_task_keyboard(page)
+    text = f"點「完成」或「刪除」管理事項（共{total}項）：" if all_tasks else "目前沒有未完成的待辦事項"
     if hasattr(message_or_query, "edit_message_text"):
         # 來自 callback_query
         await message_or_query.edit_message_text(text, reply_markup=keyboard)
@@ -247,23 +273,40 @@ async def send_manage_task_list(message_or_query):
 
 # ───────────────── 管理請假（按鈕清單） ─────────────────
 
-def build_manage_leave_keyboard():
-    """列出最近7天起的所有請假紀錄，每項附「刪除」按鈕"""
+def build_manage_leave_keyboard(page: int = 0):
+    """列出最近7天起的所有請假紀錄，每項附「刪除」按鈕。
+    跟待辦清單一樣沒有筆數上限，用同樣的分頁方式避免清單無限長。"""
     today_dt = datetime.strptime(db.today_str(), "%Y-%m-%d")
     start = (today_dt - timedelta(days=7)).strftime("%Y-%m-%d")
-    leaves = db.get_leaves_from(start)
+    all_leaves = db.get_leaves_from(start)
+    total = len(all_leaves)
+    total_pages = max(1, (total + MANAGE_LEAVE_PAGE_SIZE - 1) // MANAGE_LEAVE_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start_idx = page * MANAGE_LEAVE_PAGE_SIZE
+    leaves = all_leaves[start_idx:start_idx + MANAGE_LEAVE_PAGE_SIZE]
+
     rows = []
     for lv in leaves:
         date_disp = lv["leave_date"][5:]
         note = f"({lv['note']})" if lv.get("note") else ""
         rows.append([InlineKeyboardButton(f"{date_disp}　{lv['person_name']}{lv.get('leave_type') or '請假'}{note}", callback_data="noop")])
-        rows.append([InlineKeyboardButton("✕ 刪除這筆請假", callback_data=f"mgldel|{lv['id']}")])
-    return leaves, InlineKeyboardMarkup(rows) if rows else None
+        rows.append([InlineKeyboardButton("✕ 刪除這筆請假", callback_data=f"mgldel|{lv['id']}|{page}")])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("‹ 上一頁", callback_data=f"mglpage|{page - 1}"))
+        nav.append(InlineKeyboardButton(f"第{page + 1}/{total_pages}頁", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("下一頁 ›", callback_data=f"mglpage|{page + 1}"))
+        rows.append(nav)
+
+    return all_leaves, InlineKeyboardMarkup(rows) if rows else None, total
 
 
-async def send_manage_leave_list(message_or_query):
-    leaves, keyboard = build_manage_leave_keyboard()
-    text = "點「刪除」取消請假登記：" if leaves else "目前沒有排定的請假紀錄"
+async def send_manage_leave_list(message_or_query, page: int = 0):
+    all_leaves, keyboard, total = build_manage_leave_keyboard(page)
+    text = f"點「刪除」取消請假登記（共{total}筆）：" if all_leaves else "目前沒有排定的請假紀錄"
     if hasattr(message_or_query, "edit_message_text"):
         await message_or_query.edit_message_text(text, reply_markup=keyboard)
     else:
@@ -283,7 +326,9 @@ def describe_template_rule(rule_type: str, rule_value) -> str:
 
 
 def generate_tasks_from_templates():
-    """檢查所有範本，若今天符合規則且今天還沒產生過，就自動新增一筆待辦事項"""
+    """檢查所有範本，若今天符合規則且今天還沒產生過，就自動新增一筆待辦事項。
+    若這次的日期剛好被設定「跳過」（skip_date），就不產生待辦，但一樣標記今天已處理過，
+    並清掉skip_date，避免影響到下一次的產生。"""
     today_str = db.today_str()
     today_dt = datetime.strptime(today_str, "%Y-%m-%d")
     is_last_day_of_month = (today_dt + timedelta(days=1)).month != today_dt.month
@@ -301,9 +346,30 @@ def generate_tasks_from_templates():
             matched = True
 
         if matched:
-            db.add_task(today_str, tpl["content"])
-            db.mark_template_generated(tpl["id"], today_str)
-            logger.info(f"範本 #{tpl['id']} 自動產生今日待辦：{tpl['content']}")
+            if tpl.get("skip_date") == today_str:
+                db.mark_template_generated(tpl["id"], today_str)
+                db.set_template_skip(tpl["id"], None)
+                logger.info(f"範本 #{tpl['id']} 今天設定了跳過，不產生待辦")
+            else:
+                db.add_task(today_str, tpl["content"])
+                db.mark_template_generated(tpl["id"], today_str)
+                logger.info(f"範本 #{tpl['id']} 自動產生今日待辦：{tpl['content']}")
+
+
+def compute_next_occurrence(rule_type: str, rule_value, start_dt: datetime):
+    """從start_dt（含）開始往後找，回傳符合範本規則的下一個日期（datetime）。
+    最多找400天避免規則異常時無窮迴圈，正常情況一定能在一個月內找到。"""
+    d = start_dt
+    for _ in range(400):
+        is_last_day = (d + timedelta(days=1)).month != d.month
+        if rule_type == "weekly" and d.weekday() == rule_value:
+            return d
+        if rule_type == "monthly_day" and d.day == rule_value:
+            return d
+        if rule_type == "monthly_last" and is_last_day:
+            return d
+        d += timedelta(days=1)
+    return None
 
 
 BILL_REMINDER_SCRIPT_DIR = "/root/bill-reminder"
@@ -365,8 +431,18 @@ def build_manage_template_keyboard():
         label = tpl["content"]
         if len(label) > 18:
             label = label[:18] + "…"
-        rows.append([InlineKeyboardButton(f"{rule_disp}　{label}", callback_data="noop")])
-        rows.append([InlineKeyboardButton("✕ 刪除這個範本", callback_data=f"mgtpldel|{tpl['id']}")])
+        skip_disp = f"（{tpl['skip_date'][5:]}跳過）" if tpl.get("skip_date") else ""
+        rows.append([InlineKeyboardButton(f"{rule_disp}　{label}{skip_disp}", callback_data="noop")])
+        if tpl.get("skip_date"):
+            rows.append([
+                InlineKeyboardButton("取消跳過", callback_data=f"mgtplunskip|{tpl['id']}"),
+                InlineKeyboardButton("✕ 刪除這個範本", callback_data=f"mgtpldel|{tpl['id']}"),
+            ])
+        else:
+            rows.append([
+                InlineKeyboardButton("跳過下一次", callback_data=f"mgtplskip|{tpl['id']}"),
+                InlineKeyboardButton("✕ 刪除這個範本", callback_data=f"mgtpldel|{tpl['id']}"),
+            ])
     return templates, InlineKeyboardMarkup(rows) if rows else None
 
 
@@ -411,6 +487,55 @@ async def send_month_stats(message):
     ]
     lines.extend(leave_lines if leave_lines else ["・本月無請假紀錄"])
 
+    await message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
+
+
+async def send_week_stats(message):
+    now = datetime.now(TW_TZ)
+    monday = now - timedelta(days=now.weekday())
+    sunday = monday + timedelta(days=6)
+    start_str = monday.strftime("%Y-%m-%d")
+    end_str = sunday.strftime("%Y-%m-%d")
+
+    tasks = db.get_tasks_for_range(start_str, end_str)
+    total_tasks = len(tasks)
+    done_tasks = sum(1 for t in tasks if t["status"] == "done")
+    pending_tasks = total_tasks - done_tasks
+    rate = round(done_tasks / total_tasks * 100) if total_tasks else 0
+
+    leaves = db.get_leaves_for_range(start_str, end_str)
+    leave_by_person = {}
+    for lv in leaves:
+        leave_by_person[lv["person_name"]] = leave_by_person.get(lv["person_name"], 0) + 1
+    leave_lines = [f"・{name}：{days}天" for name, days in sorted(leave_by_person.items(), key=lambda x: -x[1])]
+
+    lines = [
+        f"本週（{start_str[5:]} ～ {end_str[5:]}）統計",
+        f"待辦事項共 {total_tasks} 項，完成 {done_tasks} 項，完成率 {rate}%",
+        f"未完成 {pending_tasks} 項",
+        "",
+        f"請假紀錄共 {len(leaves)} 筆：",
+    ]
+    lines.extend(leave_lines if leave_lines else ["・本週無請假紀錄"])
+
+    await message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
+
+
+# ───────────────── 關鍵字搜尋待辦 ─────────────────
+
+async def send_task_search_results(message, keyword: str):
+    """依內容關鍵字搜尋所有待辦事項（含已完成），方便找回忘記是哪天登記的事項"""
+    results = db.search_tasks(keyword)
+    if not results:
+        await message.reply_text(f"沒有找到內容包含「{keyword}」的待辦事項", reply_markup=MAIN_KEYBOARD)
+        return
+
+    lines = [f"搜尋「{keyword}」，共{len(results)}筆（最新在前）："]
+    for t in results:
+        status_disp = "✓已完成" if t["status"] == "done" else "・待處理"
+        lines.append(f"{status_disp} #{t['id']} {t['task_date']}　{t['content']}")
+    if len(results) >= 30:
+        lines.append("\n（僅顯示最近30筆，若要縮小範圍請用更精確的關鍵字）")
     await message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
 
 
@@ -587,6 +712,16 @@ async def cmd_delleave(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"請假紀錄 #{leave_id} 已刪除" if ok else f"找不到 #{leave_id}")
 
 
+async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        return
+    if not context.args:
+        await update.message.reply_text("用法：/find 關鍵字（例如 /find 採購）")
+        return
+    keyword = " ".join(context.args)
+    await send_task_search_results(update.message, keyword)
+
+
 # ───────────────── 自然語言輸入 ─────────────────
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -634,6 +769,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_template_list(update.message)
         return
 
+    if "本週統計" in text or ("統計" in text and "本週" in text):
+        await send_week_stats(update.message)
+        return
+
     if "本月統計" in text or ("統計" in text and "本月" in text):
         await send_month_stats(update.message)
         return
@@ -641,6 +780,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if "健康" in text and ("自檢" in text or "檢查" in text):
         await send_health_check(update, context)
         return
+
+    # 關鍵字搜尋待辦：例如「找待辦 採購」「搜尋 採購」
+    search_match = SEARCH_PATTERN.match(text)
+    if search_match:
+        keyword = search_match.group(1).strip()
+        if keyword:
+            await send_task_search_results(update.message, keyword)
+            return
 
     # 按人名查詢請假紀錄：例如「蕾蕾這個月請了幾天假」「蕾蕾請了幾天假」
     leave_query_match = LEAVE_QUERY_PATTERN.match(text)
@@ -744,30 +891,68 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
         return
 
-    # ── 管理待辦清單：完成／刪除 ──
+    # ── 管理待辦清單：完成／刪除／翻頁 ──
     if action == "mgdone" and len(parts) >= 2:
         ok = db.mark_task_done(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
         await query.answer("已完成" if ok else "找不到這個事項")
-        await send_manage_task_list(query)
+        await send_manage_task_list(query, page)
         return
 
     if action == "mgtdel" and len(parts) >= 2:
         ok = db.delete_task(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
         await query.answer("已刪除" if ok else "找不到這個事項")
-        await send_manage_task_list(query)
+        await send_manage_task_list(query, page)
         return
 
-    # ── 管理請假清單：刪除 ──
+    if action == "mgtpage" and len(parts) >= 2:
+        await query.answer()
+        await send_manage_task_list(query, int(parts[1]))
+        return
+
+    # ── 管理請假清單：刪除／翻頁 ──
     if action == "mgldel" and len(parts) >= 2:
         ok = db.delete_leave(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
         await query.answer("已刪除" if ok else "找不到這筆請假")
-        await send_manage_leave_list(query)
+        await send_manage_leave_list(query, page)
         return
 
-    # ── 管理重複任務清單：刪除 ──
+    if action == "mglpage" and len(parts) >= 2:
+        await query.answer()
+        await send_manage_leave_list(query, int(parts[1]))
+        return
+
+    # ── 管理重複任務清單：刪除／跳過下一次／取消跳過 ──
     if action == "mgtpldel" and len(parts) >= 2:
         ok = db.delete_template(int(parts[1]))
         await query.answer("已刪除" if ok else "找不到這個範本")
+        await send_manage_template_list(query)
+        return
+
+    if action == "mgtplskip" and len(parts) >= 2:
+        tpl_id = int(parts[1])
+        tpl = db.get_template_by_id(tpl_id)
+        if not tpl:
+            await query.answer("找不到這個範本")
+            await send_manage_template_list(query)
+            return
+        today_str = db.today_str()
+        today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+        start_dt = today_dt if tpl.get("last_generated_date") != today_str else today_dt + timedelta(days=1)
+        next_dt = compute_next_occurrence(tpl["rule_type"], tpl["rule_value"], start_dt)
+        if next_dt:
+            db.set_template_skip(tpl_id, next_dt.strftime("%Y-%m-%d"))
+            await query.answer(f"已設定跳過 {next_dt.strftime('%m/%d')}")
+        else:
+            await query.answer("找不到下一次產生日期，設定失敗")
+        await send_manage_template_list(query)
+        return
+
+    if action == "mgtplunskip" and len(parts) >= 2:
+        db.set_template_skip(int(parts[1]), None)
+        await query.answer("已取消跳過")
         await send_manage_template_list(query)
         return
 
@@ -1013,6 +1198,7 @@ def main():
     app.add_handler(CommandHandler("backup", cmd_backup))
     app.add_handler(CommandHandler("delleave", cmd_delleave))
     app.add_handler(CommandHandler("health", cmd_health))
+    app.add_handler(CommandHandler("find", cmd_find))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
