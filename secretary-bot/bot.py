@@ -47,11 +47,13 @@ MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
 MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
 MANAGE_TEMPLATE_BUTTON_TEXT = "管理重複任務"
 STATS_BUTTON_TEXT = "本月統計"
+HEALTH_BUTTON_TEXT = "服務健康自檢"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
         [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
         [MANAGE_TEMPLATE_BUTTON_TEXT, STATS_BUTTON_TEXT],
+        [HEALTH_BUTTON_TEXT],
     ],
     resize_keyboard=True,
 )
@@ -479,6 +481,54 @@ async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"備份失敗：{e}")
 
 
+def _format_meta_time(iso_str: str) -> str:
+    if not iso_str:
+        return "尚無紀錄"
+    try:
+        dt = datetime.fromisoformat(iso_str)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return iso_str
+
+
+async def send_health_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lines = ["服務健康自檢"]
+    lines.append(f"Bot帳號：@{context.bot.username}　運作中 ✓")
+
+    last_push = db.get_meta("last_push_date")
+    lines.append(f"上次今日推播：{last_push or '尚無紀錄'}")
+
+    last_backup = db.get_meta("last_backup_at")
+    lines.append(f"上次資料庫備份：{_format_meta_time(last_backup)}")
+
+    scheduler = context.application.bot_data.get("scheduler")
+    if scheduler:
+        jobs = scheduler.get_jobs()
+        lines.append(f"\n排程任務（共{len(jobs)}個，全部運作中）：")
+        for job in jobs:
+            next_run = job.next_run_time.strftime("%m-%d %H:%M") if job.next_run_time else "未知"
+            lines.append(f"・{job.name}　下次執行：{next_run}")
+    else:
+        lines.append("\n排程器狀態：讀取不到，可能需要重啟服務確認")
+
+    try:
+        pending_count = len(db.get_all_pending_tasks())
+        lines.append(f"\n資料庫讀取：正常 ✓（目前未完成待辦 {pending_count} 項）")
+    except Exception as e:
+        lines.append(f"\n資料庫讀取：異常 ✗（{e}）")
+
+    groq_status = "已設定" if summary.GROQ_API_KEY else "未設定（會自動降級用固定模板，不影響運作）"
+    lines.append(f"Groq AI摘要：{groq_status}")
+
+    await update.message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
+
+
+async def cmd_health(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        return
+    await send_health_check(update, context)
+
+
 async def cmd_leaves(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """查詢某天的請假清單（含id，方便配合/delleave刪除）"""
     if context.args:
@@ -566,6 +616,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if "本月統計" in text or ("統計" in text and "本月" in text):
         await send_month_stats(update.message)
+        return
+
+    if "健康" in text and ("自檢" in text or "檢查" in text):
+        await send_health_check(update, context)
         return
 
     # 按人名查詢請假紀錄：例如「蕾蕾這個月請了幾天假」「蕾蕾請了幾天假」
@@ -822,6 +876,7 @@ async def evening_push(app: Application):
 
     today_tasks = db.get_tasks_for_date(today_str)
     today_pending = [t for t in today_tasks if t["status"] == "pending"]
+    today_done = [t for t in today_tasks if t["status"] == "done"]
 
     tomorrow_leaves = db.get_leaves_for_date(tomorrow_str)
     tomorrow_tasks = db.get_tasks_for_date(tomorrow_str)
@@ -840,6 +895,12 @@ async def evening_push(app: Application):
     headline = summary.generate_summary(context)
 
     lines = [headline]
+
+    if today_done:
+        lines.append(f"\n今天完成摘要（可直接貼日報）：")
+        lines.append(f"今天共完成 {len(today_done)} 項：")
+        for i, t in enumerate(today_done, 1):
+            lines.append(f"{i}. {t['content']}")
 
     if today_pending:
         lines.append(f"\n今天還有 {len(today_pending)} 項未完成：")
@@ -891,18 +952,21 @@ def setup_scheduler(app: Application):
         trigger=CronTrigger(day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE),
         args=[app],
         misfire_grace_time=3600,  # 服務短暫離線也能在1小時內補跑排定的推播
+        name="早上10點今日推播",
     )
     scheduler.add_job(
         evening_push,
         trigger=CronTrigger(day_of_week="mon-fri", hour=config.EVENING_PUSH_HOUR, minute=config.EVENING_PUSH_MINUTE),
         args=[app],
         misfire_grace_time=3600,
+        name="下班前明日預告",
     )
     scheduler.add_job(
         scheduled_backup,
         trigger=CronTrigger(day_of_week="sun", hour=22, minute=0),
         args=[app],
         misfire_grace_time=3600 * 6,
+        name="週日資料庫備份",
     )
     scheduler.start()
     return scheduler
@@ -927,10 +991,12 @@ def main():
     app.add_handler(CommandHandler("leaves", cmd_leaves))
     app.add_handler(CommandHandler("backup", cmd_backup))
     app.add_handler(CommandHandler("delleave", cmd_delleave))
+    app.add_handler(CommandHandler("health", cmd_health))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
 
-    setup_scheduler(app)
+    scheduler = setup_scheduler(app)
+    app.bot_data["scheduler"] = scheduler
 
     logger.info("秘書Bot 啟動中…")
     app.run_polling()
