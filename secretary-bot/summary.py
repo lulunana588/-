@@ -58,8 +58,10 @@ def generate_summary(context: dict) -> str:
 
     prompt_lines = [
         "你是Luna的貼心秘書，幫她寫一句簡短的" + ("明日預告" if is_tomorrow else "早安提醒") + "。",
-        "用繁體中文，語氣自然親切像真人助理跟主管報告，不要用制式罐頭句，只寫一句話，不超過40字，不要加引號或表情符號：",
-        f"待辦事項：{context.get('pending_count', 0)}項未完成",
+        "用繁體中文，語氣自然親切像真人助理跟主管報告，只寫一句話，不超過40字，不要加引號或表情符號。",
+        "非常重要：只能使用下面列出的事實，絕對不要編造、想像或補充任何沒有列出的具體任務內容、會議、客戶、計畫等細節，"
+        "只能講數量跟已知的人名，不要自己發明事項是什麼：",
+        f"待辦事項：{context.get('pending_count', 0)}項未完成（不知道具體內容，不要編造）",
         f"請假同仁：{('、'.join(leave_names)) if leave_names else '無'}",
         f"逾期事項：{context.get('overdue_count', 0)}項",
     ]
@@ -77,7 +79,7 @@ def generate_summary(context: dict) -> str:
                 "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
                 "max_tokens": 80,
-                "temperature": 0.7,
+                "temperature": 0.4,
             },
             timeout=8,
         )
