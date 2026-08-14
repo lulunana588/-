@@ -229,7 +229,7 @@ def build_manage_leave_keyboard():
     for lv in leaves:
         date_disp = lv["leave_date"][5:]
         note = f"({lv['note']})" if lv.get("note") else ""
-        rows.append([InlineKeyboardButton(f"{date_disp}　{lv['person_name']}{note}", callback_data="noop")])
+        rows.append([InlineKeyboardButton(f"{date_disp}　{lv['person_name']}{lv.get('leave_type') or '請假'}{note}", callback_data="noop")])
         rows.append([InlineKeyboardButton("✕ 刪除這筆請假", callback_data=f"mgldel|{lv['id']}")])
     return leaves, InlineKeyboardMarkup(rows) if rows else None
 
@@ -310,7 +310,7 @@ async def cmd_leaves(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lines = [f"{date_str} 請假名單："]
     for lv in leaves:
         note = f"（{lv['note']}）" if lv.get("note") else ""
-        lines.append(f"・#{lv['id']}  {lv['person_name']}{note}")
+        lines.append(f"・#{lv['id']}  {lv['person_name']}{lv.get('leave_type') or '請假'}{note}")
     lines.append("\n要刪除用 /delleave 編號")
     await update.message.reply_text("\n".join(lines))
 
@@ -371,9 +371,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif result["type"] == "leave":
         note_disp = f"（{result['note']}）" if result.get("note") else ""
-        db.add_leave(result["date"], result["person"], result.get("note"))
+        leave_type = result.get("leave_type", "請假")
+        db.add_leave(result["date"], result["person"], result.get("note"), leave_type)
         await update.message.reply_text(
-            f"已登記請假：{result['date']} {result['person']} 請假{note_disp}",
+            f"已登記{leave_type}：{result['date']} {result['person']}{note_disp}",
             reply_markup=MAIN_KEYBOARD,
         )
         if result["date"] == db.today_str():
@@ -383,13 +384,29 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         start = datetime.strptime(result["start_date"], "%Y-%m-%d")
         end = datetime.strptime(result["end_date"], "%Y-%m-%d")
         n_days = (end - start).days + 1
+        leave_type = result.get("leave_type", "請假")
         d = start
         while d <= end:
-            db.add_leave(d.strftime("%Y-%m-%d"), result["person"], result.get("note"))
+            db.add_leave(d.strftime("%Y-%m-%d"), result["person"], result.get("note"), leave_type)
             d += timedelta(days=1)
         note_disp = f"（{result['note']}）" if result.get("note") else ""
         await update.message.reply_text(
-            f"已登記請假：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['person']} 請假{note_disp}",
+            f"已登記{leave_type}：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['person']}{note_disp}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        if result["start_date"] <= db.today_str() <= result["end_date"]:
+            await send_today_card(update)
+
+    elif result["type"] == "task_range":
+        start = datetime.strptime(result["start_date"], "%Y-%m-%d")
+        end = datetime.strptime(result["end_date"], "%Y-%m-%d")
+        n_days = (end - start).days + 1
+        d = start
+        while d <= end:
+            db.add_task(d.strftime("%Y-%m-%d"), result["content"])
+            d += timedelta(days=1)
+        await update.message.reply_text(
+            f"已新增待辦：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['content']}",
             reply_markup=MAIN_KEYBOARD,
         )
         if result["start_date"] <= db.today_str() <= result["end_date"]:
