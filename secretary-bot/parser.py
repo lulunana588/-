@@ -26,6 +26,42 @@ TEMPLATE_MONTHLY_LAST_PATTERN = re.compile(r"^每月(?:底|最後一天)\s*(.+)$
 # 例如「#12 改成交採購報表給財務」
 EDIT_TASK_PATTERN = re.compile(r"^#(\d+)\s*改成\s*(.+)$")
 
+# 例如「等 廠商 回覆報價單」「等 主管簽核採購單」「8/15 等 廠商 回覆報價單」
+WAITING_PATTERN = re.compile(r"^(?:(\d{1,2}[/\-]\d{1,2})\s+)?等\s+(.+)$")
+
+
+def parse_waiting_input(text: str):
+    """
+    解析「等待中」事項（等別人回覆/處理，不是自己要做的事），例如：
+      "等 廠商 回覆報價單"        -> 從今天開始等，對象「廠商」，事項「回覆報價單」
+      "等 主管簽核採購單"         -> 從今天開始等，沒拆出明確對象，事項就是整句
+      "8/15 等 廠商 回覆報價單"   -> 從8/15開始等
+    回傳 {"date":..., "waiting_on": str或None, "content": str} 或 None（不是等待語法）
+    """
+    text = text.strip()
+    m = WAITING_PATTERN.match(text)
+    if not m:
+        return None
+
+    date_token, rest = m.group(1), m.group(2).strip()
+    if not rest:
+        return None
+
+    if date_token:
+        date_str = parse_date_token(date_token)
+        if not date_str:
+            return None
+    else:
+        date_str = _now().strftime("%Y-%m-%d")
+
+    parts = rest.split(None, 1)
+    if len(parts) == 2:
+        waiting_on, content = parts[0], parts[1]
+    else:
+        waiting_on, content = None, rest
+
+    return {"date": date_str, "waiting_on": waiting_on, "content": content}
+
 
 def parse_edit_task(text: str):
     """回傳 (task_id, new_content) 或 None"""
