@@ -113,7 +113,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「8/15 交採購報表」→ 新增待辦\n"
         "・「8/15 蕾蕾 特休」「8/15 蕾蕾、小菁 事假」→ 登記請假（支援多假別、多人）\n"
         "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
-        "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n\n"
+        "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n"
+        "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n\n"
         "指令：\n"
         "/today 查看今天行事曆\n"
         "/week 查看本週行事曆\n"
@@ -488,6 +489,21 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     text = update.message.text.strip()
+
+    # 編輯已建立的事項內容：例如「#12 改成交採購報表給財務」
+    edit_result = parser.parse_edit_task(text)
+    if edit_result:
+        task_id, new_content = edit_result
+        ok = db.update_task_content(task_id, new_content)
+        await update.message.reply_text(
+            f"#{task_id} 內容已改成：{new_content}" if ok else f"找不到 #{task_id}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        if ok:
+            task = db.get_task_by_id(task_id)
+            if task and task["task_date"] == db.today_str():
+                await send_today_card(update)
+        return
 
     # 用關鍵字比對而非完全相等，避免emoji編碼差異導致按鈕誤判成待辦事項
     if "查詢" in text and "本月" in text:
