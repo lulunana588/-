@@ -57,18 +57,13 @@ def generate_summary(context: dict) -> str:
     leave_names = context.get("leave_names", [])
 
     prompt_lines = [
-        "你是Luna的貼心秘書，幫她寫一句簡短的" + ("明日預告" if is_tomorrow else "早安提醒") + "。",
-        "用繁體中文，語氣自然親切像真人助理跟主管報告，只寫一句話，不超過40字，不要加引號或表情符號。",
-        "非常重要：只能使用下面列出的事實，絕對不要編造、想像或補充任何沒有列出的具體任務內容、會議、客戶、計畫等細節，"
-        "只能講數量跟已知的人名，不要自己發明事項是什麼：",
-        f"待辦事項：{context.get('pending_count', 0)}項未完成（不知道具體內容，不要編造）",
-        f"請假同仁：{('、'.join(leave_names)) if leave_names else '無'}",
-        f"逾期事項：{context.get('overdue_count', 0)}項",
+        "你是Luna的貼心秘書，" + ("要跟她說明天的行事曆已經整理好了" if is_tomorrow else "要跟她說早安、今天的行事曆已經整理好了") + "。",
+        "用繁體中文寫一句簡短、溫暖、自然的開場白，最多20字，不要加引號或表情符號。",
+        "非常重要：這句話裡絕對不能出現任何具體數字、人名、任務內容、會議、日期、地點等細節——"
+        "這些事實之後會由另一段文字列出，你完全不知道細節是什麼，只需要負責語氣溫暖自然的開場白就好，不要自己猜測或編造細節。",
+        "參考風格（不要照抄，自己換句話說一次就好）："
+        + ("「明天的安排我整理好了，辛苦妳了」" if is_tomorrow else "「早安，今天的行事曆來囉，一起加油」"),
     ]
-    if context.get("due_soon_count"):
-        prompt_lines.append(f"即將到期（兩天內）：{context['due_soon_count']}項")
-    if context.get("returning_names"):
-        prompt_lines.append(f"今天銷假回來的同仁：{'、'.join(context['returning_names'])}")
     prompt = "\n".join(prompt_lines)
 
     try:
@@ -78,7 +73,7 @@ def generate_summary(context: dict) -> str:
             json={
                 "model": GROQ_MODEL,
                 "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 80,
+                "max_tokens": 40,
                 "temperature": 0.4,
             },
             timeout=8,
@@ -86,7 +81,10 @@ def generate_summary(context: dict) -> str:
         resp.raise_for_status()
         text = resp.json()["choices"][0]["message"]["content"].strip()
         text = text.strip('"').strip("「").strip("」").strip()
-        if text:
+        # 安全檢查：AI被明確要求不要提具體數字/細節，若出現數字代表可能還是講了不該講的內容，直接捨棄改用模板
+        has_digit = any(ch.isdigit() for ch in text)
+        too_long = len(text) > 30
+        if text and not has_digit and not too_long:
             return text
     except Exception:
         logger.warning("Groq摘要產生失敗，改用固定模板", exc_info=True)
