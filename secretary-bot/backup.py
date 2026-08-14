@@ -23,6 +23,7 @@ from googleapiclient.http import MediaFileUpload
 from google.oauth2 import service_account
 
 import config
+import db
 
 SCOPES = ["https://www.googleapis.com/auth/drive"]
 BACKUP_FILE_ID = "1OYA4_pcvlPrEAjpyrYAol4H1RV5to59I"  # secretary_backup_latest.db（真人帳號預先建立）
@@ -109,6 +110,7 @@ def backup_database() -> str:
                 f"備份資料筆數不一致（本地{local_count}筆、雲端{remote_count}筆），備份可能不完整"
             )
 
+        db.set_meta("last_backup_at", datetime.now(TW_TZ).isoformat())
         return updated.get("id")
     finally:
         if os.path.exists(tmp_path):
