@@ -70,8 +70,7 @@ def is_owner(update: Update) -> bool:
 async def build_today_card_path(for_date: str = None) -> str:
     date_str = for_date or db.today_str()
     if date_str == db.today_str():
-        generate_tasks_from_templates()
-        generate_tasks_from_bill_reminder()
+        ensure_daily_generation()
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     weekday_zh = WEEKDAY_ZH[dt.weekday()]
 
@@ -144,6 +143,7 @@ async def send_today_card(update: Update):
 
 
 async def build_week_card_path() -> str:
+    ensure_daily_generation()
     now = datetime.now(TW_TZ)
     monday = now - timedelta(days=now.weekday())
     days = []
@@ -170,6 +170,7 @@ async def send_week_card(update: Update):
 
 
 async def build_month_card_path() -> str:
+    ensure_daily_generation()
     now = datetime.now(TW_TZ)
     year, month = now.year, now.month
 
@@ -345,6 +346,15 @@ def generate_tasks_from_bill_reminder():
                 logger.info(f"帳單規則自動產生待辦（{date_str}）：{content}")
 
     db.set_meta("last_bill_generate_date", today_str)
+
+
+def ensure_daily_generation():
+    """統一入口：把範本任務、帳單提醒都跑一次自動產生檢查。
+    每個函式內部都有「今天是否已產生過」的guard，重複呼叫不會重複建立資料，
+    所以可以放心在多個查看入口（今日/本週/本月/服務啟動）都呼叫這個函式，
+    確保不管使用者先點哪個按鈕，資料都已經是最新的。"""
+    generate_tasks_from_templates()
+    generate_tasks_from_bill_reminder()
 
 
 def build_manage_template_keyboard():
@@ -983,7 +993,8 @@ def setup_scheduler(app: Application):
 
 
 async def on_startup(app: Application):
-    """服務啟動後執行一次：若今天工作日已過推播時間但還沒推播，立刻補推"""
+    """服務啟動後執行：先確保範本/帳單提醒都已產生，再檢查是否需要補推播"""
+    ensure_daily_generation()
     await catch_up_push_if_missed(app)
 
 
