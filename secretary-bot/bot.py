@@ -308,8 +308,9 @@ BILL_REMINDER_SCRIPT_DIR = "/root/bill-reminder"
 
 def generate_tasks_from_bill_reminder():
     """
-    直接讀取bill_reminder.py裡的BILLS/SPECIAL_HYBRID規則（不複製一份，避免以後兩邊改規則各自漂移），
+    直接呼叫bill_reminder.py裡的get_bills()函式（不重新實作邏輯，也不複製規則清單），
     若今天有帳單該追，自動新增對應待辦事項到秘書Bot的今日行事曆裡。
+    這樣以後不管bill_reminder.py的規則或邏輯怎麼調整，秘書Bot都會自動跟著同步。
     """
     today_str = db.today_str()
     if db.get_meta("last_bill_generate_date") == today_str:
@@ -324,15 +325,7 @@ def generate_tasks_from_bill_reminder():
         return
 
     today_dt = datetime.strptime(today_str, "%Y-%m-%d")
-    day, month = today_dt.day, today_dt.month
-
-    bills_today = {}
-    for place, item, month_rule, push_day in bill_reminder.BILLS:
-        if push_day == day and bill_reminder.match_month(month_rule, month):
-            bills_today.setdefault(place, []).append(item)
-    if day == 21:
-        for place, item in bill_reminder.SPECIAL_HYBRID:
-            bills_today.setdefault(place, []).append(item)
+    bills_today = bill_reminder.get_bills(today_dt)
 
     for place, items in bills_today.items():
         content = f"帳單提醒：{place}－{'/'.join(items)}"
