@@ -74,8 +74,9 @@ def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list,
     if leaves:
         for lv in leaves:
             note = f"（{lv['note']}）" if lv.get("note") else ""
+            leave_type = lv.get("leave_type") or "請假"
             _draw_dot(draw, PADDING + 12, y + 10, config.COLOR_TEXT_DIM)
-            draw.text((PADDING + 24, y), f"{lv['person_name']} 請假{note}", font=_font(19), fill=config.COLOR_TEXT)
+            draw.text((PADDING + 24, y), f"{lv['person_name']} {leave_type}{note}", font=_font(19), fill=config.COLOR_TEXT)
             y += LINE_H
     else:
         _draw_dot(draw, PADDING + 12, y + 10, config.COLOR_TEXT_DIM)
@@ -166,10 +167,10 @@ def render_week_card(week_start: str, week_end: str, days: list) -> Image.Image:
 
         if day["leaves"]:
             names = "、".join(
-                f"{lv['person_name']}" + (f"({lv['note']})" if lv.get("note") else "")
+                f"{lv['person_name']}{lv.get('leave_type') or '請假'}" + (f"({lv['note']})" if lv.get("note") else "")
                 for lv in day["leaves"]
             )
-            draw.text((PADDING + 14, y), f"請假：{names}", font=_font(17), fill=config.COLOR_YELLOW)
+            draw.text((PADDING + 14, y), names, font=_font(17), fill=config.COLOR_YELLOW)
             y += WEEK_LINE_H
         else:
             draw.text((PADDING + 14, y), "請假：無", font=_font(17), fill=config.COLOR_TEXT_DIM)
@@ -261,10 +262,10 @@ def render_month_card(year: int, month: int, leaves: list, tasks: list, weekday_
 
         if data["leaves"]:
             names = "、".join(
-                f"{lv['person_name']}" + (f"({lv['note']})" if lv.get("note") else "")
+                f"{lv['person_name']}{lv.get('leave_type') or '請假'}" + (f"({lv['note']})" if lv.get("note") else "")
                 for lv in data["leaves"]
             )
-            draw.text((PADDING + 14, y), f"請假：{names}", font=_font(16), fill=config.COLOR_YELLOW)
+            draw.text((PADDING + 14, y), names, font=_font(16), fill=config.COLOR_YELLOW)
             y += MONTH_LINE_H
 
         for t in data["tasks"]:
