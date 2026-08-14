@@ -462,10 +462,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ───────────────── 每日推播 ─────────────────
 
-async def scheduled_push(app: Application):
-    now = datetime.now(TW_TZ)
-    if now.weekday() not in config.PUSH_WEEKDAYS:
-        return
+async def do_daily_push(app: Application):
+    """實際執行今日推播的核心邏輯，供排程與補推播共用"""
     date_str = db.today_str()
     path = await build_today_card_path(date_str)
     tasks = db.get_tasks_for_date(date_str)
@@ -483,7 +481,30 @@ async def scheduled_push(app: Application):
             caption=caption,
             reply_markup=keyboard,
         )
-    logger.info("已推播今日行事曆")
+    db.set_meta("last_push_date", date_str)
+    logger.info(f"已推播今日行事曆（{date_str}）")
+
+
+async def scheduled_push(app: Application):
+    now = datetime.now(TW_TZ)
+    if now.weekday() not in config.PUSH_WEEKDAYS:
+        return
+    await do_daily_push(app)
+
+
+async def catch_up_push_if_missed(app: Application):
+    """服務啟動時檢查：若今天是工作日、已過推播時間、但今天還沒推播過，立刻補推"""
+    now = datetime.now(TW_TZ)
+    if now.weekday() not in config.PUSH_WEEKDAYS:
+        return
+    scheduled_time = now.replace(hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE, second=0, microsecond=0)
+    if now < scheduled_time:
+        return
+    today_str = db.today_str()
+    if db.get_meta("last_push_date") == today_str:
+        return
+    logger.info("偵測到今天尚未推播，補推播中…")
+    await do_daily_push(app)
 
 
 def setup_scheduler(app: Application):
@@ -492,14 +513,20 @@ def setup_scheduler(app: Application):
         scheduled_push,
         trigger=CronTrigger(day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE),
         args=[app],
+        misfire_grace_time=3600,  # 服務短暫離線也能在1小時內補跑排定的推播
     )
     scheduler.start()
     return scheduler
 
 
+async def on_startup(app: Application):
+    """服務啟動後執行一次：若今天工作日已過推播時間但還沒推播，立刻補推"""
+    await catch_up_push_if_missed(app)
+
+
 def main():
     db.init_db()
-    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).build()
+    app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(on_startup).build()
 
     app.add_handler(CommandHandler("start", cmd_start))
     app.add_handler(CommandHandler("today", cmd_today))
