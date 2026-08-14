@@ -94,28 +94,33 @@ def set_meta(key: str, value: str):
 
 # ───────────────── Tasks ─────────────────
 
-def add_task(task_date: str, content: str) -> int:
+def add_task(task_date: str, content: str, status: str = "pending") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO tasks (task_date, content, status, created_at) VALUES (?, ?, 'pending', ?)",
-            (task_date, content, datetime.now(TW_TZ).isoformat()),
+            "INSERT INTO tasks (task_date, content, status, created_at) VALUES (?, ?, ?, ?)",
+            (task_date, content, status, datetime.now(TW_TZ).isoformat()),
         )
         return cur.lastrowid
 
 
 def get_tasks_for_date(task_date: str):
+    """今日/週/月卡片跟統計都會用到這個查詢。'waiting'（等待中）事項刻意不算在內——
+    它們跟一般待辦性質不同（不是自己要做的事，是等別人回覆/處理），
+    只出現在專屬的「追蹤等待中」清單，避免混進卡片讓人搞不清楚該勾的是什麼。"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE task_date = ? ORDER BY status, id", (task_date,)
+            "SELECT * FROM tasks WHERE task_date = ? AND status != 'waiting' ORDER BY status, id",
+            (task_date,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 def get_tasks_for_range(start_date: str, end_date: str):
-    """回傳 start_date ~ end_date（含）之間的所有事項，依日期分組"""
+    """回傳 start_date ~ end_date（含）之間的所有一般事項（不含waiting），依日期分組"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE task_date BETWEEN ? AND ? ORDER BY task_date, status, id",
+            "SELECT * FROM tasks WHERE task_date BETWEEN ? AND ? AND status != 'waiting' "
+            "ORDER BY task_date, status, id",
             (start_date, end_date),
         ).fetchall()
         return [dict(r) for r in rows]
@@ -126,6 +131,15 @@ def get_all_pending_tasks():
     with get_conn() as conn:
         rows = conn.execute(
             "SELECT * FROM tasks WHERE status = 'pending' ORDER BY task_date, id"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_waiting_tasks():
+    """回傳所有狀態為waiting（等對方回覆/處理中）的事項，依日期排序，供追蹤清單使用"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'waiting' ORDER BY task_date, id"
         ).fetchall()
         return [dict(r) for r in rows]
 
@@ -151,9 +165,10 @@ def get_overdue_tasks(before_date: str):
 
 
 def mark_task_done(task_id: int) -> bool:
+    """完成一般待辦，或標記等待中事項已經有回覆/處理完了（兩種狀態都能標完成）"""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ? AND status = 'pending'",
+            "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ? AND status IN ('pending', 'waiting')",
             (datetime.now(TW_TZ).isoformat(), task_id),
         )
         return cur.rowcount > 0
