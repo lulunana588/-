@@ -12,6 +12,21 @@ TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 DATE_PATTERN = re.compile(r"^(\d{1,2})[/\-](\d{1,2})")
 RANGE_PATTERN = re.compile(r"^(\d{1,2}/\d{1,2})[-~](\d{1,2}/\d{1,2})$")
 
+# 支援的假別關鍵字，之後要加新假別直接加進這個清單就好
+LEAVE_KEYWORDS = ["特休", "生理假", "病假", "事假", "補休", "喪假", "婚假", "產假", "陪產假", "請假"]
+
+
+def find_leave_keyword(text: str):
+    """在text中找出最早出現的假別關鍵字，回傳 (關鍵字, 起始位置) 或 None"""
+    best_kw, best_idx = None, None
+    for kw in LEAVE_KEYWORDS:
+        idx = text.find(kw)
+        if idx != -1 and (best_idx is None or idx < best_idx):
+            best_kw, best_idx = kw, idx
+    if best_kw is None:
+        return None
+    return best_kw, best_idx
+
 
 def _now():
     return datetime.now(TW_TZ)
@@ -70,18 +85,24 @@ def parse_input(raw_text: str):
     first_token = parts[0]
     rest = parts[1] if len(parts) > 1 else ""
 
-    # 先檢查是否為日期區間（例如 8/15-8/17），只用於請假登記
+    # 先檢查是否為日期區間（例如 8/15-8/17），可用於請假登記或連續多天待辦
     range_result = parse_date_range_token(first_token)
     if range_result:
         start_date, end_date = range_result
-        if "請假" in rest:
-            cleaned = rest.replace("請假", " ").strip()
-            segs = cleaned.split(None, 1)
-            person = segs[0] if segs else ""
-            note = segs[1] if len(segs) > 1 else None
+        leave_kw = find_leave_keyword(rest)
+        if leave_kw:
+            kw, idx = leave_kw
+            person = rest[:idx].strip()
+            note = rest[idx + len(kw):].strip() or None
             if not person:
                 return {"type": "unknown"}
-            return {"type": "leave_range", "start_date": start_date, "end_date": end_date, "person": person, "note": note}
+            return {
+                "type": "leave_range", "start_date": start_date, "end_date": end_date,
+                "person": person, "leave_type": kw, "note": note,
+            }
+        if rest.strip():
+            # 沒有假別關鍵字，視為連續多天的待辦事項（例如出差、駐點）
+            return {"type": "task_range", "start_date": start_date, "end_date": end_date, "content": rest.strip()}
         return {"type": "unknown"}
 
     date_str = parse_date_token(first_token)
@@ -89,15 +110,14 @@ def parse_input(raw_text: str):
         # 沒有辨識出日期，整句視為今天的待辦事項
         return {"type": "task", "date": _now().strftime("%Y-%m-%d"), "content": text}
 
-    if "請假" in rest:
-        # 例如："蕾蕾 請假" 或 "蕾蕾請假 半天"
-        cleaned = rest.replace("請假", " ").strip()
-        segs = cleaned.split(None, 1)
-        person = segs[0] if segs else ""
-        note = segs[1] if len(segs) > 1 else None
+    leave_kw = find_leave_keyword(rest)
+    if leave_kw:
+        kw, idx = leave_kw
+        person = rest[:idx].strip()
+        note = rest[idx + len(kw):].strip() or None
         if not person:
             return {"type": "unknown"}
-        return {"type": "leave", "date": date_str, "person": person, "note": note}
+        return {"type": "leave", "date": date_str, "person": person, "leave_type": kw, "note": note}
 
     if not rest.strip():
         return {"type": "unknown"}
