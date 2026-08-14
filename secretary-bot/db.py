@@ -63,8 +63,19 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS reminders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                remind_date TEXT NOT NULL,    -- 提醒日期 YYYY-MM-DD
+                remind_time TEXT NOT NULL,    -- 提醒時間 HH:MM（24小時制）
+                content TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',  -- pending / sent
+                created_at TEXT NOT NULL
+            )
+        """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leaves_date ON leaves(leave_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reminders_datetime ON reminders(remind_date, remind_time)")
 
         # 資料庫遷移：舊版leaves表沒有leave_type欄位，補上去（預設值為「請假」，不影響舊資料）
         cols = [row[1] for row in conn.execute("PRAGMA table_info(leaves)").fetchall()]
@@ -348,3 +359,53 @@ def set_template_skip(template_id: int, skip_date: str):
         conn.execute(
             "UPDATE templates SET skip_date = ? WHERE id = ?", (skip_date, template_id)
         )
+
+
+# ───────────────── 精確時間點提醒 ─────────────────
+
+def add_reminder(remind_date: str, remind_time: str, content: str) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO reminders (remind_date, remind_time, content, status, created_at) "
+            "VALUES (?, ?, ?, 'pending', ?)",
+            (remind_date, remind_time, content, datetime.now(TW_TZ).isoformat()),
+        )
+        return cur.lastrowid
+
+
+def get_due_reminders(now_date: str, now_time: str):
+    """回傳所有已經到時間、還沒推播過的提醒（狀態pending且日期時間<=現在）。
+    用「日期<今天，或日期=今天且時間<=現在」判斷，這樣就算服務曾經短暫離線，
+    重新啟動時也能把錯過的提醒一次補推，不會憑空消失。"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status = 'pending' AND "
+            "(remind_date < ? OR (remind_date = ? AND remind_time <= ?)) "
+            "ORDER BY remind_date, remind_time",
+            (now_date, now_date, now_time),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def mark_reminder_sent(reminder_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE reminders SET status = 'sent' WHERE id = ? AND status = 'pending'",
+            (reminder_id,),
+        )
+        return cur.rowcount > 0
+
+
+def get_upcoming_reminders():
+    """回傳所有還沒推播的提醒（含萬一時間已過但還沒被推播job處理到的），依日期時間排序，供管理清單使用"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM reminders WHERE status = 'pending' ORDER BY remind_date, remind_time"
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def delete_reminder(reminder_id: int) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("DELETE FROM reminders WHERE id = ?", (reminder_id,))
+        return cur.rowcount > 0
