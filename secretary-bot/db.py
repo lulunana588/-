@@ -169,6 +169,30 @@ def push_task_to_date(task_id: int, new_date: str) -> bool:
         return cur.rowcount > 0
 
 
+def get_due_soon_tasks(today_str: str, days_ahead: int = 2):
+    """回傳未來days_ahead天內即將到期（但還沒到期）的pending事項"""
+    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    end_dt = today_dt + timedelta(days=days_ahead)
+    end_str = end_dt.strftime("%Y-%m-%d")
+    tomorrow_str = (today_dt + timedelta(days=1)).strftime("%Y-%m-%d")
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE status = 'pending' AND task_date BETWEEN ? AND ? ORDER BY task_date, id",
+            (tomorrow_str, end_str),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def bulk_push_pending_tasks(from_date: str, to_date: str) -> int:
+    """把某天所有還沒完成的事項一次推到新日期，回傳筆數"""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE tasks SET task_date = ? WHERE task_date = ? AND status = 'pending'",
+            (to_date, from_date),
+        )
+        return cur.rowcount
+
+
 # ───────────────── Leaves ─────────────────
 
 def add_leave(leave_date: str, person_name: str, note: str = None, leave_type: str = "請假") -> int:
