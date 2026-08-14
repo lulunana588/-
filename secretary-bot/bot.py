@@ -46,13 +46,14 @@ MONTH_BUTTON_TEXT = "查詢本月"
 MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
 MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
 MANAGE_TEMPLATE_BUTTON_TEXT = "管理重複任務"
+MANAGE_WAITING_BUTTON_TEXT = "追蹤等待中"
 STATS_BUTTON_TEXT = "本月統計"
 WEEK_STATS_BUTTON_TEXT = "本週統計"
 HEALTH_BUTTON_TEXT = "服務健康自檢"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
-        [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
+        [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT, MANAGE_WAITING_BUTTON_TEXT],
         [MANAGE_TEMPLATE_BUTTON_TEXT, WEEK_STATS_BUTTON_TEXT, STATS_BUTTON_TEXT],
         [HEALTH_BUTTON_TEXT],
     ],
@@ -64,6 +65,7 @@ MANAGE_TASK_LOOKAHEAD_DAYS = 30
 MANAGE_LEAVE_LOOKAHEAD_DAYS = 60
 MANAGE_TASK_PAGE_SIZE = 8
 MANAGE_LEAVE_PAGE_SIZE = 8
+MANAGE_WAITING_PAGE_SIZE = 8
 
 # 例如「搜尋 採購」「找待辦 採購」
 SEARCH_PATTERN = re.compile(r"^(?:搜尋|搜索|找待辦)\s*(.+)$")
@@ -124,7 +126,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
         "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n"
         "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n"
-        "・「找待辦 採購」「搜尋 採購」→ 依關鍵字搜尋所有待辦（含已完成）\n\n"
+        "・「找待辦 採購」「搜尋 採購」→ 依關鍵字搜尋所有待辦（含已完成）\n"
+        "・「等 廠商 回覆報價單」「等 主管簽核採購單」→ 追蹤等別人回覆/處理的事，"
+        "跟一般待辦分開列，對方回覆了再回來標完成\n\n"
         "帳單追收提醒也會自動整合進來（跟你VPS上的bill_reminder.py共用同一份規則，"
         "不用另外設定，該追的帳單到了會自動出現在當天的待辦裡）。\n\n"
         "指令：\n"
@@ -136,7 +140,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/push <編號> <日期> 把逾期事項推到新日期\n"
         "/find <關鍵字> 搜尋待辦\n\n"
         "下面按鈕也都能用，不用打指令：\n"
-        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／管理重複任務／本週統計／本月統計",
+        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／追蹤等待中／管理重複任務／本週統計／本月統計",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -307,6 +311,57 @@ def build_manage_leave_keyboard(page: int = 0):
 async def send_manage_leave_list(message_or_query, page: int = 0):
     all_leaves, keyboard, total = build_manage_leave_keyboard(page)
     text = f"點「刪除」取消請假登記（共{total}筆）：" if all_leaves else "目前沒有排定的請假紀錄"
+    if hasattr(message_or_query, "edit_message_text"):
+        await message_or_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await message_or_query.reply_text(text, reply_markup=keyboard)
+
+
+# ───────────────── 追蹤等待中（等別人回覆/處理，跟一般待辦分開列） ─────────────────
+
+def build_manage_waiting_keyboard(page: int = 0):
+    """列出所有「等待中」事項（等對方回覆/處理，不是自己要做的事），
+    每項顯示已經等了幾天，附「完成」（對方回覆/處理好了）「刪除」（不用追了）兩顆按鈕。"""
+    today_dt = datetime.strptime(db.today_str(), "%Y-%m-%d")
+    all_waiting = db.get_all_waiting_tasks()
+    total = len(all_waiting)
+    total_pages = max(1, (total + MANAGE_WAITING_PAGE_SIZE - 1) // MANAGE_WAITING_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start_idx = page * MANAGE_WAITING_PAGE_SIZE
+    items = all_waiting[start_idx:start_idx + MANAGE_WAITING_PAGE_SIZE]
+
+    rows = []
+    for t in items:
+        task_dt = datetime.strptime(t["task_date"], "%Y-%m-%d")
+        waited_days = max(0, (today_dt - task_dt).days)
+        label = t["content"]
+        if len(label) > 20:
+            label = label[:20] + "…"
+        days_disp = f"已等{waited_days}天" if waited_days > 0 else "今天開始等"
+        rows.append([InlineKeyboardButton(f"{days_disp}　{label}", callback_data="noop")])
+        rows.append([
+            InlineKeyboardButton("✓ 完成（有回覆了）", callback_data=f"mgwdone|{t['id']}|{page}"),
+            InlineKeyboardButton("✕ 不用追了", callback_data=f"mgwdel|{t['id']}|{page}"),
+        ])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("‹ 上一頁", callback_data=f"mgwpage|{page - 1}"))
+        nav.append(InlineKeyboardButton(f"第{page + 1}/{total_pages}頁", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("下一頁 ›", callback_data=f"mgwpage|{page + 1}"))
+        rows.append(nav)
+
+    return all_waiting, InlineKeyboardMarkup(rows) if rows else None, total
+
+
+async def send_manage_waiting_list(message_or_query, page: int = 0):
+    all_waiting, keyboard, total = build_manage_waiting_keyboard(page)
+    text = (
+        f"以下是還在等別人回覆/處理的事（共{total}件），對方回應了就點「完成」：" if all_waiting
+        else "目前沒有在追蹤的等待事項\n\n可以直接傳「等 廠商 回覆報價單」「等 主管簽核採購單」來新增"
+    )
     if hasattr(message_or_query, "edit_message_text"):
         await message_or_query.edit_message_text(text, reply_markup=keyboard)
     else:
@@ -769,6 +824,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_template_list(update.message)
         return
 
+    if "追蹤" in text and "等待" in text:
+        await send_manage_waiting_list(update.message)
+        return
+
     if "本週統計" in text or ("統計" in text and "本週" in text):
         await send_week_stats(update.message)
         return
@@ -805,6 +864,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rule_disp = describe_template_rule(template_result["rule_type"], template_result["rule_value"])
         await update.message.reply_text(
             f"已建立重複任務 #{tid}：{rule_disp} {template_result['content']}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
+
+    # 等待中事項（等別人回覆/處理）：例如「等 廠商 回覆報價單」「等 主管簽核採購單」
+    waiting_result = parser.parse_waiting_input(text)
+    if waiting_result:
+        display_content = (
+            f"{waiting_result['waiting_on']}－{waiting_result['content']}"
+            if waiting_result["waiting_on"] else waiting_result["content"]
+        )
+        task_id = db.add_task(waiting_result["date"], display_content, status="waiting")
+        await update.message.reply_text(
+            f"已加入等待中追蹤 #{task_id}：{display_content}\n對方回覆/處理好了記得回來標完成",
             reply_markup=MAIN_KEYBOARD,
         )
         return
@@ -956,6 +1029,26 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_template_list(query)
         return
 
+    # ── 追蹤等待中清單：完成／不用追了／翻頁 ──
+    if action == "mgwdone" and len(parts) >= 2:
+        ok = db.mark_task_done(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
+        await query.answer("已完成" if ok else "找不到這個事項")
+        await send_manage_waiting_list(query, page)
+        return
+
+    if action == "mgwdel" and len(parts) >= 2:
+        ok = db.delete_task(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
+        await query.answer("已刪除" if ok else "找不到這個事項")
+        await send_manage_waiting_list(query, page)
+        return
+
+    if action == "mgwpage" and len(parts) >= 2:
+        await query.answer()
+        await send_manage_waiting_list(query, int(parts[1]))
+        return
+
     # ── 下班前推播：把今天未完成事項全部推到明天 ──
     if action == "pushall" and len(parts) >= 3:
         from_date, to_date = parts[1], parts[2]
@@ -1009,6 +1102,7 @@ async def do_daily_push(app: Application):
     urgent_count = sum(1 for t in overdue if t.get("overdue_days", 0) >= 3)
     due_soon = db.get_due_soon_tasks(date_str, days_ahead=2)
     pending_count = sum(1 for t in tasks if t["status"] == "pending")
+    waiting_count = len(db.get_all_waiting_tasks())
 
     # 銷假回崗提醒：昨天有請假、但今天沒有請假紀錄的人，視為今天回崗
     yesterday_str = (dt - timedelta(days=1)).strftime("%Y-%m-%d")
@@ -1034,6 +1128,8 @@ async def do_daily_push(app: Application):
         caption_lines.append(f"有 {len(due_soon)} 項事項兩天內即將到期")
     if urgent_count:
         caption_lines.append(f"有 {urgent_count} 項事項已逾期3天以上，記得處理")
+    if waiting_count:
+        caption_lines.append(f"目前有 {waiting_count} 件事還在等對方回覆／處理，要不要順便催一下")
     caption = "\n".join(caption_lines)
 
     with open(path, "rb") as f:
