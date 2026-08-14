@@ -47,8 +47,29 @@ def init_db():
                 created_at TEXT NOT NULL
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meta (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leaves_date ON leaves(leave_date)")
+
+
+def get_meta(key: str):
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        return row["value"] if row else None
+
+
+def set_meta(key: str, value: str):
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO meta (key, value) VALUES (?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
 
 
 # ───────────────── Tasks ─────────────────
