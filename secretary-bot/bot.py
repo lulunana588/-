@@ -14,6 +14,7 @@
 """
 import logging
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
@@ -68,6 +69,7 @@ async def build_today_card_path(for_date: str = None) -> str:
     date_str = for_date or db.today_str()
     if date_str == db.today_str():
         generate_tasks_from_templates()
+        generate_tasks_from_bill_reminder()
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     weekday_zh = WEEKDAY_ZH[dt.weekday()]
 
@@ -115,6 +117,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
         "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n"
         "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n\n"
+        "帳單追收提醒也會自動整合進來（跟你VPS上的bill_reminder.py共用同一份規則，"
+        "不用另外設定，該追的帳單到了會自動出現在當天的待辦裡）。\n\n"
         "指令：\n"
         "/today 查看今天行事曆\n"
         "/week 查看本週行事曆\n"
@@ -297,6 +301,45 @@ def generate_tasks_from_templates():
             db.add_task(today_str, tpl["content"])
             db.mark_template_generated(tpl["id"], today_str)
             logger.info(f"範本 #{tpl['id']} 自動產生今日待辦：{tpl['content']}")
+
+
+BILL_REMINDER_SCRIPT_DIR = "/root/bill-reminder"
+
+
+def generate_tasks_from_bill_reminder():
+    """
+    直接讀取bill_reminder.py裡的BILLS/SPECIAL_HYBRID規則（不複製一份，避免以後兩邊改規則各自漂移），
+    若今天有帳單該追，自動新增對應待辦事項到秘書Bot的今日行事曆裡。
+    """
+    today_str = db.today_str()
+    if db.get_meta("last_bill_generate_date") == today_str:
+        return  # 今天已經產生過，避免重複
+
+    try:
+        if BILL_REMINDER_SCRIPT_DIR not in sys.path:
+            sys.path.insert(0, BILL_REMINDER_SCRIPT_DIR)
+        import bill_reminder
+    except Exception:
+        logger.warning("讀取bill_reminder.py規則失敗，略過帳單提醒整合", exc_info=True)
+        return
+
+    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    day, month = today_dt.day, today_dt.month
+
+    bills_today = {}
+    for place, item, month_rule, push_day in bill_reminder.BILLS:
+        if push_day == day and bill_reminder.match_month(month_rule, month):
+            bills_today.setdefault(place, []).append(item)
+    if day == 21:
+        for place, item in bill_reminder.SPECIAL_HYBRID:
+            bills_today.setdefault(place, []).append(item)
+
+    for place, items in bills_today.items():
+        content = f"帳單提醒：{place}－{'/'.join(items)}"
+        db.add_task(today_str, content)
+        logger.info(f"帳單規則自動產生今日待辦：{content}")
+
+    db.set_meta("last_bill_generate_date", today_str)
 
 
 def build_manage_template_keyboard():
