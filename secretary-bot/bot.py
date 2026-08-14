@@ -36,11 +36,19 @@ WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 QUERY_BUTTON_TEXT = "查詢今日"
 WEEK_BUTTON_TEXT = "查詢本週"
 MONTH_BUTTON_TEXT = "查詢本月"
+MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
+MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
-    [[QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT], [MONTH_BUTTON_TEXT]], resize_keyboard=True
+    [
+        [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
+        [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
+    ],
+    resize_keyboard=True,
 )
 WEEK_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "week_card.png")
 MONTH_CARD_PATH = config.CARD_OUTPUT_PATH.replace("today_card.png", "month_card.png")
+MANAGE_TASK_LOOKAHEAD_DAYS = 30
+MANAGE_LEAVE_LOOKAHEAD_DAYS = 60
 
 
 def is_owner(update: Update) -> bool:
@@ -95,7 +103,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/done <編號> 標記完成\n"
         "/del <編號> 刪除事項\n"
         "/push <編號> <日期> 把逾期事項推到新日期\n\n"
-        "下面也有「查詢今日」「查詢本週」「查詢本月」按鈕，隨時按隨時看。",
+        "下面也有「查詢今日」「查詢本週」「查詢本月」「管理待辦事項」「管理請假登記」按鈕，都不用打指令。",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -179,6 +187,62 @@ async def cmd_week(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def cmd_month(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await send_month_card(update)
+
+
+# ───────────────── 管理待辦（按鈕清單） ─────────────────
+
+def build_manage_task_keyboard():
+    """列出所有未完成事項（含逾期），每項附「完成」「刪除」兩顆按鈕"""
+    tasks = db.get_all_pending_tasks()
+    rows = []
+    for t in tasks:
+        label = t["content"]
+        if len(label) > 12:
+            label = label[:12] + "…"
+        date_disp = t["task_date"][5:]  # MM-DD
+        rows.append([
+            InlineKeyboardButton(f"{date_disp} {label}", callback_data="noop"),
+            InlineKeyboardButton("完成", callback_data=f"mgdone|{t['id']}"),
+            InlineKeyboardButton("刪除", callback_data=f"mgtdel|{t['id']}"),
+        ])
+    return tasks, InlineKeyboardMarkup(rows) if rows else None
+
+
+async def send_manage_task_list(message_or_query):
+    tasks, keyboard = build_manage_task_keyboard()
+    text = "點「完成」或「刪除」管理事項：" if tasks else "目前沒有未完成的待辦事項"
+    if hasattr(message_or_query, "edit_message_text"):
+        # 來自 callback_query
+        await message_or_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await message_or_query.reply_text(text, reply_markup=keyboard)
+
+
+# ───────────────── 管理請假（按鈕清單） ─────────────────
+
+def build_manage_leave_keyboard():
+    """列出最近7天起的所有請假紀錄，每項附「刪除」按鈕"""
+    today_dt = datetime.strptime(db.today_str(), "%Y-%m-%d")
+    start = (today_dt - timedelta(days=7)).strftime("%Y-%m-%d")
+    leaves = db.get_leaves_from(start)
+    rows = []
+    for lv in leaves:
+        date_disp = lv["leave_date"][5:]
+        note = f"({lv['note']})" if lv.get("note") else ""
+        rows.append([
+            InlineKeyboardButton(f"{date_disp} {lv['person_name']}{note}", callback_data="noop"),
+            InlineKeyboardButton("刪除", callback_data=f"mgldel|{lv['id']}"),
+        ])
+    return leaves, InlineKeyboardMarkup(rows) if rows else None
+
+
+async def send_manage_leave_list(message_or_query):
+    leaves, keyboard = build_manage_leave_keyboard()
+    text = "點「刪除」取消請假登記：" if leaves else "目前沒有排定的請假紀錄"
+    if hasattr(message_or_query, "edit_message_text"):
+        await message_or_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await message_or_query.reply_text(text, reply_markup=keyboard)
 
 
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -288,6 +352,14 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_today_card(update)
         return
 
+    if "管理" in text and "待辦" in text:
+        await send_manage_task_list(update.message)
+        return
+
+    if "管理" in text and "請假" in text:
+        await send_manage_leave_list(update.message)
+        return
+
     result = parser.parse_input(text)
 
     if result["type"] == "task":
@@ -337,6 +409,31 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     parts = (query.data or "").split("|")
     action = parts[0] if parts else ""
 
+    if action == "noop":
+        await query.answer()
+        return
+
+    # ── 管理待辦清單：完成／刪除 ──
+    if action == "mgdone" and len(parts) >= 2:
+        ok = db.mark_task_done(int(parts[1]))
+        await query.answer("已完成" if ok else "找不到這個事項")
+        await send_manage_task_list(query)
+        return
+
+    if action == "mgtdel" and len(parts) >= 2:
+        ok = db.delete_task(int(parts[1]))
+        await query.answer("已刪除" if ok else "找不到這個事項")
+        await send_manage_task_list(query)
+        return
+
+    # ── 管理請假清單：刪除 ──
+    if action == "mgldel" and len(parts) >= 2:
+        ok = db.delete_leave(int(parts[1]))
+        await query.answer("已刪除" if ok else "找不到這筆請假")
+        await send_manage_leave_list(query)
+        return
+
+    # ── 今日卡片上的快速完成按鈕 ──
     if action == "done" and len(parts) >= 3:
         task_id, date_str = int(parts[1]), parts[2]
         ok = db.mark_task_done(task_id)
