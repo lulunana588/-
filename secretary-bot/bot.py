@@ -13,6 +13,7 @@
 只有 Luna（OWNER_USER_ID）能寫入資料，其他人傳訊息會被禮貌拒絕。
 """
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
@@ -26,6 +27,7 @@ import config
 import db
 import parser
 import card_renderer
+import backup
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("secretary-bot")
@@ -33,15 +35,21 @@ logger = logging.getLogger("secretary-bot")
 TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
+# 例如「蕾蕾這個月請了幾天假」「蕾蕾請了幾天假？」
+LEAVE_QUERY_PATTERN = re.compile(r"^(.+?)(這個月|本月)?請了?幾天假[？?]?$")
+
 QUERY_BUTTON_TEXT = "查詢今日"
 WEEK_BUTTON_TEXT = "查詢本週"
 MONTH_BUTTON_TEXT = "查詢本月"
 MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
 MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
+MANAGE_TEMPLATE_BUTTON_TEXT = "管理重複任務"
+STATS_BUTTON_TEXT = "本月統計"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
         [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
+        [MANAGE_TEMPLATE_BUTTON_TEXT, STATS_BUTTON_TEXT],
     ],
     resize_keyboard=True,
 )
@@ -57,6 +65,8 @@ def is_owner(update: Update) -> bool:
 
 async def build_today_card_path(for_date: str = None) -> str:
     date_str = for_date or db.today_str()
+    if date_str == db.today_str():
+        generate_tasks_from_templates()
     dt = datetime.strptime(date_str, "%Y-%m-%d")
     weekday_zh = WEEKDAY_ZH[dt.weekday()]
 
@@ -95,7 +105,9 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "秘書Bot上線了。\n\n"
         "直接傳文字就能記事：\n"
         "・「8/15 交採購報表」→ 新增待辦\n"
-        "・「8/15 蕾蕾 請假」→ 登記請假\n\n"
+        "・「8/15 蕾蕾 特休」「8/15 蕾蕾、小菁 事假」→ 登記請假（支援多假別、多人）\n"
+        "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
+        "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n\n"
         "指令：\n"
         "/today 查看今天行事曆\n"
         "/week 查看本週行事曆\n"
@@ -103,7 +115,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/done <編號> 標記完成\n"
         "/del <編號> 刪除事項\n"
         "/push <編號> <日期> 把逾期事項推到新日期\n\n"
-        "下面也有「查詢今日」「查詢本週」「查詢本月」「管理待辦事項」「管理請假登記」按鈕，都不用打指令。",
+        "下面按鈕也都能用，不用打指令：\n"
+        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／管理重複任務／本月統計",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -243,6 +256,124 @@ async def send_manage_leave_list(message_or_query):
         await message_or_query.reply_text(text, reply_markup=keyboard)
 
 
+# ───────────────── 重複性任務模板 ─────────────────
+
+def describe_template_rule(rule_type: str, rule_value) -> str:
+    if rule_type == "weekly":
+        return f"每週{WEEKDAY_ZH[rule_value]}"
+    if rule_type == "monthly_day":
+        return f"每月{rule_value}號"
+    if rule_type == "monthly_last":
+        return "每月底"
+    return "未知規則"
+
+
+def generate_tasks_from_templates():
+    """檢查所有範本，若今天符合規則且今天還沒產生過，就自動新增一筆待辦事項"""
+    today_str = db.today_str()
+    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    is_last_day_of_month = (today_dt + timedelta(days=1)).month != today_dt.month
+
+    for tpl in db.get_all_templates():
+        if tpl.get("last_generated_date") == today_str:
+            continue  # 今天已經產生過，避免重複
+
+        matched = False
+        if tpl["rule_type"] == "weekly" and today_dt.weekday() == tpl["rule_value"]:
+            matched = True
+        elif tpl["rule_type"] == "monthly_day" and today_dt.day == tpl["rule_value"]:
+            matched = True
+        elif tpl["rule_type"] == "monthly_last" and is_last_day_of_month:
+            matched = True
+
+        if matched:
+            db.add_task(today_str, tpl["content"])
+            db.mark_template_generated(tpl["id"], today_str)
+            logger.info(f"範本 #{tpl['id']} 自動產生今日待辦：{tpl['content']}")
+
+
+def build_manage_template_keyboard():
+    templates = db.get_all_templates()
+    rows = []
+    for tpl in templates:
+        rule_disp = describe_template_rule(tpl["rule_type"], tpl["rule_value"])
+        label = tpl["content"]
+        if len(label) > 18:
+            label = label[:18] + "…"
+        rows.append([InlineKeyboardButton(f"{rule_disp}　{label}", callback_data="noop")])
+        rows.append([InlineKeyboardButton("✕ 刪除這個範本", callback_data=f"mgtpldel|{tpl['id']}")])
+    return templates, InlineKeyboardMarkup(rows) if rows else None
+
+
+async def send_manage_template_list(message_or_query):
+    templates, keyboard = build_manage_template_keyboard()
+    text = "點「刪除」取消重複任務：" if templates else "目前沒有設定重複性任務\n\n可以直接傳「每週五 交週報」「每月5號 對帳」「每月底 自評」來新增"
+    if hasattr(message_or_query, "edit_message_text"):
+        await message_or_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await message_or_query.reply_text(text, reply_markup=keyboard)
+
+
+# ───────────────── 月度統計 ─────────────────
+
+async def send_month_stats(message):
+    now = datetime.now(TW_TZ)
+    year, month = now.year, now.month
+    first_day = datetime(year, month, 1)
+    next_month_first = datetime(year + 1, 1, 1) if month == 12 else datetime(year, month + 1, 1)
+    last_day = next_month_first - timedelta(days=1)
+    start_str = first_day.strftime("%Y-%m-%d")
+    end_str = last_day.strftime("%Y-%m-%d")
+
+    tasks = db.get_tasks_for_range(start_str, end_str)
+    total_tasks = len(tasks)
+    done_tasks = sum(1 for t in tasks if t["status"] == "done")
+    pending_tasks = total_tasks - done_tasks
+    rate = round(done_tasks / total_tasks * 100) if total_tasks else 0
+
+    leaves = db.get_leaves_for_range(start_str, end_str)
+    leave_by_person = {}
+    for lv in leaves:
+        leave_by_person[lv["person_name"]] = leave_by_person.get(lv["person_name"], 0) + 1
+    leave_lines = [f"・{name}：{days}天" for name, days in sorted(leave_by_person.items(), key=lambda x: -x[1])]
+
+    lines = [
+        f"{year}年{month}月 統計",
+        f"待辦事項共 {total_tasks} 項，完成 {done_tasks} 項，完成率 {rate}%",
+        f"未完成 {pending_tasks} 項",
+        "",
+        f"請假紀錄共 {len(leaves)} 筆：",
+    ]
+    lines.extend(leave_lines if leave_lines else ["・本月無請假紀錄"])
+
+    await message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
+
+
+# ───────────────── 按人名查詢請假 ─────────────────
+
+async def send_person_leave_query(message, person: str, scope_month: bool):
+    if scope_month:
+        now = datetime.now(TW_TZ)
+        first_day = datetime(now.year, now.month, 1)
+        next_month_first = datetime(now.year + 1, 1, 1) if now.month == 12 else datetime(now.year, now.month + 1, 1)
+        last_day = next_month_first - timedelta(days=1)
+        leaves = db.get_leaves_by_person(person, first_day.strftime("%Y-%m-%d"), last_day.strftime("%Y-%m-%d"))
+        scope_disp = f"{now.year}年{now.month}月"
+    else:
+        leaves = db.get_leaves_by_person(person)
+        scope_disp = "累計"
+
+    if not leaves:
+        await message.reply_text(f"{scope_disp}沒有找到「{person}」的請假紀錄", reply_markup=MAIN_KEYBOARD)
+        return
+
+    lines = [f"{scope_disp}「{person}」請假紀錄（共{len(leaves)}天）："]
+    for lv in leaves:
+        note = f"（{lv['note']}）" if lv.get("note") else ""
+        lines.append(f"・{lv['leave_date']}　{lv.get('leave_type') or '請假'}{note}")
+    await message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
+
+
 async def cmd_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         return
@@ -290,6 +421,20 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     ok = db.push_task_to_date(task_id, new_date)
     await update.message.reply_text(f"#{task_id} 已推到 {new_date}" if ok else f"找不到 #{task_id}")
+
+
+async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """手動觸發一次備份，方便測試"""
+    if not is_owner(update):
+        return
+    await update.message.reply_text("備份中，請稍等…")
+    try:
+        file_id = backup.backup_database()
+        backup.cleanup_old_backups()
+        await update.message.reply_text(f"備份完成 ✓（Drive檔案id：{file_id}）")
+    except Exception as e:
+        logger.error("手動備份失敗", exc_info=True)
+        await update.message.reply_text(f"備份失敗：{e}")
 
 
 async def cmd_leaves(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -358,6 +503,34 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_leave_list(update.message)
         return
 
+    if "管理" in text and ("重複" in text or "範本" in text):
+        await send_manage_template_list(update.message)
+        return
+
+    if "本月統計" in text or ("統計" in text and "本月" in text):
+        await send_month_stats(update.message)
+        return
+
+    # 按人名查詢請假紀錄：例如「蕾蕾這個月請了幾天假」「蕾蕾請了幾天假」
+    leave_query_match = LEAVE_QUERY_PATTERN.match(text)
+    if leave_query_match:
+        person = leave_query_match.group(1).strip()
+        scope_month = bool(leave_query_match.group(2))
+        if person:
+            await send_person_leave_query(update.message, person, scope_month)
+            return
+
+    # 重複性任務範本：例如「每週五 交週報」「每月5號 對帳」「每月底 自評」
+    template_result = parser.parse_template_input(text)
+    if template_result:
+        tid = db.add_template(template_result["rule_type"], template_result["rule_value"], template_result["content"])
+        rule_disp = describe_template_rule(template_result["rule_type"], template_result["rule_value"])
+        await update.message.reply_text(
+            f"已建立重複任務 #{tid}：{rule_disp} {template_result['content']}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
+
     result = parser.parse_input(text)
 
     if result["type"] == "task":
@@ -372,9 +545,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif result["type"] == "leave":
         note_disp = f"（{result['note']}）" if result.get("note") else ""
         leave_type = result.get("leave_type", "請假")
-        db.add_leave(result["date"], result["person"], result.get("note"), leave_type)
+        persons = result["persons"]
+        for person in persons:
+            db.add_leave(result["date"], person, result.get("note"), leave_type)
+        persons_disp = "、".join(persons)
         await update.message.reply_text(
-            f"已登記{leave_type}：{result['date']} {result['person']}{note_disp}",
+            f"已登記{leave_type}：{result['date']} {persons_disp}{note_disp}",
             reply_markup=MAIN_KEYBOARD,
         )
         if result["date"] == db.today_str():
@@ -385,13 +561,16 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         end = datetime.strptime(result["end_date"], "%Y-%m-%d")
         n_days = (end - start).days + 1
         leave_type = result.get("leave_type", "請假")
-        d = start
-        while d <= end:
-            db.add_leave(d.strftime("%Y-%m-%d"), result["person"], result.get("note"), leave_type)
-            d += timedelta(days=1)
+        persons = result["persons"]
+        for person in persons:
+            d = start
+            while d <= end:
+                db.add_leave(d.strftime("%Y-%m-%d"), person, result.get("note"), leave_type)
+                d += timedelta(days=1)
         note_disp = f"（{result['note']}）" if result.get("note") else ""
+        persons_disp = "、".join(persons)
         await update.message.reply_text(
-            f"已登記{leave_type}：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['person']}{note_disp}",
+            f"已登記{leave_type}：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {persons_disp}{note_disp}",
             reply_markup=MAIN_KEYBOARD,
         )
         if result["start_date"] <= db.today_str() <= result["end_date"]:
@@ -452,6 +631,13 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok = db.delete_leave(int(parts[1]))
         await query.answer("已刪除" if ok else "找不到這筆請假")
         await send_manage_leave_list(query)
+        return
+
+    # ── 管理重複任務清單：刪除 ──
+    if action == "mgtpldel" and len(parts) >= 2:
+        ok = db.delete_template(int(parts[1]))
+        await query.answer("已刪除" if ok else "找不到這個範本")
+        await send_manage_template_list(query)
         return
 
     # ── 今日卡片上的快速完成按鈕 ──
@@ -528,6 +714,23 @@ async def catch_up_push_if_missed(app: Application):
     await do_daily_push(app)
 
 
+async def scheduled_backup(app: Application):
+    """每週日晚上22:00把資料庫備份到Google Drive"""
+    try:
+        file_id = backup.backup_database()
+        backup.cleanup_old_backups()
+        logger.info(f"資料庫備份完成，Drive檔案id：{file_id}")
+    except Exception:
+        logger.error("資料庫備份失敗", exc_info=True)
+        try:
+            await app.bot.send_message(
+                chat_id=config.TELEGRAM_CHAT_ID,
+                text="資料庫備份失敗，麻煩檢查一下VPS上的服務帳號金鑰或Drive資料夾權限",
+            )
+        except Exception:
+            pass
+
+
 def setup_scheduler(app: Application):
     scheduler = AsyncIOScheduler(timezone="Asia/Taipei")
     scheduler.add_job(
@@ -535,6 +738,12 @@ def setup_scheduler(app: Application):
         trigger=CronTrigger(day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE),
         args=[app],
         misfire_grace_time=3600,  # 服務短暫離線也能在1小時內補跑排定的推播
+    )
+    scheduler.add_job(
+        scheduled_backup,
+        trigger=CronTrigger(day_of_week="sun", hour=22, minute=0),
+        args=[app],
+        misfire_grace_time=3600 * 6,
     )
     scheduler.start()
     return scheduler
@@ -557,6 +766,7 @@ def main():
     app.add_handler(CommandHandler("del", cmd_del))
     app.add_handler(CommandHandler("push", cmd_push))
     app.add_handler(CommandHandler("leaves", cmd_leaves))
+    app.add_handler(CommandHandler("backup", cmd_backup))
     app.add_handler(CommandHandler("delleave", cmd_delleave))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(CallbackQueryHandler(handle_callback))
