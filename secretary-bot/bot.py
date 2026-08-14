@@ -306,17 +306,20 @@ def generate_tasks_from_templates():
 
 
 BILL_REMINDER_SCRIPT_DIR = "/root/bill-reminder"
+BILL_REMINDER_LOOKAHEAD_DAYS = 45
 
 
 def generate_tasks_from_bill_reminder():
     """
     直接呼叫bill_reminder.py裡的get_bills()函式（不重新實作邏輯，也不複製規則清單），
-    若今天有帳單該追，自動新增對應待辦事項到秘書Bot的今日行事曆裡。
+    往後掃描45天內該追的帳單，自動新增對應待辦事項。
+    往後掃描是為了讓「查詢本週」「查詢本月」也能提前看到帳單提醒，不用等到當天才出現；
+    用內容比對避免同一筆帳單被重複建立。
     這樣以後不管bill_reminder.py的規則或邏輯怎麼調整，秘書Bot都會自動跟著同步。
     """
     today_str = db.today_str()
     if db.get_meta("last_bill_generate_date") == today_str:
-        return  # 今天已經產生過，避免重複
+        return  # 今天已經掃描過，避免重複
 
     try:
         if BILL_REMINDER_SCRIPT_DIR not in sys.path:
@@ -327,12 +330,19 @@ def generate_tasks_from_bill_reminder():
         return
 
     today_dt = datetime.strptime(today_str, "%Y-%m-%d")
-    bills_today = bill_reminder.get_bills(today_dt)
+    for i in range(BILL_REMINDER_LOOKAHEAD_DAYS):
+        d = today_dt + timedelta(days=i)
+        bills = bill_reminder.get_bills(d)
+        if not bills:
+            continue
 
-    for place, items in bills_today.items():
-        content = f"帳單提醒：{place}－{'/'.join(items)}"
-        db.add_task(today_str, content)
-        logger.info(f"帳單規則自動產生今日待辦：{content}")
+        date_str = d.strftime("%Y-%m-%d")
+        existing_contents = {t["content"] for t in db.get_tasks_for_date(date_str)}
+        for place, items in bills.items():
+            content = f"帳單提醒：{place}－{'/'.join(items)}"
+            if content not in existing_contents:
+                db.add_task(date_str, content)
+                logger.info(f"帳單規則自動產生待辦（{date_str}）：{content}")
 
     db.set_meta("last_bill_generate_date", today_str)
 
