@@ -29,6 +29,88 @@ EDIT_TASK_PATTERN = re.compile(r"^#(\d+)\s*改成\s*(.+)$")
 # 例如「等 廠商 回覆報價單」「等 主管簽核採購單」「8/15 等 廠商 回覆報價單」
 WAITING_PATTERN = re.compile(r"^(?:(\d{1,2}[/\-]\d{1,2})\s+)?等\s+(.+)$")
 
+# 精確時間點提醒：先抓「...提醒[我]內容」，日期/時間都在「提醒」前面
+REMINDER_SPLIT_PATTERN = re.compile(r"^(.+?)提醒(?:我)?\s*(.+)$")
+REMINDER_DATE_PREFIX_PATTERN = re.compile(r"^(今天|明天|後天|\d{1,2}[/\-]\d{1,2})\s*")
+
+# 「14:30」這種冒號格式，當成24小時制字面值（不用判斷上下午）
+COLON_TIME_PATTERN = re.compile(r"^(\d{1,2}):(\d{2})$")
+
+# 中文時間一定要帶上午/早上/凌晨/中午/下午/晚上/半夜其中一個，避免「9點」這種模糊講法被誤判
+CN_TIME_PATTERN = re.compile(
+    r"^(上午|早上|凌晨|半夜|中午|下午|晚上)\s*(\d{1,2})(?:點|時)?(?:(\d{1,2})分|(半))?$"
+)
+
+
+def _parse_time_token(text: str):
+    """把時間文字轉成「HH:MM」字串，看不懂就回傳None（包含沒有上下午標示的模糊時間）"""
+    text = text.strip()
+    if not text:
+        return None
+
+    m = COLON_TIME_PATTERN.match(text)
+    if m:
+        hour, minute = int(m.group(1)), int(m.group(2))
+        if 0 <= hour <= 23 and 0 <= minute <= 59:
+            return f"{hour:02d}:{minute:02d}"
+        return None
+
+    m = CN_TIME_PATTERN.match(text)
+    if not m:
+        return None
+    ampm_word, hour_str, minute_str, half = m.group(1), m.group(2), m.group(3), m.group(4)
+    hour = int(hour_str)
+    if not (1 <= hour <= 12):
+        return None
+    minute = int(minute_str) if minute_str else (30 if half else 0)
+    if minute > 59:
+        return None
+
+    if ampm_word in ("上午", "早上", "凌晨", "半夜"):
+        if hour == 12:
+            hour = 0
+    elif ampm_word == "中午":
+        hour = 12
+    elif ampm_word in ("下午", "晚上"):
+        if hour != 12:
+            hour += 12
+    return f"{hour:02d}:{minute:02d}"
+
+
+def parse_reminder_input(text: str):
+    """
+    解析精確時間點的提醒（不是待辦，是到時間會主動推播的鬧鐘式提醒），例如：
+      "下午2點 提醒我打電話給廠商"    -> 今天14:00
+      "下午2點半 提醒我打電話"        -> 今天14:30
+      "明天上午9點 提醒我交報告"      -> 明天09:00
+      "8/15 14:30 提醒我開會"         -> 2026-08-15 14:30
+    一定要能辨識出明確時間（中文時間必須帶上午/下午等字樣，或用HH:MM冒號格式）才算數，
+    看不懂時間就回傳None（不是提醒語法，交給後面的一般待辦/請假解析繼續處理，
+    這樣「提醒我打電話」這種沒帶時間的話還是會正常變成今天的待辦，不會憑空消失）。
+    回傳 {"date":..., "time": "HH:MM", "content": str} 或 None
+    """
+    m = REMINDER_SPLIT_PATTERN.match(text.strip())
+    if not m:
+        return None
+    prefix, content = m.group(1).strip(), m.group(2).strip()
+    if not content:
+        return None
+
+    date_str = _now().strftime("%Y-%m-%d")
+    date_m = REMINDER_DATE_PREFIX_PATTERN.match(prefix)
+    if date_m:
+        parsed_date = parse_date_token(date_m.group(1))
+        if not parsed_date:
+            return None
+        date_str = parsed_date
+        prefix = prefix[date_m.end():].strip()
+
+    time_str = _parse_time_token(prefix)
+    if not time_str:
+        return None
+
+    return {"date": date_str, "time": time_str, "content": content}
+
 
 def parse_waiting_input(text: str):
     """
