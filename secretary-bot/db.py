@@ -71,6 +71,11 @@ def init_db():
         if "leave_type" not in cols:
             conn.execute("ALTER TABLE leaves ADD COLUMN leave_type TEXT DEFAULT '請假'")
 
+        # 資料庫遷移：舊版templates表沒有skip_date欄位，補上去（用於「跳過下一次」功能，預設NULL不影響舊資料）
+        tpl_cols = [row[1] for row in conn.execute("PRAGMA table_info(templates)").fetchall()]
+        if "skip_date" not in tpl_cols:
+            conn.execute("ALTER TABLE templates ADD COLUMN skip_date TEXT")
+
 
 def get_meta(key: str):
     with get_conn() as conn:
@@ -195,6 +200,16 @@ def get_due_soon_tasks(today_str: str, days_ahead: int = 2):
         return [dict(r) for r in rows]
 
 
+def search_tasks(keyword: str, limit: int = 30):
+    """依內容關鍵字（模糊比對）搜尋待辦事項，不分完成/未完成，最新日期優先"""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM tasks WHERE content LIKE ? ORDER BY task_date DESC, id DESC LIMIT ?",
+            (f"%{keyword}%", limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
 def bulk_push_pending_tasks(from_date: str, to_date: str) -> int:
     """把某天所有還沒完成的事項一次推到新日期，回傳筆數"""
     with get_conn() as conn:
@@ -284,6 +299,12 @@ def get_all_templates():
         return [dict(r) for r in rows]
 
 
+def get_template_by_id(template_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM templates WHERE id = ?", (template_id,)).fetchone()
+        return dict(row) if row else None
+
+
 def delete_template(template_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM templates WHERE id = ?", (template_id,))
@@ -294,4 +315,12 @@ def mark_template_generated(template_id: int, date_str: str):
     with get_conn() as conn:
         conn.execute(
             "UPDATE templates SET last_generated_date = ? WHERE id = ?", (date_str, template_id)
+        )
+
+
+def set_template_skip(template_id: int, skip_date: str):
+    """設定（或用None清除）某個範本下一次要跳過產生的日期"""
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE templates SET skip_date = ? WHERE id = ?", (skip_date, template_id)
         )
