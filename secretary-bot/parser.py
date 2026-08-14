@@ -15,6 +15,19 @@ RANGE_PATTERN = re.compile(r"^(\d{1,2}/\d{1,2})[-~～–—至到](\d{1,2}/\d{1,
 # 支援的假別關鍵字，之後要加新假別直接加進這個清單就好
 LEAVE_KEYWORDS = ["特休", "生理假", "病假", "事假", "補休", "喪假", "婚假", "產假", "陪產假", "請假"]
 
+PERSON_SPLIT_PATTERN = re.compile(r"[、,，/]")
+
+WEEKDAY_CHAR_MAP = {"一": 0, "二": 1, "三": 2, "四": 3, "五": 4, "六": 5, "日": 6, "天": 6}
+
+TEMPLATE_WEEKLY_PATTERN = re.compile(r"^每[週周]([一二三四五六日])\s*(.+)$")
+TEMPLATE_MONTHLY_DAY_PATTERN = re.compile(r"^每月(\d{1,2})[號号]?\s*(.+)$")
+TEMPLATE_MONTHLY_LAST_PATTERN = re.compile(r"^每月(?:底|最後一天)\s*(.+)$")
+
+
+def split_persons(text: str):
+    """把「蕾蕾、小菁」這種多人字串拆成清單"""
+    return [p.strip() for p in PERSON_SPLIT_PATTERN.split(text) if p.strip()]
+
 
 def find_leave_keyword(text: str):
     """在text中找出最早出現的假別關鍵字，回傳 (關鍵字, 起始位置) 或 None"""
@@ -26,6 +39,40 @@ def find_leave_keyword(text: str):
     if best_kw is None:
         return None
     return best_kw, best_idx
+
+
+def parse_template_input(text: str):
+    """
+    解析重複性任務範本，例如：
+      "每週五 交週報" -> weekly, weekday=4(五)
+      "每月5號 對帳"  -> monthly_day, day=5
+      "每月底 自評"   -> monthly_last
+    回傳 {"rule_type":..., "rule_value":..., "content":...} 或 None（不是範本語法）
+    """
+    text = text.strip()
+
+    m = TEMPLATE_WEEKLY_PATTERN.match(text)
+    if m:
+        weekday_char, content = m.group(1), m.group(2).strip()
+        if content:
+            return {"rule_type": "weekly", "rule_value": WEEKDAY_CHAR_MAP[weekday_char], "content": content}
+        return None
+
+    m = TEMPLATE_MONTHLY_LAST_PATTERN.match(text)
+    if m:
+        content = m.group(1).strip()
+        if content:
+            return {"rule_type": "monthly_last", "rule_value": None, "content": content}
+        return None
+
+    m = TEMPLATE_MONTHLY_DAY_PATTERN.match(text)
+    if m:
+        day, content = int(m.group(1)), m.group(2).strip()
+        if content and 1 <= day <= 31:
+            return {"rule_type": "monthly_day", "rule_value": day, "content": content}
+        return None
+
+    return None
 
 
 def _now():
@@ -92,13 +139,13 @@ def parse_input(raw_text: str):
         leave_kw = find_leave_keyword(rest)
         if leave_kw:
             kw, idx = leave_kw
-            person = rest[:idx].strip()
+            persons = split_persons(rest[:idx])
             note = rest[idx + len(kw):].strip() or None
-            if not person:
+            if not persons:
                 return {"type": "unknown"}
             return {
                 "type": "leave_range", "start_date": start_date, "end_date": end_date,
-                "person": person, "leave_type": kw, "note": note,
+                "persons": persons, "leave_type": kw, "note": note,
             }
         if rest.strip():
             # 沒有假別關鍵字，視為連續多天的待辦事項（例如出差、駐點）
@@ -113,11 +160,11 @@ def parse_input(raw_text: str):
     leave_kw = find_leave_keyword(rest)
     if leave_kw:
         kw, idx = leave_kw
-        person = rest[:idx].strip()
+        persons = split_persons(rest[:idx])
         note = rest[idx + len(kw):].strip() or None
-        if not person:
+        if not persons:
             return {"type": "unknown"}
-        return {"type": "leave", "date": date_str, "person": person, "leave_type": kw, "note": note}
+        return {"type": "leave", "date": date_str, "persons": persons, "leave_type": kw, "note": note}
 
     if not rest.strip():
         return {"type": "unknown"}
