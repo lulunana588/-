@@ -16,6 +16,10 @@ PUSH_HOUR = 10
 PUSH_MINUTE = 0
 PUSH_WEEKDAYS = {0, 1, 2, 3, 4}  # 週一=0 ... 週五=4，週六日不推
 
+# 下班前推播（明日預告 + 今日未完成事項確認）
+EVENING_PUSH_HOUR = 18
+EVENING_PUSH_MINUTE = 0
+
 TAIWAN_TZ_OFFSET_HOURS = 8  # 台灣時間 = UTC+8
 
 # 視覺風格：深色 + 薄荷綠（沿用 diary-bot 風格）
@@ -28,7 +32,6 @@ COLOR_TEXT_DIM = (139, 148, 158)
 COLOR_RED = (248, 81, 73)
 COLOR_YELLOW = (210, 153, 34)
 COLOR_ORANGE = (219, 109, 40)
-
 
 def _find_font(*candidates):
     for path in candidates:
