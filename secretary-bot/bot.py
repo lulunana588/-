@@ -23,6 +23,7 @@ from telegram.ext import (
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 import config
 import db
@@ -47,13 +48,15 @@ MANAGE_TASK_BUTTON_TEXT = "管理待辦事項"
 MANAGE_LEAVE_BUTTON_TEXT = "管理請假登記"
 MANAGE_TEMPLATE_BUTTON_TEXT = "管理重複任務"
 MANAGE_WAITING_BUTTON_TEXT = "追蹤等待中"
+MANAGE_REMINDER_BUTTON_TEXT = "時間提醒清單"
 STATS_BUTTON_TEXT = "本月統計"
 WEEK_STATS_BUTTON_TEXT = "本週統計"
 HEALTH_BUTTON_TEXT = "服務健康自檢"
 MAIN_KEYBOARD = ReplyKeyboardMarkup(
     [
         [QUERY_BUTTON_TEXT, WEEK_BUTTON_TEXT, MONTH_BUTTON_TEXT],
-        [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT, MANAGE_WAITING_BUTTON_TEXT],
+        [MANAGE_TASK_BUTTON_TEXT, MANAGE_LEAVE_BUTTON_TEXT],
+        [MANAGE_WAITING_BUTTON_TEXT, MANAGE_REMINDER_BUTTON_TEXT],
         [MANAGE_TEMPLATE_BUTTON_TEXT, WEEK_STATS_BUTTON_TEXT, STATS_BUTTON_TEXT],
         [HEALTH_BUTTON_TEXT],
     ],
@@ -66,6 +69,7 @@ MANAGE_LEAVE_LOOKAHEAD_DAYS = 60
 MANAGE_TASK_PAGE_SIZE = 8
 MANAGE_LEAVE_PAGE_SIZE = 8
 MANAGE_WAITING_PAGE_SIZE = 8
+MANAGE_REMINDER_PAGE_SIZE = 8
 
 # 例如「搜尋 採購」「找待辦 採購」
 SEARCH_PATTERN = re.compile(r"^(?:搜尋|搜索|找待辦)\s*(.+)$")
@@ -128,7 +132,10 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n"
         "・「找待辦 採購」「搜尋 採購」→ 依關鍵字搜尋所有待辦（含已完成）\n"
         "・「等 廠商 回覆報價單」「等 主管簽核採購單」→ 追蹤等別人回覆/處理的事，"
-        "跟一般待辦分開列，對方回覆了再回來標完成\n\n"
+        "跟一般待辦分開列，對方回覆了再回來標完成\n"
+        "・「下午2點 提醒我打電話給廠商」「明天上午9點 提醒我交報告」→ 精確時間點提醒，"
+        "時間一到會主動傳訊息，中文時間一定要帶上午/下午等字樣（或用14:30這種格式），"
+        "不然會被當成一般待辦\n\n"
         "帳單追收提醒也會自動整合進來（跟你VPS上的bill_reminder.py共用同一份規則，"
         "不用另外設定，該追的帳單到了會自動出現在當天的待辦裡）。\n\n"
         "指令：\n"
@@ -140,7 +147,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/push <編號> <日期> 把逾期事項推到新日期\n"
         "/find <關鍵字> 搜尋待辦\n\n"
         "下面按鈕也都能用，不用打指令：\n"
-        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／追蹤等待中／管理重複任務／本週統計／本月統計",
+        "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／追蹤等待中／時間提醒清單／管理重複任務／本週統計／本月統計",
         reply_markup=MAIN_KEYBOARD,
     )
 
@@ -361,6 +368,51 @@ async def send_manage_waiting_list(message_or_query, page: int = 0):
     text = (
         f"以下是還在等別人回覆/處理的事（共{total}件），對方回應了就點「完成」：" if all_waiting
         else "目前沒有在追蹤的等待事項\n\n可以直接傳「等 廠商 回覆報價單」「等 主管簽核採購單」來新增"
+    )
+    if hasattr(message_or_query, "edit_message_text"):
+        await message_or_query.edit_message_text(text, reply_markup=keyboard)
+    else:
+        await message_or_query.reply_text(text, reply_markup=keyboard)
+
+
+# ───────────────── 精確時間點提醒（鬧鐘式，到時間主動推播） ─────────────────
+
+def build_manage_reminder_keyboard(page: int = 0):
+    """列出所有還沒推播的時間提醒，附「取消」按鈕"""
+    all_reminders = db.get_upcoming_reminders()
+    total = len(all_reminders)
+    total_pages = max(1, (total + MANAGE_REMINDER_PAGE_SIZE - 1) // MANAGE_REMINDER_PAGE_SIZE)
+    page = max(0, min(page, total_pages - 1))
+    start_idx = page * MANAGE_REMINDER_PAGE_SIZE
+    items = all_reminders[start_idx:start_idx + MANAGE_REMINDER_PAGE_SIZE]
+
+    rows = []
+    for r in items:
+        date_disp = r["remind_date"][5:]
+        label = r["content"]
+        if len(label) > 18:
+            label = label[:18] + "…"
+        rows.append([InlineKeyboardButton(f"{date_disp} {r['remind_time']}　{label}", callback_data="noop")])
+        rows.append([InlineKeyboardButton("✕ 取消這個提醒", callback_data=f"mgrdel|{r['id']}|{page}")])
+
+    if total_pages > 1:
+        nav = []
+        if page > 0:
+            nav.append(InlineKeyboardButton("‹ 上一頁", callback_data=f"mgrpage|{page - 1}"))
+        nav.append(InlineKeyboardButton(f"第{page + 1}/{total_pages}頁", callback_data="noop"))
+        if page < total_pages - 1:
+            nav.append(InlineKeyboardButton("下一頁 ›", callback_data=f"mgrpage|{page + 1}"))
+        rows.append(nav)
+
+    return all_reminders, InlineKeyboardMarkup(rows) if rows else None, total
+
+
+async def send_manage_reminder_list(message_or_query, page: int = 0):
+    all_reminders, keyboard, total = build_manage_reminder_keyboard(page)
+    text = (
+        f"以下是還沒到時間的提醒（共{total}件），不需要了可以點「取消」：" if all_reminders
+        else "目前沒有排定的時間提醒\n\n可以直接傳「下午2點 提醒我打電話給廠商」"
+        "「明天上午9點 提醒我交報告」來新增，時間到了會主動推播"
     )
     if hasattr(message_or_query, "edit_message_text"):
         await message_or_query.edit_message_text(text, reply_markup=keyboard)
@@ -828,6 +880,10 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_waiting_list(update.message)
         return
 
+    if "提醒" in text and "清單" in text:
+        await send_manage_reminder_list(update.message)
+        return
+
     if "本週統計" in text or ("統計" in text and "本週" in text):
         await send_week_stats(update.message)
         return
@@ -864,6 +920,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         rule_disp = describe_template_rule(template_result["rule_type"], template_result["rule_value"])
         await update.message.reply_text(
             f"已建立重複任務 #{tid}：{rule_disp} {template_result['content']}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+        return
+
+    # 精確時間點提醒：例如「下午2點 提醒我打電話給廠商」「明天上午9點 提醒我交報告」
+    reminder_result = parser.parse_reminder_input(text)
+    if reminder_result:
+        rid = db.add_reminder(reminder_result["date"], reminder_result["time"], reminder_result["content"])
+        date_disp = "今天" if reminder_result["date"] == db.today_str() else reminder_result["date"]
+        await update.message.reply_text(
+            f"已設定提醒 #{rid}：{date_disp} {reminder_result['time']}－{reminder_result['content']}\n"
+            "時間到了會主動傳訊息提醒妳",
             reply_markup=MAIN_KEYBOARD,
         )
         return
@@ -1047,6 +1115,19 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == "mgwpage" and len(parts) >= 2:
         await query.answer()
         await send_manage_waiting_list(query, int(parts[1]))
+        return
+
+    # ── 時間提醒清單：取消／翻頁 ──
+    if action == "mgrdel" and len(parts) >= 2:
+        ok = db.delete_reminder(int(parts[1]))
+        page = int(parts[2]) if len(parts) >= 3 else 0
+        await query.answer("已取消" if ok else "找不到這個提醒")
+        await send_manage_reminder_list(query, page)
+        return
+
+    if action == "mgrpage" and len(parts) >= 2:
+        await query.answer()
+        await send_manage_reminder_list(query, int(parts[1]))
         return
 
     # ── 下班前推播：把今天未完成事項全部推到明天 ──
@@ -1246,6 +1327,26 @@ async def scheduled_backup(app: Application):
             pass
 
 
+async def check_due_reminders(app: Application):
+    """每分鐘檢查一次有沒有到時間的精確提醒，到了就主動推播並標記已送出。
+    用get_due_reminders抓「時間<=現在」而不是「時間==現在」，
+    這樣萬一服務曾經短暫離線、錯過了確切那一分鐘，重新上線後還是會補推，不會憑空消失。"""
+    now = datetime.now(TW_TZ)
+    now_date = now.strftime("%Y-%m-%d")
+    now_time = now.strftime("%H:%M")
+    due = db.get_due_reminders(now_date, now_time)
+    for r in due:
+        try:
+            await app.bot.send_message(
+                chat_id=config.TELEGRAM_CHAT_ID,
+                text=f"⏰ 時間到了提醒：{r['content']}",
+            )
+            db.mark_reminder_sent(r["id"])
+            logger.info(f"已推播時間提醒 #{r['id']}：{r['content']}")
+        except Exception:
+            logger.error(f"時間提醒 #{r['id']} 推播失敗", exc_info=True)
+
+
 def setup_scheduler(app: Application):
     scheduler = AsyncIOScheduler(timezone="Asia/Taipei")
     scheduler.add_job(
@@ -1269,14 +1370,23 @@ def setup_scheduler(app: Application):
         misfire_grace_time=3600 * 6,
         name="週日資料庫備份",
     )
+    scheduler.add_job(
+        check_due_reminders,
+        trigger=IntervalTrigger(minutes=1),
+        args=[app],
+        misfire_grace_time=120,
+        name="時間提醒每分鐘檢查",
+    )
     scheduler.start()
     return scheduler
 
 
 async def on_startup(app: Application):
-    """服務啟動後執行：先確保範本/帳單提醒都已產生，再檢查是否需要補推播"""
+    """服務啟動後執行：先確保範本/帳單提醒都已產生，檢查是否需要補推播，
+    也順便檢查一次有沒有服務離線期間就已經到時間、還沒推播的時間提醒"""
     ensure_daily_generation()
     await catch_up_push_if_missed(app)
+    await check_due_reminders(app)
 
 
 def main():
