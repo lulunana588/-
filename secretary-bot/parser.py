@@ -23,6 +23,21 @@ TEMPLATE_WEEKLY_PATTERN = re.compile(r"^每[週周]([一二三四五六日])\s*(
 TEMPLATE_MONTHLY_DAY_PATTERN = re.compile(r"^每月(\d{1,2})[號号]?\s*(.+)$")
 TEMPLATE_MONTHLY_LAST_PATTERN = re.compile(r"^每月(?:底|最後一天)\s*(.+)$")
 
+# 例如「#12 改成交採購報表給財務」
+EDIT_TASK_PATTERN = re.compile(r"^#(\d+)\s*改成\s*(.+)$")
+
+
+def parse_edit_task(text: str):
+    """回傳 (task_id, new_content) 或 None"""
+    m = EDIT_TASK_PATTERN.match(text.strip())
+    if not m:
+        return None
+    task_id = int(m.group(1))
+    new_content = m.group(2).strip()
+    if not new_content:
+        return None
+    return task_id, new_content
+
 
 def split_persons(text: str):
     """把「蕾蕾、小菁」這種多人字串拆成清單"""
