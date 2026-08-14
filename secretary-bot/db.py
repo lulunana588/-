@@ -104,22 +104,25 @@ def add_task(task_date: str, content: str, status: str = "pending") -> int:
 
 
 def get_tasks_for_date(task_date: str):
-    """今日/週/月卡片跟統計都會用到這個查詢。'waiting'（等待中）事項刻意不算在內——
-    它們跟一般待辦性質不同（不是自己要做的事，是等別人回覆/處理），
-    只出現在專屬的「追蹤等待中」清單，避免混進卡片讓人搞不清楚該勾的是什麼。"""
+    """今日/週/月卡片、統計、下班前的「今天完成摘要」都會用到這個查詢。
+    'waiting'（等待中）事項永遠不算在內——不管還在等、還是已經等到回覆了都一樣。
+    它們跟一般待辦性質不同（不是自己要做的事，是等別人回覆/處理），只出現在專屬的
+    「追蹤等待中」清單，避免混進卡片、也避免混進可以直接貼日報的完成摘要裡。"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE task_date = ? AND status != 'waiting' ORDER BY status, id",
+            "SELECT * FROM tasks WHERE task_date = ? AND status NOT IN ('waiting', 'waiting_done') "
+            "ORDER BY status, id",
             (task_date,),
         ).fetchall()
         return [dict(r) for r in rows]
 
 
 def get_tasks_for_range(start_date: str, end_date: str):
-    """回傳 start_date ~ end_date（含）之間的所有一般事項（不含waiting），依日期分組"""
+    """回傳 start_date ~ end_date（含）之間的所有一般事項（不含waiting/waiting_done），依日期分組"""
     with get_conn() as conn:
         rows = conn.execute(
-            "SELECT * FROM tasks WHERE task_date BETWEEN ? AND ? AND status != 'waiting' "
+            "SELECT * FROM tasks WHERE task_date BETWEEN ? AND ? "
+            "AND status NOT IN ('waiting', 'waiting_done') "
             "ORDER BY task_date, status, id",
             (start_date, end_date),
         ).fetchall()
@@ -165,10 +168,16 @@ def get_overdue_tasks(before_date: str):
 
 
 def mark_task_done(task_id: int) -> bool:
-    """完成一般待辦，或標記等待中事項已經有回覆/處理完了（兩種狀態都能標完成）"""
+    """完成一般待辦，或標記等待中事項已經有回覆/處理完了（兩種狀態都能標完成）。
+    等待中事項完成後會標成'waiting_done'而不是'done'——這樣它才會永遠被
+    get_tasks_for_date/get_tasks_for_range排除在外，不會在完成之後突然跑進
+    今日/週/月卡片或「今天完成摘要」裡，跟一般待辦徹底分開，不用另外遷移資料庫欄位。"""
     with get_conn() as conn:
         cur = conn.execute(
-            "UPDATE tasks SET status = 'done', completed_at = ? WHERE id = ? AND status IN ('pending', 'waiting')",
+            "UPDATE tasks SET "
+            "status = CASE WHEN status = 'waiting' THEN 'waiting_done' ELSE 'done' END, "
+            "completed_at = ? "
+            "WHERE id = ? AND status IN ('pending', 'waiting')",
             (datetime.now(TW_TZ).isoformat(), task_id),
         )
         return cur.rowcount > 0
