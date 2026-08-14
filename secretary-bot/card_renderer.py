@@ -41,20 +41,23 @@ def _draw_warn_triangle(draw, x, y, size, color):
     draw.ellipse([x + size / 2 - 1.5, y + size * 0.75, x + size / 2 + 1.5, y + size * 0.75 + 3], fill=color)
 
 
-def _estimate_height(leaves, tasks, overdue):
+def _estimate_height(leaves, tasks, overdue, due_soon=None):
     h = 200
     h += 60
     h += max(len(leaves), 1) * LINE_H
     h += 70
     h += max(len(tasks), 1) * LINE_H
+    if due_soon:
+        h += 70 + len(due_soon) * LINE_H
     if overdue:
         h += 70 + len(overdue) * LINE_H
     h += PADDING
     return h
 
 
-def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list, overdue: list) -> Image.Image:
-    height = _estimate_height(leaves, tasks, overdue)
+def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list, overdue: list, due_soon: list = None) -> Image.Image:
+    due_soon = due_soon or []
+    height = _estimate_height(leaves, tasks, overdue, due_soon)
     img = Image.new("RGB", (WIDTH, height), config.COLOR_BG)
     draw = ImageDraw.Draw(img)
 
@@ -99,6 +102,21 @@ def render_today_card(date_str: str, weekday_zh: str, leaves: list, tasks: list,
     else:
         draw.text((PADDING + 10, y), "目前沒有待辦事項", font=_font(19), fill=config.COLOR_TEXT_DIM)
         y += LINE_H
+
+    if due_soon:
+        y += 15
+        draw.line([(PADDING, y), (WIDTH - PADDING, y)], fill=(40, 46, 54), width=1)
+        y += 25
+        draw.rectangle([PADDING, y + 4, PADDING + 12, y + 16], fill=config.COLOR_YELLOW)
+        draw.text((PADDING + 22, y), f"即將到期（{len(due_soon)}）", font=_font(20, bold=True), fill=config.COLOR_YELLOW)
+        y += 40
+        for t in due_soon:
+            days_left = t.get("days_left")
+            days_disp = f"，還剩{days_left}天" if isinstance(days_left, int) else ""
+            _draw_checkbox(draw, PADDING + 10, y + 4, False, config.COLOR_YELLOW)
+            line = f"#{t['id']}  {t['content']}　（{t['task_date']}{days_disp}）"
+            draw.text((PADDING + 36, y), line, font=_font(19), fill=config.COLOR_YELLOW)
+            y += LINE_H
 
     if overdue:
         y += 15
