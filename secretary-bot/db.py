@@ -56,6 +56,11 @@ def init_db():
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(task_date)")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_leaves_date ON leaves(leave_date)")
 
+        # 資料庫遷移：舊版leaves表沒有leave_type欄位，補上去（預設值為「請假」，不影響舊資料）
+        cols = [row[1] for row in conn.execute("PRAGMA table_info(leaves)").fetchall()]
+        if "leave_type" not in cols:
+            conn.execute("ALTER TABLE leaves ADD COLUMN leave_type TEXT DEFAULT '請假'")
+
 
 def get_meta(key: str):
     with get_conn() as conn:
@@ -156,11 +161,11 @@ def push_task_to_date(task_id: int, new_date: str) -> bool:
 
 # ───────────────── Leaves ─────────────────
 
-def add_leave(leave_date: str, person_name: str, note: str = None) -> int:
+def add_leave(leave_date: str, person_name: str, note: str = None, leave_type: str = "請假") -> int:
     with get_conn() as conn:
         cur = conn.execute(
-            "INSERT INTO leaves (leave_date, person_name, note, created_at) VALUES (?, ?, ?, ?)",
-            (leave_date, person_name, note, datetime.now(TW_TZ).isoformat()),
+            "INSERT INTO leaves (leave_date, person_name, note, created_at, leave_type) VALUES (?, ?, ?, ?, ?)",
+            (leave_date, person_name, note, datetime.now(TW_TZ).isoformat(), leave_type),
         )
         return cur.lastrowid
 
