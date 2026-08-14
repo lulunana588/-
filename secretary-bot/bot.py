@@ -430,7 +430,6 @@ async def cmd_backup(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("備份中，請稍等…")
     try:
         file_id = backup.backup_database()
-        backup.cleanup_old_backups()
         await update.message.reply_text(f"備份完成 ✓（Drive檔案id：{file_id}）")
     except Exception as e:
         logger.error("手動備份失敗", exc_info=True)
@@ -718,7 +717,6 @@ async def scheduled_backup(app: Application):
     """每週日晚上22:00把資料庫備份到Google Drive"""
     try:
         file_id = backup.backup_database()
-        backup.cleanup_old_backups()
         logger.info(f"資料庫備份完成，Drive檔案id：{file_id}")
     except Exception:
         logger.error("資料庫備份失敗", exc_info=True)
