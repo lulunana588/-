@@ -18,7 +18,7 @@ from google.oauth2 import service_account
 
 import config
 
-SCOPES = ["https://www.googleapis.com/auth/drive.file"]
+SCOPES = ["https://www.googleapis.com/auth/drive"]
 BACKUP_FILE_ID = "1OYA4_pcvlPrEAjpyrYAol4H1RV5to59I"  # secretary_backup_latest.db（真人帳號預先建立）
 SERVICE_ACCOUNT_PATH = "/root/luna_bot/service_account.json"
 
