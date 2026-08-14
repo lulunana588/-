@@ -197,13 +197,13 @@ def build_manage_task_keyboard():
     rows = []
     for t in tasks:
         label = t["content"]
-        if len(label) > 12:
-            label = label[:12] + "…"
+        if len(label) > 18:
+            label = label[:18] + "…"
         date_disp = t["task_date"][5:]  # MM-DD
         rows.append([
             InlineKeyboardButton(f"{date_disp} {label}", callback_data="noop"),
-            InlineKeyboardButton("完成", callback_data=f"mgdone|{t['id']}"),
-            InlineKeyboardButton("刪除", callback_data=f"mgtdel|{t['id']}"),
+            InlineKeyboardButton("✓", callback_data=f"mgdone|{t['id']}"),
+            InlineKeyboardButton("✕", callback_data=f"mgtdel|{t['id']}"),
         ])
     return tasks, InlineKeyboardMarkup(rows) if rows else None
 
@@ -231,7 +231,7 @@ def build_manage_leave_keyboard():
         note = f"({lv['note']})" if lv.get("note") else ""
         rows.append([
             InlineKeyboardButton(f"{date_disp} {lv['person_name']}{note}", callback_data="noop"),
-            InlineKeyboardButton("刪除", callback_data=f"mgldel|{lv['id']}"),
+            InlineKeyboardButton("✕", callback_data=f"mgldel|{lv['id']}"),
         ])
     return leaves, InlineKeyboardMarkup(rows) if rows else None
 
