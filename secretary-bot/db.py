@@ -154,6 +154,18 @@ def mark_task_done(task_id: int) -> bool:
         return cur.rowcount > 0
 
 
+def get_task_by_id(task_id: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+        return dict(row) if row else None
+
+
+def update_task_content(task_id: int, new_content: str) -> bool:
+    with get_conn() as conn:
+        cur = conn.execute("UPDATE tasks SET content = ? WHERE id = ?", (new_content, task_id))
+        return cur.rowcount > 0
+
+
 def delete_task(task_id: int) -> bool:
     with get_conn() as conn:
         cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
