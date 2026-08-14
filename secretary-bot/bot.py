@@ -15,9 +15,9 @@
 import logging
 from datetime import datetime, timedelta, timezone
 
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, ContextTypes, filters,
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -55,10 +55,29 @@ async def build_today_card_path(for_date: str = None) -> str:
     leaves = db.get_leaves_for_date(date_str)
     tasks = db.get_tasks_for_date(date_str)
     overdue = db.get_overdue_tasks(date_str)
+    for t in overdue:
+        task_dt = datetime.strptime(t["task_date"], "%Y-%m-%d")
+        t["overdue_days"] = (dt - task_dt).days
 
     img = card_renderer.render_today_card(date_str, weekday_zh, leaves, tasks, overdue)
     card_renderer.save_card(img, config.CARD_OUTPUT_PATH)
     return config.CARD_OUTPUT_PATH
+
+
+def build_today_inline_keyboard(date_str: str, tasks: list):
+    """今日卡片附帶的快速完成按鈕：每個未完成事項一顆，加一顆全部完成"""
+    pending = [t for t in tasks if t["status"] == "pending"]
+    if not pending:
+        return None
+    rows = []
+    for t in pending:
+        label = t["content"]
+        if len(label) > 16:
+            label = label[:16] + "…"
+        rows.append([InlineKeyboardButton(f"完成 #{t['id']} {label}", callback_data=f"done|{t['id']}|{date_str}")])
+    if len(pending) > 1:
+        rows.append([InlineKeyboardButton("全部完成", callback_data=f"doneall|{date_str}")])
+    return InlineKeyboardMarkup(rows)
 
 
 # ───────────────── Commands ─────────────────
@@ -82,9 +101,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_today_card(update: Update):
-    path = await build_today_card_path()
+    date_str = db.today_str()
+    path = await build_today_card_path(date_str)
+    tasks = db.get_tasks_for_date(date_str)
+    keyboard = build_today_inline_keyboard(date_str, tasks)
     with open(path, "rb") as f:
-        await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
+        await update.message.reply_photo(photo=f, reply_markup=keyboard)
 
 
 async def build_week_card_path() -> str:
@@ -208,6 +230,44 @@ async def cmd_push(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"#{task_id} 已推到 {new_date}" if ok else f"找不到 #{task_id}")
 
 
+async def cmd_leaves(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """查詢某天的請假清單（含id，方便配合/delleave刪除）"""
+    if context.args:
+        date_str = parser.parse_date_token(context.args[0])
+        if not date_str:
+            await update.message.reply_text("日期看不懂，請用「8/16」或「今天」這種格式")
+            return
+    else:
+        date_str = db.today_str()
+
+    leaves = db.get_leaves_for_date(date_str)
+    if not leaves:
+        await update.message.reply_text(f"{date_str} 沒有請假紀錄")
+        return
+
+    lines = [f"{date_str} 請假名單："]
+    for lv in leaves:
+        note = f"（{lv['note']}）" if lv.get("note") else ""
+        lines.append(f"・#{lv['id']}  {lv['person_name']}{note}")
+    lines.append("\n要刪除用 /delleave 編號")
+    await update.message.reply_text("\n".join(lines))
+
+
+async def cmd_delleave(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_owner(update):
+        return
+    if not context.args:
+        await update.message.reply_text("用法：/delleave 請假編號（用 /leaves 查編號）")
+        return
+    try:
+        leave_id = int(context.args[0])
+    except ValueError:
+        await update.message.reply_text("編號要是數字喔")
+        return
+    ok = db.delete_leave(leave_id)
+    await update.message.reply_text(f"請假紀錄 #{leave_id} 已刪除" if ok else f"找不到 #{leave_id}")
+
+
 # ───────────────── 自然語言輸入 ─────────────────
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -245,6 +305,20 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=MAIN_KEYBOARD,
         )
 
+    elif result["type"] == "leave_range":
+        start = datetime.strptime(result["start_date"], "%Y-%m-%d")
+        end = datetime.strptime(result["end_date"], "%Y-%m-%d")
+        n_days = (end - start).days + 1
+        d = start
+        while d <= end:
+            db.add_leave(d.strftime("%Y-%m-%d"), result["person"], result.get("note"))
+            d += timedelta(days=1)
+        note_disp = f"（{result['note']}）" if result.get("note") else ""
+        await update.message.reply_text(
+            f"已登記請假：{result['start_date']} ～ {result['end_date']}（共{n_days}天） {result['person']} 請假{note_disp}",
+            reply_markup=MAIN_KEYBOARD,
+        )
+
     else:
         await update.message.reply_text(
             "看不太懂這句話🤔 可以用：\n"
@@ -254,18 +328,63 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    if str(query.from_user.id) != str(config.OWNER_USER_ID):
+        await query.answer("這不是你的秘書Bot喔", show_alert=True)
+        return
+
+    parts = (query.data or "").split("|")
+    action = parts[0] if parts else ""
+
+    if action == "done" and len(parts) >= 3:
+        task_id, date_str = int(parts[1]), parts[2]
+        ok = db.mark_task_done(task_id)
+        await query.answer("已完成" if ok else "找不到這個事項")
+    elif action == "doneall" and len(parts) >= 2:
+        date_str = parts[1]
+        for t in db.get_tasks_for_date(date_str):
+            if t["status"] == "pending":
+                db.mark_task_done(t["id"])
+        await query.answer("全部標記完成")
+    else:
+        await query.answer()
+        return
+
+    # 重新產圖並更新按鈕，讓卡片跟按鈕都反映最新狀態
+    path = await build_today_card_path(date_str)
+    tasks = db.get_tasks_for_date(date_str)
+    keyboard = build_today_inline_keyboard(date_str, tasks)
+    try:
+        with open(path, "rb") as f:
+            await query.edit_message_media(media=InputMediaPhoto(f), reply_markup=keyboard)
+    except Exception:
+        logger.warning("edit_message_media失敗，改用純更新按鈕", exc_info=True)
+        await query.edit_message_reply_markup(reply_markup=keyboard)
+
+
 # ───────────────── 每日推播 ─────────────────
 
 async def scheduled_push(app: Application):
     now = datetime.now(TW_TZ)
     if now.weekday() not in config.PUSH_WEEKDAYS:
         return
-    path = await build_today_card_path()
+    date_str = db.today_str()
+    path = await build_today_card_path(date_str)
+    tasks = db.get_tasks_for_date(date_str)
+    keyboard = build_today_inline_keyboard(date_str, tasks)
+
+    overdue = db.get_overdue_tasks(date_str)
+    urgent_count = sum(1 for t in overdue if t.get("overdue_days", 0) >= 3)
+    caption = "早安 Luna，今天的行事曆來了 ☀️"
+    if urgent_count:
+        caption += f"\n有 {urgent_count} 項事項已逾期3天以上，記得處理"
+
     with open(path, "rb") as f:
         await app.bot.send_photo(
             chat_id=config.TELEGRAM_CHAT_ID, photo=f,
-            caption="早安 Luna，今天的行事曆來了 ☀️",
-            reply_markup=MAIN_KEYBOARD,
+            caption=caption,
+            reply_markup=keyboard,
         )
     logger.info("已推播今日行事曆")
 
@@ -292,7 +411,10 @@ def main():
     app.add_handler(CommandHandler("done", cmd_done))
     app.add_handler(CommandHandler("del", cmd_del))
     app.add_handler(CommandHandler("push", cmd_push))
+    app.add_handler(CommandHandler("leaves", cmd_leaves))
+    app.add_handler(CommandHandler("delleave", cmd_delleave))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
+    app.add_handler(CallbackQueryHandler(handle_callback))
 
     setup_scheduler(app)
 
