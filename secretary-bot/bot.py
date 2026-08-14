@@ -28,6 +28,7 @@ import db
 import parser
 import card_renderer
 import backup
+import summary
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("secretary-bot")
@@ -77,7 +78,12 @@ async def build_today_card_path(for_date: str = None) -> str:
         task_dt = datetime.strptime(t["task_date"], "%Y-%m-%d")
         t["overdue_days"] = (dt - task_dt).days
 
-    img = card_renderer.render_today_card(date_str, weekday_zh, leaves, tasks, overdue)
+    due_soon = db.get_due_soon_tasks(date_str, days_ahead=2)
+    for t in due_soon:
+        task_dt = datetime.strptime(t["task_date"], "%Y-%m-%d")
+        t["days_left"] = (task_dt - dt).days
+
+    img = card_renderer.render_today_card(date_str, weekday_zh, leaves, tasks, overdue, due_soon)
     card_renderer.save_card(img, config.CARD_OUTPUT_PATH)
     return config.CARD_OUTPUT_PATH
 
@@ -639,6 +645,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await send_manage_template_list(query)
         return
 
+    # ── 下班前推播：把今天未完成事項全部推到明天 ──
+    if action == "pushall" and len(parts) >= 3:
+        from_date, to_date = parts[1], parts[2]
+        count = db.bulk_push_pending_tasks(from_date, to_date)
+        await query.answer(f"已推 {count} 項到明天" if count else "沒有可推的事項")
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
     # ── 今日卡片上的快速完成按鈕 ──
     if action == "done" and len(parts) >= 3:
         task_id, date_str = int(parts[1]), parts[2]
@@ -671,15 +688,42 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def do_daily_push(app: Application):
     """實際執行今日推播的核心邏輯，供排程與補推播共用"""
     date_str = db.today_str()
+    dt = datetime.strptime(date_str, "%Y-%m-%d")
     path = await build_today_card_path(date_str)
     tasks = db.get_tasks_for_date(date_str)
     keyboard = build_today_inline_keyboard(date_str, tasks)
 
+    leaves = db.get_leaves_for_date(date_str)
     overdue = db.get_overdue_tasks(date_str)
     urgent_count = sum(1 for t in overdue if t.get("overdue_days", 0) >= 3)
-    caption = "早安 Luna，今天的行事曆來了 ☀️"
+    due_soon = db.get_due_soon_tasks(date_str, days_ahead=2)
+    pending_count = sum(1 for t in tasks if t["status"] == "pending")
+
+    # 銷假回崗提醒：昨天有請假、但今天沒有請假紀錄的人，視為今天回崗
+    yesterday_str = (dt - timedelta(days=1)).strftime("%Y-%m-%d")
+    yesterday_leaves = db.get_leaves_for_date(yesterday_str)
+    today_leave_names = {lv["person_name"] for lv in leaves}
+    returning_names = sorted({lv["person_name"] for lv in yesterday_leaves if lv["person_name"] not in today_leave_names})
+
+    context = {
+        "pending_count": pending_count,
+        "leave_names": [f"{lv['person_name']}{lv.get('leave_type') or '請假'}" for lv in leaves],
+        "overdue_count": len(overdue),
+        "urgent_overdue_count": urgent_count,
+        "due_soon_count": len(due_soon),
+        "returning_names": returning_names,
+        "is_tomorrow": False,
+    }
+    headline = summary.generate_summary(context)
+
+    caption_lines = [headline]
+    if returning_names:
+        caption_lines.append(f"{'、'.join(returning_names)}今天銷假回來了，記得跟他對接一下工作進度")
+    if due_soon:
+        caption_lines.append(f"有 {len(due_soon)} 項事項兩天內即將到期")
     if urgent_count:
-        caption += f"\n有 {urgent_count} 項事項已逾期3天以上，記得處理"
+        caption_lines.append(f"有 {urgent_count} 項事項已逾期3天以上，記得處理")
+    caption = "\n".join(caption_lines)
 
     with open(path, "rb") as f:
         await app.bot.send_photo(
@@ -713,6 +757,65 @@ async def catch_up_push_if_missed(app: Application):
     await do_daily_push(app)
 
 
+async def evening_push(app: Application):
+    """下班前推播：今日未完成事項確認 + 明日行程預告"""
+    now = datetime.now(TW_TZ)
+    if now.weekday() not in config.PUSH_WEEKDAYS:
+        return
+
+    today_str = db.today_str()
+    today_dt = datetime.strptime(today_str, "%Y-%m-%d")
+    tomorrow_dt = today_dt + timedelta(days=1)
+    tomorrow_str = tomorrow_dt.strftime("%Y-%m-%d")
+
+    today_tasks = db.get_tasks_for_date(today_str)
+    today_pending = [t for t in today_tasks if t["status"] == "pending"]
+
+    tomorrow_leaves = db.get_leaves_for_date(tomorrow_str)
+    tomorrow_tasks = db.get_tasks_for_date(tomorrow_str)
+    tomorrow_pending = [t for t in tomorrow_tasks if t["status"] == "pending"]
+    tomorrow_leave_names = [f"{lv['person_name']}{lv.get('leave_type') or '請假'}" for lv in tomorrow_leaves]
+
+    context = {
+        "pending_count": len(tomorrow_pending),
+        "leave_names": tomorrow_leave_names,
+        "overdue_count": 0,
+        "urgent_overdue_count": 0,
+        "due_soon_count": 0,
+        "returning_names": [],
+        "is_tomorrow": True,
+    }
+    headline = summary.generate_summary(context)
+
+    lines = [headline]
+
+    if today_pending:
+        lines.append(f"\n今天還有 {len(today_pending)} 項未完成：")
+        for t in today_pending:
+            lines.append(f"・#{t['id']} {t['content']}")
+
+    if tomorrow_leave_names:
+        lines.append(f"\n明天請假：{'、'.join(tomorrow_leave_names)}")
+
+    if tomorrow_pending:
+        lines.append("\n明天待辦：")
+        for t in tomorrow_pending:
+            lines.append(f"・{t['content']}")
+
+    keyboard = None
+    if today_pending:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("全部推到明天", callback_data=f"pushall|{today_str}|{tomorrow_str}")
+        ]])
+
+    await app.bot.send_message(
+        chat_id=config.TELEGRAM_CHAT_ID,
+        text="\n".join(lines),
+        reply_markup=keyboard,
+    )
+    logger.info("已推播下班前提醒")
+
+
 async def scheduled_backup(app: Application):
     """每週日晚上22:00把資料庫備份到Google Drive"""
     try:
@@ -736,6 +839,12 @@ def setup_scheduler(app: Application):
         trigger=CronTrigger(day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE),
         args=[app],
         misfire_grace_time=3600,  # 服務短暫離線也能在1小時內補跑排定的推播
+    )
+    scheduler.add_job(
+        evening_push,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=config.EVENING_PUSH_HOUR, minute=config.EVENING_PUSH_MINUTE),
+        args=[app],
+        misfire_grace_time=3600,
     )
     scheduler.add_job(
         scheduled_backup,
