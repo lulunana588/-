@@ -10,7 +10,7 @@ import config
 TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 
 DATE_PATTERN = re.compile(r"^(\d{1,2})[/\-](\d{1,2})")
-RANGE_PATTERN = re.compile(r"^(\d{1,2}/\d{1,2})[-~](\d{1,2}/\d{1,2})$")
+RANGE_PATTERN = re.compile(r"^(\d{1,2}/\d{1,2})[-~～–—至到](\d{1,2}/\d{1,2})$")
 
 # 支援的假別關鍵字，之後要加新假別直接加進這個清單就好
 LEAVE_KEYWORDS = ["特休", "生理假", "病假", "事假", "補休", "喪假", "婚假", "產假", "陪產假", "請假"]
