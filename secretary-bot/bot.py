@@ -744,23 +744,90 @@ def _format_meta_time(iso_str: str) -> str:
         return iso_str
 
 
+# 排程任務名稱 -> 換算成台灣時間後，下次執行「應該」是幾點幾分。
+# 這張表就是為了讓健康自檢能主動比對「排程算出來的時間」跟「原本設定的時間」對不對得上，
+# 這正是之前「早上10點推播其實在晚上6點才觸發」那個時區bug的檢查方式——
+# 早該有這個自我檢查，才不用等到漏推播才發現，之後如果再發生類似狀況，一查/health就能看到。
+EXPECTED_JOB_TAIPEI_TIME = {
+    "早上10點今日推播": (config.PUSH_HOUR, config.PUSH_MINUTE),
+    "下班前明日預告": (config.EVENING_PUSH_HOUR, config.EVENING_PUSH_MINUTE),
+    "週日資料庫備份": (22, 0),
+}
+
+
+def _check_daily_push_anomaly(now: datetime) -> str:
+    """檢查今天的推播有沒有正常發生，回傳異常訊息，沒異常回傳空字串"""
+    if now.weekday() not in config.PUSH_WEEKDAYS:
+        return ""  # 週末本來就不推播，不算異常
+    scheduled_time = now.replace(hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE, second=0, microsecond=0)
+    if now < scheduled_time:
+        return ""  # 今天還沒到推播時間，先不判斷
+    if db.get_meta("last_push_date") != db.today_str():
+        return "今天已經過了推播時間，但「上次今日推播」還不是今天，今天的推播可能沒有成功，麻煩檢查一下"
+    return ""
+
+
+def _check_backup_anomaly(now: datetime) -> str:
+    """檢查資料庫備份是不是太久沒成功（原本每週日一次），回傳異常訊息，沒異常回傳空字串"""
+    last_backup = db.get_meta("last_backup_at")
+    if not last_backup:
+        return "目前沒有任何成功備份的紀錄，建議傳 /backup 手動測試一次，確認金鑰跟權限正常"
+    try:
+        last_backup_dt = datetime.fromisoformat(last_backup)
+    except Exception:
+        return ""
+    if last_backup_dt.tzinfo is None:
+        last_backup_dt = last_backup_dt.replace(tzinfo=TW_TZ)
+    days_since = (now - last_backup_dt).days
+    if days_since > 8:
+        return f"距離上次成功備份已經 {days_since} 天，超過原本每週一次的頻率，中間可能備份失敗過，建議傳 /backup 手動測試一次"
+    return ""
+
+
+def _check_job_schedule_anomalies(scheduler) -> list:
+    """比對排程任務換算成台灣時間的下次執行時間，是否真的對到原本設定的小時分鐘"""
+    warnings = []
+    for job in scheduler.get_jobs():
+        expected = EXPECTED_JOB_TAIPEI_TIME.get(job.name)
+        if not expected or not job.next_run_time:
+            continue
+        expected_hour, expected_minute = expected
+        actual = job.next_run_time.astimezone(TW_TZ)
+        if (actual.hour, actual.minute) != (expected_hour, expected_minute):
+            warnings.append(
+                f"排程「{job.name}」換算成台灣時間的下次執行是{actual.strftime('%H:%M')}，"
+                f"跟設定的{expected_hour:02d}:{expected_minute:02d}對不上，可能時區設定又跑掉了"
+            )
+    return warnings
+
+
 async def send_health_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    now = datetime.now(TW_TZ)
     lines = ["服務健康自檢"]
     lines.append(f"Bot帳號：@{context.bot.username}　運作中 ✓")
 
-    last_push = db.get_meta("last_push_date")
-    lines.append(f"上次今日推播：{last_push or '尚無紀錄'}")
+    anomalies = []
 
+    push_anomaly = _check_daily_push_anomaly(now)
+    if push_anomaly:
+        anomalies.append(push_anomaly)
+    last_push = db.get_meta("last_push_date")
+    lines.append(f"上次今日推播：{last_push or '尚無紀錄'}" + ("　❗" if push_anomaly else ""))
+
+    backup_anomaly = _check_backup_anomaly(now)
+    if backup_anomaly:
+        anomalies.append(backup_anomaly)
     last_backup = db.get_meta("last_backup_at")
-    lines.append(f"上次資料庫備份：{_format_meta_time(last_backup)}")
+    lines.append(f"上次資料庫備份：{_format_meta_time(last_backup)}" + ("　❗" if backup_anomaly else ""))
 
     scheduler = context.application.bot_data.get("scheduler")
     if scheduler:
         jobs = scheduler.get_jobs()
-        lines.append(f"\n排程任務（共{len(jobs)}個，全部運作中）：")
+        lines.append(f"\n排程任務（共{len(jobs)}個，全部運作中，時間都已換算成台灣時間）：")
         for job in jobs:
-            next_run = job.next_run_time.strftime("%m-%d %H:%M") if job.next_run_time else "未知"
+            next_run = job.next_run_time.astimezone(TW_TZ).strftime("%m-%d %H:%M") if job.next_run_time else "未知"
             lines.append(f"・{job.name}　下次執行：{next_run}")
+        anomalies.extend(_check_job_schedule_anomalies(scheduler))
     else:
         lines.append("\n排程器狀態：讀取不到，可能需要重啟服務確認")
 
@@ -772,6 +839,13 @@ async def send_health_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     groq_status = "已設定" if summary.GROQ_API_KEY else "未設定（會自動降級用固定模板，不影響運作）"
     lines.append(f"Groq AI摘要：{groq_status}")
+
+    if anomalies:
+        lines.append("\n⚠️ 偵測到可能的異常：")
+        for a in anomalies:
+            lines.append(f"・{a}")
+    else:
+        lines.append("\n沒有偵測到異常 ✓")
 
     await update.message.reply_text("\n".join(lines), reply_markup=MAIN_KEYBOARD)
 
