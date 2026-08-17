@@ -265,10 +265,14 @@ async def mention_entry(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not remainder:
         return await start(update, context)
 
-    if _WATER_KEYWORD in remainder or _WATER_OUT_WORD in remainder or _WATER_IN_WORD in remainder:
-        return await _handle_quick_water(update, context, remainder)
+    # 「款項名稱」是款項快速指令專屬且明確的標記，優先判斷它最安全。
+    # 如果先判斷桶裝水關鍵字，遇到像「款項名稱: 客服中心儲值桶裝水」這種
+    # 款項項目名稱本身就含有「儲值」「桶裝水」字樣的情況，會被誤判成桶裝水指令。
+    # （2026/08/12 修正：關鍵字互相污染導致誤判）
     if "款項名稱" in remainder:
         return await _handle_quick_payment(update, context, remainder)
+    if _WATER_KEYWORD in remainder or _WATER_OUT_WORD in remainder or _WATER_IN_WORD in remainder:
+        return await _handle_quick_water(update, context, remainder)
 
     return await start(update, context)
 
