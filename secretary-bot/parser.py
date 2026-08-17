@@ -26,6 +26,13 @@ TEMPLATE_MONTHLY_LAST_PATTERN = re.compile(r"^每月(?:底|最後一天)\s*(.+)$
 # 例如「#12 改成交採購報表給財務」
 EDIT_TASK_PATTERN = re.compile(r"^#(\d+)\s*改成\s*(.+)$")
 
+# 直接用文字刪除/完成事項，兩種語序都支援，因為使用者自然會打出任何一種：
+# 「#38 刪除」「#38 完成」（編號在前，跟編輯語法同一個習慣）
+# 「刪除 #38」「完成 #38」（動作在前，跟打指令的直覺一樣）
+TASK_ACTION_ID_FIRST_PATTERN = re.compile(r"^#(\d+)\s*(刪除|完成)$")
+TASK_ACTION_WORD_FIRST_PATTERN = re.compile(r"^(刪除|完成)\s*#(\d+)$")
+TASK_ACTION_MAP = {"刪除": "delete", "完成": "done"}
+
 # 例如「等 廠商 回覆報價單」「等 主管簽核採購單」「8/15 等 廠商 回覆報價單」
 WAITING_PATTERN = re.compile(r"^(?:(\d{1,2}[/\-]\d{1,2})\s+)?等\s+(.+)$")
 
@@ -155,6 +162,26 @@ def parse_edit_task(text: str):
     if not new_content:
         return None
     return task_id, new_content
+
+
+def parse_task_action(text: str):
+    """
+    解析用文字直接刪除/完成事項的指令，例如：
+      "#38 刪除"／"刪除 #38"  -> {"action": "delete", "task_id": 38}
+      "#38 完成"／"完成 #38"  -> {"action": "done", "task_id": 38}
+    回傳 {"action":..., "task_id": int} 或 None（不是這個語法）
+    """
+    text = text.strip()
+
+    m = TASK_ACTION_ID_FIRST_PATTERN.match(text)
+    if m:
+        return {"action": TASK_ACTION_MAP[m.group(2)], "task_id": int(m.group(1))}
+
+    m = TASK_ACTION_WORD_FIRST_PATTERN.match(text)
+    if m:
+        return {"action": TASK_ACTION_MAP[m.group(1)], "task_id": int(m.group(2))}
+
+    return None
 
 
 def split_persons(text: str):
