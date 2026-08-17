@@ -1349,23 +1349,33 @@ async def check_due_reminders(app: Application):
 
 def setup_scheduler(app: Application):
     scheduler = AsyncIOScheduler(timezone="Asia/Taipei")
+    # 重要：CronTrigger物件如果不明確帶timezone參數，不會自動套用上面AsyncIOScheduler
+    # 設定的"Asia/Taipei"，而是退回VPS系統本身的時區（這台VPS是UTC）。
+    # 這曾經導致早上10點推播實際上在UTC 10點（=台灣晚上6點）才觸發，晚了8小時還沒人發現。
+    # 三個CronTrigger都要明確帶timezone="Asia/Taipei"才會在正確的台灣時間點觸發。
     scheduler.add_job(
         scheduled_push,
-        trigger=CronTrigger(day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE),
+        trigger=CronTrigger(
+            day_of_week="mon-fri", hour=config.PUSH_HOUR, minute=config.PUSH_MINUTE,
+            timezone="Asia/Taipei",
+        ),
         args=[app],
         misfire_grace_time=3600,  # 服務短暫離線也能在1小時內補跑排定的推播
         name="早上10點今日推播",
     )
     scheduler.add_job(
         evening_push,
-        trigger=CronTrigger(day_of_week="mon-fri", hour=config.EVENING_PUSH_HOUR, minute=config.EVENING_PUSH_MINUTE),
+        trigger=CronTrigger(
+            day_of_week="mon-fri", hour=config.EVENING_PUSH_HOUR, minute=config.EVENING_PUSH_MINUTE,
+            timezone="Asia/Taipei",
+        ),
         args=[app],
         misfire_grace_time=3600,
         name="下班前明日預告",
     )
     scheduler.add_job(
         scheduled_backup,
-        trigger=CronTrigger(day_of_week="sun", hour=22, minute=0),
+        trigger=CronTrigger(day_of_week="sun", hour=22, minute=0, timezone="Asia/Taipei"),
         args=[app],
         misfire_grace_time=3600 * 6,
         name="週日資料庫備份",
