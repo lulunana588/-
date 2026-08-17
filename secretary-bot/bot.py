@@ -130,6 +130,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "・「每週五 交週報」「每月底 自評」→ 建立重複任務\n"
         "・「蕾蕾這個月請了幾天假」→ 查詢請假天數\n"
         "・「#12 改成交採購報表給財務」→ 修改已建立的事項內容\n"
+        "・「#12 刪除」「刪除 #12」→ 刪除事項；「#12 完成」「完成 #12」→ 標記完成\n"
         "・「找待辦 採購」「搜尋 採購」→ 依關鍵字搜尋所有待辦（含已完成）\n"
         "・「等 廠商 回覆報價單」「等 主管簽核採購單」→ 追蹤等別人回覆/處理的事，"
         "跟一般待辦分開列，對方回覆了再回來標完成\n"
@@ -851,6 +852,23 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
             task = db.get_task_by_id(task_id)
             if task and task["task_date"] == db.today_str():
                 await send_today_card(update)
+        return
+
+    # 直接用文字刪除/完成事項：例如「#38 刪除」「刪除 #38」「#38 完成」「完成 #38」，
+    # 不用再特地打/del或/done指令、也不用進管理清單找按鈕
+    task_action = parser.parse_task_action(text)
+    if task_action:
+        task_id = task_action["task_id"]
+        task = db.get_task_by_id(task_id)
+        if task_action["action"] == "delete":
+            ok = db.delete_task(task_id)
+            reply = f"#{task_id} 已刪除" if ok else f"找不到 #{task_id}"
+        else:
+            ok = db.mark_task_done(task_id)
+            reply = f"#{task_id} 已標記完成 ✅" if ok else f"找不到 #{task_id}（或已經是完成狀態）"
+        await update.message.reply_text(reply, reply_markup=MAIN_KEYBOARD)
+        if ok and task and task["task_date"] == db.today_str():
+            await send_today_card(update)
         return
 
     # 用關鍵字比對而非完全相等，避免emoji編碼差異導致按鈕誤判成待辦事項
