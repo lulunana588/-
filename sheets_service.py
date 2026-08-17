@@ -343,15 +343,17 @@ def add_payment_record(
     header_idx = _payment_header_row_idx(all_values)
     new_id = get_next_payment_id(all_values, header_idx)
 
-    # 找到標題列之後、第一個「完全空白」的列，寫在那一列（避免 append_row 因格式化空白列跑到很後面）
-    target_row = None
+    # 找出「真正最後一筆」有資料的列，寫在它的下一列。
+    # 注意：不能一遇到空白列就停（原本的寫法），如果款項表中間曾經出現過人工留白的
+    # 分隔列，會把新款項插在半路，甚至寫到空白列後面原本就有資料的位置上，
+    # 造成資料被覆蓋或錯位。（跟桶裝水分頁曾發生的問題是同一類，這裡先一併修正）
+    # （2026/08/17 修正）
+    last_filled_idx = header_idx
     for i in range(header_idx + 1, len(all_values)):
         row = all_values[i]
-        if not row or not any(cell.strip() for cell in row):
-            target_row = i + 1  # 1-indexed
-            break
-    if target_row is None:
-        target_row = len(all_values) + 1
+        if row and any(cell.strip() for cell in row):
+            last_filled_idx = i
+    target_row = last_filled_idx + 2  # 1-indexed，且要寫在最後一筆的下一列
 
     ws.update(
         f"A{target_row}:I{target_row}",
@@ -499,13 +501,20 @@ def update_payment_fields(
 
 
 def find_payment_records(query: str, limit: int = 8):
-    """依編號完全比對優先，否則用款項名稱模糊比對"""
+    """
+    依編號完全比對優先，否則用款項名稱模糊比對。
+    完整掃過整張表再截取 limit 筆，不提早中斷——
+    如果邊掃邊湊到 limit 就停，萬一「精準比對編號」那一列剛好排在後面，
+    會被漏掉、永遠排不到最前面。
+    （2026/08/17 修正）
+    """
     ws = get_payment_worksheet()
     all_values = ws.get_all_values()
     header_idx = _payment_header_row_idx(all_values)
 
-    results = []
     query = query.strip()
+    exact_match = None
+    name_matches = []
 
     for i in range(header_idx + 1, len(all_values)):
         row = all_values[i]
@@ -514,11 +523,11 @@ def find_payment_records(query: str, limit: int = 8):
         row_id = row[0].strip()
         name = row[3].strip() if len(row) > 3 else ""
         if query == row_id:
-            results.insert(0, {"row": i + 1, "values": row})  # 精準比對排最前面
+            exact_match = {"row": i + 1, "values": row}
         elif query and query in name:
-            results.append({"row": i + 1, "values": row})
-        if len(results) >= limit:
-            break
+            name_matches.append({"row": i + 1, "values": row})
+
+    results = ([exact_match] if exact_match else []) + name_matches
     return results[:limit]
 
 
