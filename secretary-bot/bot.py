@@ -816,6 +816,10 @@ SIBLING_SCRIPTS = {
     "diary-bot（每小時健康檢查）": {
         "log": "/root/diary-bot/health_check.log",
         "max_silent_hours": 3,
+        # 2026-08-18實測發現：這支腳本設計成「平常安靜、只有偵測到問題才會出聲」，
+        # 靠syslog確認過cron真的每小時準時觸發，但即使正常執行，log也完全不會有任何內容，
+        # 所以「太久沒更新」這個判斷方式對它不適用，會一直誤報，只保留內容關鍵字掃描就好。
+        "skip_staleness_check": True,
     },
     "diary-bot（平日每日提醒）": {
         "log": "/root/diary-bot/reminder.log",
@@ -845,18 +849,20 @@ def _check_sibling_scripts_anomalies(now: datetime) -> list:
         if not os.path.exists(log_path):
             continue  # 這台機器上找不到這個log，可能腳本已經不在了，不算異常
         try:
-            mtime = datetime.fromtimestamp(os.path.getmtime(log_path), tz=TW_TZ)
-            silent_hours = (now - mtime).total_seconds() / 3600
-            if silent_hours > cfg["max_silent_hours"]:
-                warnings.append(
-                    f"「{name}」的紀錄檔已經 {int(silent_hours)} 小時沒有更新，"
-                    f"可能排程沒有正常執行，建議登入VPS看一下 {log_path}"
-                )
-                continue  # 已經示警過一次，不用再往下查內容
+            if not cfg.get("skip_staleness_check"):
+                mtime = datetime.fromtimestamp(os.path.getmtime(log_path), tz=TW_TZ)
+                silent_hours = (now - mtime).total_seconds() / 3600
+                if silent_hours > cfg["max_silent_hours"]:
+                    warnings.append(
+                        f"「{name}」的紀錄檔已經 {int(silent_hours)} 小時沒有更新，"
+                        f"可能排程沒有正常執行，建議登入VPS看一下 {log_path}"
+                    )
+                    continue  # 已經示警過一次，不用再往下查內容
             with open(log_path, "r", errors="ignore") as f:
                 f.seek(max(0, os.path.getsize(log_path) - 4000))
                 tail = f.read()
-            if any(kw in tail for kw in _LOG_ERROR_KEYWORDS):
+            tail_lower = tail.lower()
+            if any(kw.lower() in tail_lower for kw in _LOG_ERROR_KEYWORDS):
                 warnings.append(
                     f"「{name}」的紀錄檔最近的內容裡出現疑似錯誤字樣，建議登入VPS看一下 {log_path} 確認"
                 )
