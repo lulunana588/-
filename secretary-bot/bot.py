@@ -39,6 +39,22 @@ logger = logging.getLogger("secretary-bot")
 TW_TZ = timezone(timedelta(hours=config.TAIWAN_TZ_OFFSET_HOURS))
 WEEKDAY_ZH = ["一", "二", "三", "四", "五", "六", "日"]
 
+# 2026-08-18實測發現：中文輸入法（例如注音）常會把半形的#、數字、斜線這類「指令用符號」
+# 自動轉成長得很像的全形符號，肉眼幾乎看不出差異，但正規表示式完全比對不上，
+# 導致「#38 改成8/25」這種指令整段被誤判成一般待辦內容。
+# 這裡只挑「符號」轉換，刻意不動中文標點（，。！？之類），避免正常打的中文內容被改樣子。
+_FULLWIDTH_SYMBOL_MAP = str.maketrans({
+    "＃": "#",
+    "／": "/",
+    "－": "-",
+    "　": " ",
+    **{chr(0xFF10 + i): str(i) for i in range(10)},  # 全形０-９ -> 半形0-9
+})
+
+
+def _normalize_symbols(text: str) -> str:
+    return text.translate(_FULLWIDTH_SYMBOL_MAP)
+
 # 例如「蕾蕾這個月請了幾天假」「蕾蕾請了幾天假？」
 LEAVE_QUERY_PATTERN = re.compile(r"^(.+?)(這個月|本月)?請了?幾天假[？?]?$")
 
@@ -988,7 +1004,12 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("這是Luna的專屬秘書Bot，暫不開放其他人登記事項喔🙏")
         return
 
-    text = update.message.text.strip()
+    # 2026-08-18實測發現：中文輸入法有時會把半形符號（例如#、數字、斜線）
+    # 自動轉成看起來幾乎一樣的全形符號（例如＃），導致「#38 改成8/25」這類指令的規則完全比對不上，
+    # 整段被誤判成新待辦事項的內容。這裡只把「符號」相關的全形字元轉回半形（見_normalize_symbols），
+    # 特意不用範圍更大的unicodedata.normalize("NFKC", ...)，因為那樣連中文的全形標點
+    # （，。！？等）也會被一起轉成半形，會讓正常打的中文內容變得不三不四。
+    text = _normalize_symbols(update.message.text.strip())
 
     # 編輯已建立的事項：例如「#12 改成交採購報表給財務」（改內容）或「#12 改成 8/20」（改日期）
     edit_result = parser.parse_edit_task(text)
