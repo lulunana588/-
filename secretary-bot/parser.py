@@ -153,15 +153,31 @@ def parse_waiting_input(text: str):
 
 
 def parse_edit_task(text: str):
-    """回傳 (task_id, new_content) 或 None"""
+    """
+    解析「#id 改成 X」，回傳其中一種：
+      {"task_id": 38, "field": "date", "value": "2026-08-20"}   -> X整段就是看得懂的日期，視為改期
+      {"task_id": 38, "field": "content", "value": "交報告初稿"} -> 其他情況，視為改內容（原本就有的行為）
+      None -> 完全沒對到格式
+
+    只有「改成」後面整段（去掉頭尾空白後）剛好就是一個完整的日期詞（8/20、明天、今天、後天）時，
+    才會判斷成改期；只要後面還多了別的字，就照舊當成改內容，避免「#38 改成 8/20 記得帶資料」
+    這種混合寫法被誤判成只改日期、把後面的內容整段吃掉。
+    """
     m = EDIT_TASK_PATTERN.match(text.strip())
     if not m:
         return None
     task_id = int(m.group(1))
-    new_content = m.group(2).strip()
-    if not new_content:
+    new_value = m.group(2).strip()
+    if not new_value:
         return None
-    return task_id, new_content
+    # 注意：parse_date_token內部用的是match()（只比對開頭），
+    # 這裡刻意改用fullmatch確認「整段」都是日期格式，
+    # 避免「改成8/20記得帶資料」這種沒有空白分隔的混合寫法被誤判成只改日期。
+    if new_value in ("今天", "今日", "明天", "明日", "後天") or DATE_PATTERN.fullmatch(new_value):
+        date_str = parse_date_token(new_value)
+        if date_str:
+            return {"task_id": task_id, "field": "date", "value": date_str}
+    return {"task_id": task_id, "field": "content", "value": new_value}
 
 
 def parse_task_action(text: str):
