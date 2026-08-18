@@ -990,18 +990,28 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     text = update.message.text.strip()
 
-    # 編輯已建立的事項內容：例如「#12 改成交採購報表給財務」
+    # 編輯已建立的事項：例如「#12 改成交採購報表給財務」（改內容）或「#12 改成 8/20」（改日期）
     edit_result = parser.parse_edit_task(text)
     if edit_result:
-        task_id, new_content = edit_result
-        ok = db.update_task_content(task_id, new_content)
-        await update.message.reply_text(
-            f"#{task_id} 內容已改成：{new_content}" if ok else f"找不到 #{task_id}",
-            reply_markup=MAIN_KEYBOARD,
-        )
+        task_id = edit_result["task_id"]
+        old_task = db.get_task_by_id(task_id)
+        old_date = old_task["task_date"] if old_task else None
+        if edit_result["field"] == "date":
+            new_date = edit_result["value"]
+            ok = db.push_task_to_date(task_id, new_date)
+            reply = f"#{task_id} 日期已改成：{new_date}" if ok else f"找不到 #{task_id}"
+        else:
+            new_content = edit_result["value"]
+            ok = db.update_task_content(task_id, new_content)
+            reply = f"#{task_id} 內容已改成：{new_content}" if ok else f"找不到 #{task_id}"
+        await update.message.reply_text(reply, reply_markup=MAIN_KEYBOARD)
+        # 改之前是今天的事項、或改之後變成今天的事項，都要重新出一張今日卡片，
+        # 這樣「把8/20的事項改成今天」跟「把今天的事項改到別天」都能立刻反映在卡片上。
         if ok:
-            task = db.get_task_by_id(task_id)
-            if task and task["task_date"] == db.today_str():
+            today = db.today_str()
+            new_task = db.get_task_by_id(task_id)
+            new_date = new_task["task_date"] if new_task else None
+            if today in (old_date, new_date):
                 await send_today_card(update)
         return
 
