@@ -13,6 +13,7 @@
 只有 Luna（OWNER_USER_ID）能寫入資料，其他人傳訊息會被禮貌拒絕。
 """
 import logging
+import os
 import re
 import sys
 from datetime import datetime, timedelta, timezone
@@ -801,6 +802,69 @@ def _check_job_schedule_anomalies(scheduler) -> list:
     return warnings
 
 
+# 同一台VPS上，其他跟secretary-bot無關、各自獨立運作的排程腳本。
+# 2026-08-18那次gmail-bot的Google授權悄悄失效、卻整整好幾天沒人發現，
+# 就是因為這些腳本本來沒有任何人在主動盯著——所以在這裡把它們的log也一併看一下，
+# 只要「太久沒更新」或「內容裡出現錯誤字樣」，就在健康自檢裡主動示警，
+# 不用再靠「剛好想到才發現」。
+# max_silent_hours 是抓「正常間隔 + 一些緩衝」估出來的，不是精確值，夠用來抓「明顯停擺」就好。
+SIBLING_SCRIPTS = {
+    "gmail-bot（Gmail掃描，平日一天2次）": {
+        "log": "/root/gmail-bot/scanner.log",
+        "max_silent_hours": 80,
+    },
+    "diary-bot（每小時健康檢查）": {
+        "log": "/root/diary-bot/health_check.log",
+        "max_silent_hours": 3,
+    },
+    "diary-bot（平日每日提醒）": {
+        "log": "/root/diary-bot/reminder.log",
+        "max_silent_hours": 90,
+    },
+    "diary-bot（每週備份）": {
+        "log": "/root/diary-bot/backup_to_drive.log",
+        "max_silent_hours": 24 * 9,
+    },
+    "bill-reminder（每日帳單提醒）": {
+        "log": "/root/bill-reminder/log.txt",
+        "max_silent_hours": 30,
+    },
+}
+
+_LOG_ERROR_KEYWORDS = ("Traceback", "Error", "錯誤", "Exception", "failed")
+
+
+def _check_sibling_scripts_anomalies(now: datetime) -> list:
+    """檢查上面那些「跟secretary-bot無關、但住在同一台VPS上」的獨立腳本，
+    用log檔案的更新時間、以及內容裡有沒有錯誤字樣，做best-effort的掃描。
+    這不是100%準確的判斷（例如log裡剛好提到"error"這個字但其實沒出錯），
+    但至少能在「完全沒人發現」跟「至少收到一次提醒」之間，往前跨一步。"""
+    warnings = []
+    for name, cfg in SIBLING_SCRIPTS.items():
+        log_path = cfg["log"]
+        if not os.path.exists(log_path):
+            continue  # 這台機器上找不到這個log，可能腳本已經不在了，不算異常
+        try:
+            mtime = datetime.fromtimestamp(os.path.getmtime(log_path), tz=TW_TZ)
+            silent_hours = (now - mtime).total_seconds() / 3600
+            if silent_hours > cfg["max_silent_hours"]:
+                warnings.append(
+                    f"「{name}」的紀錄檔已經 {int(silent_hours)} 小時沒有更新，"
+                    f"可能排程沒有正常執行，建議登入VPS看一下 {log_path}"
+                )
+                continue  # 已經示警過一次，不用再往下查內容
+            with open(log_path, "r", errors="ignore") as f:
+                f.seek(max(0, os.path.getsize(log_path) - 4000))
+                tail = f.read()
+            if any(kw in tail for kw in _LOG_ERROR_KEYWORDS):
+                warnings.append(
+                    f"「{name}」的紀錄檔最近的內容裡出現疑似錯誤字樣，建議登入VPS看一下 {log_path} 確認"
+                )
+        except Exception:
+            continue  # 讀檔本身出問題就跳過，不要讓健康自檢因此掛掉
+    return warnings
+
+
 async def send_health_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
     now = datetime.now(TW_TZ)
     lines = ["服務健康自檢"]
@@ -839,6 +903,13 @@ async def send_health_check(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     groq_status = "已設定" if summary.GROQ_API_KEY else "未設定（會自動降級用固定模板，不影響運作）"
     lines.append(f"Groq AI摘要：{groq_status}")
+
+    checked_siblings = [name for name, cfg in SIBLING_SCRIPTS.items() if os.path.exists(cfg["log"])]
+    if checked_siblings:
+        lines.append(f"\n同機其他腳本監控（共{len(checked_siblings)}個）：")
+        for name in checked_siblings:
+            lines.append(f"・{name}")
+        anomalies.extend(_check_sibling_scripts_anomalies(now))
 
     if anomalies:
         lines.append("\n⚠️ 偵測到可能的異常：")
