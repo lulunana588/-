@@ -999,6 +999,146 @@ async def cmd_find(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ───────────────── 自然語言輸入 ─────────────────
 
+async def _process_batch_lines(update: Update, raw_lines):
+    """處理一次貼上的多行內容（例如整批班表／排休清單）。
+    每一行各自判斷是待辦、連續待辦、請假、連續請假、編輯、還是刪除／完成，分開處理，
+    最後回覆一份整理好的清單。
+
+    2026-08-25實測發現：舊版是把整段多行文字當成「一句話」硬解析，結果只要其中一行
+    出現「特休」之類的假別關鍵字，就會把前後所有不相干的行全部吃掉，變成一筆日期、
+    人名都亂掉的錯誤請假紀錄，其他行則完全沒有被存進去——這個函式就是修正這個問題。
+    """
+    added_tasks = []
+    added_task_ranges = []
+    added_leaves = []
+    added_leave_ranges = []
+    edited = []
+    actioned = []
+    unknown_lines = []
+    today = db.today_str()
+    touched_today = False
+
+    for raw_line in raw_lines:
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        edit_result = parser.parse_edit_task(line)
+        if edit_result:
+            task_id = edit_result["task_id"]
+            old_task = db.get_task_by_id(task_id)
+            old_date = old_task["task_date"] if old_task else None
+            if edit_result["field"] == "date":
+                new_date = edit_result["value"]
+                ok = db.push_task_to_date(task_id, new_date)
+                edited.append(f"#{task_id} 日期已改成：{new_date}" if ok else f"#{task_id} 找不到")
+                if ok and today in (old_date, new_date):
+                    touched_today = True
+            else:
+                new_content = edit_result["value"]
+                ok = db.update_task_content(task_id, new_content)
+                edited.append(f"#{task_id} 內容已改成：{new_content}" if ok else f"#{task_id} 找不到")
+                if ok and old_date == today:
+                    touched_today = True
+            continue
+
+        task_action = parser.parse_task_action(line)
+        if task_action:
+            task_id = task_action["task_id"]
+            task = db.get_task_by_id(task_id)
+            if task_action["action"] == "delete":
+                ok = db.delete_task(task_id)
+                actioned.append(f"#{task_id} 已刪除" if ok else f"#{task_id} 找不到")
+            else:
+                ok = db.mark_task_done(task_id)
+                actioned.append(f"#{task_id} 已標記完成" if ok else f"#{task_id} 找不到")
+            if ok and task and task["task_date"] == today:
+                touched_today = True
+            continue
+
+        result = parser.parse_input(line)
+
+        if result["type"] == "task":
+            task_id = db.add_task(result["date"], result["content"])
+            added_tasks.append(f"#{task_id} {result['date']} {result['content']}")
+            if result["date"] == today:
+                touched_today = True
+
+        elif result["type"] == "task_range":
+            start = datetime.strptime(result["start_date"], "%Y-%m-%d")
+            end = datetime.strptime(result["end_date"], "%Y-%m-%d")
+            d = start
+            while d <= end:
+                db.add_task(d.strftime("%Y-%m-%d"), result["content"])
+                d += timedelta(days=1)
+            added_task_ranges.append(f"{result['start_date']}～{result['end_date']} {result['content']}")
+            if result["start_date"] <= today <= result["end_date"]:
+                touched_today = True
+
+        elif result["type"] == "leave":
+            leave_type = result.get("leave_type", "請假")
+            note = result.get("note")
+            for person in result["persons"]:
+                db.add_leave(result["date"], person, note, leave_type)
+            persons_disp = "、".join(result["persons"])
+            note_disp = f"（{note}）" if note else ""
+            added_leaves.append(f"{result['date']} {persons_disp}{leave_type}{note_disp}")
+            if result["date"] == today:
+                touched_today = True
+
+        elif result["type"] == "leave_range":
+            start = datetime.strptime(result["start_date"], "%Y-%m-%d")
+            end = datetime.strptime(result["end_date"], "%Y-%m-%d")
+            leave_type = result.get("leave_type", "請假")
+            note = result.get("note")
+            for person in result["persons"]:
+                d = start
+                while d <= end:
+                    db.add_leave(d.strftime("%Y-%m-%d"), person, note, leave_type)
+                    d += timedelta(days=1)
+            persons_disp = "、".join(result["persons"])
+            note_disp = f"（{note}）" if note else ""
+            added_leave_ranges.append(
+                f"{result['start_date']}～{result['end_date']} {persons_disp}{leave_type}{note_disp}"
+            )
+            if result["start_date"] <= today <= result["end_date"]:
+                touched_today = True
+
+        else:
+            unknown_lines.append(line)
+
+    total = (
+        len(added_tasks) + len(added_task_ranges) + len(added_leaves)
+        + len(added_leave_ranges) + len(edited) + len(actioned)
+    )
+    lines_out = [f"已處理多行輸入，共 {total} 筆："]
+    if added_tasks:
+        lines_out.append(f"\n📋 新增待辦（{len(added_tasks)}）：")
+        lines_out.extend(f"・{t}" for t in added_tasks)
+    if added_task_ranges:
+        lines_out.append(f"\n📋 新增連續待辦（{len(added_task_ranges)}）：")
+        lines_out.extend(f"・{t}" for t in added_task_ranges)
+    if added_leaves:
+        lines_out.append(f"\n🌴 新增請假（{len(added_leaves)}）：")
+        lines_out.extend(f"・{t}" for t in added_leaves)
+    if added_leave_ranges:
+        lines_out.append(f"\n🌴 新增連續請假（{len(added_leave_ranges)}）：")
+        lines_out.extend(f"・{t}" for t in added_leave_ranges)
+    if edited:
+        lines_out.append(f"\n✏️ 編輯（{len(edited)}）：")
+        lines_out.extend(f"・{t}" for t in edited)
+    if actioned:
+        lines_out.append(f"\n✅ 刪除／完成（{len(actioned)}）：")
+        lines_out.extend(f"・{t}" for t in actioned)
+    if unknown_lines:
+        lines_out.append(f"\n❓ 看不懂，沒有處理（{len(unknown_lines)}）：")
+        lines_out.extend(f"・{t}" for t in unknown_lines)
+
+    await update.message.reply_text("\n".join(lines_out), reply_markup=MAIN_KEYBOARD)
+    if touched_today:
+        await send_today_card(update)
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_owner(update):
         await update.message.reply_text("這是Luna的專屬秘書Bot，暫不開放其他人登記事項喔🙏")
@@ -1010,6 +1150,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # 特意不用範圍更大的unicodedata.normalize("NFKC", ...)，因為那樣連中文的全形標點
     # （，。！？等）也會被一起轉成半形，會讓正常打的中文內容變得不三不四。
     text = _normalize_symbols(update.message.text.strip())
+
+    # 一次貼多行（例如整批班表／排休清單）：每一行各自判斷、分開處理，避免整段被當成
+    # 一句話硬解析（2026-08-25實測發現的批次輸入bug，詳見_process_batch_lines說明）
+    raw_lines = [ln for ln in text.split("\n") if ln.strip()]
+    if len(raw_lines) >= 2:
+        await _process_batch_lines(update, raw_lines)
+        return
 
     # 編輯已建立的事項：例如「#12 改成交採購報表給財務」（改內容）或「#12 改成 8/20」（改日期）
     edit_result = parser.parse_edit_task(text)
