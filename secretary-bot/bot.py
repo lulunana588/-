@@ -164,6 +164,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "/del <編號> 刪除事項\n"
         "/push <編號> <日期> 把逾期事項推到新日期\n"
         "/find <關鍵字> 搜尋待辦\n\n"
+        "・「查詢下個月」「查詢上個月」→ 查看上/下個月的行事曆\n\n"
         "下面按鈕也都能用，不用打指令：\n"
         "查詢今日／查詢本週／查詢本月／管理待辦事項／管理請假登記／追蹤等待中／時間提醒清單／管理重複任務／本週統計／本月統計",
         reply_markup=MAIN_KEYBOARD,
@@ -206,10 +207,16 @@ async def send_week_card(update: Update):
         await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
 
 
-async def build_month_card_path() -> str:
+async def build_month_card_path(months_offset: int = 0) -> str:
+    """months_offset：0=本月，1=下個月，-1=上個月，以此類推。
+    用「year*12+month」換算成連續的月份編號再還原，這樣不管offset是正是負、
+    會不會跨年，都不用另外特判（12月的下個月變明年1月、1月的上個月變去年12月都是同一套邏輯）。
+    """
     ensure_daily_generation()
     now = datetime.now(TW_TZ)
-    year, month = now.year, now.month
+    total_months = now.year * 12 + (now.month - 1) + months_offset
+    year, month = divmod(total_months, 12)
+    month += 1
 
     first_day = datetime(year, month, 1)
     if month == 12:
@@ -235,8 +242,8 @@ async def build_month_card_path() -> str:
     return MONTH_CARD_PATH
 
 
-async def send_month_card(update: Update):
-    path = await build_month_card_path()
+async def send_month_card(update: Update, months_offset: int = 0):
+    path = await build_month_card_path(months_offset)
     with open(path, "rb") as f:
         await update.message.reply_photo(photo=f, reply_markup=MAIN_KEYBOARD)
 
@@ -1201,6 +1208,13 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     # 用關鍵字比對而非完全相等，避免emoji編碼差異導致按鈕誤判成待辦事項
+    # 「下個月」「上個月」要放在「本月」判斷之前檢查（雖然目前字串不會互相誤觸，但語意上下個月/上個月優先）
+    if "查詢" in text and ("下個月" in text or "下月" in text):
+        await send_month_card(update, months_offset=1)
+        return
+    if "查詢" in text and ("上個月" in text or "上月" in text):
+        await send_month_card(update, months_offset=-1)
+        return
     if "查詢" in text and "本月" in text:
         await send_month_card(update)
         return
