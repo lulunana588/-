@@ -216,7 +216,10 @@ def render_week_card(week_start: str, week_end: str, days: list) -> Image.Image:
 
 MONTH_GRID_WEEKDAYS_ZH = ["一", "二", "三", "四", "五", "六", "日"]  # 對應 datetime.weekday()：0=一...6=日
 GRID_HEADER_H = 40      # 星期幾標頭列高度
-GRID_CELL_H = 108       # 每個日期格子的高度
+GRID_DAYNUM_H = 32      # 日期數字那一行的高度
+GRID_LINE_H = 18        # 每一行待辦/請假內容的高度
+GRID_MAX_LINES = 7      # 每格最多逐條列出幾行，超過就在最後一行顯示「+N 更多」
+GRID_CELL_BOTTOM_PAD = 10
 GRID_TOP = 110          # 標題+摘要區高度（跟舊版一致，維持整體風格）
 GRID_BORDER = (40, 46, 54)
 
@@ -238,6 +241,24 @@ def _truncate_to_width(draw, text, font, max_width):
     while text and draw.textlength(text + "…", font=font) > max_width:
         text = text[:-1]
     return (text + "…") if text else ""
+
+
+def _day_lines(data):
+    """把一天的leaves/tasks整理成逐行要顯示的清單：[(文字, 文字顏色, 圓點顏色或None), ...]
+    請假排最前面（比較重要，人不在要先看到），待辦依原本順序接在後面，
+    已完成的待辦用淡色文字+勾勾表示，不再用圓點（跟今日卡片的已完成風格一致）。
+    """
+    lines = []
+    for lv in data["leaves"]:
+        text = f"{lv['person_name']}{lv.get('leave_type') or '請假'}"
+        lines.append((text, config.COLOR_YELLOW, config.COLOR_YELLOW))
+    for t in data["tasks"]:
+        done = t["status"] == "done"
+        if done:
+            lines.append((f"✓{t['content']}", config.COLOR_TEXT_DIM, None))
+        else:
+            lines.append((t["content"], config.COLOR_TEXT, config.COLOR_MINT))
+    return lines
 
 
 def render_month_card(
@@ -267,7 +288,18 @@ def render_month_card(
     n_days = len(all_dates)
     n_rows = -(-(first_col + n_days) // 7)  # 無條件進位
 
-    height = GRID_TOP + GRID_HEADER_H + n_rows * GRID_CELL_H + PADDING
+    # 格子高度不是固定的：算出這個月「最忙的一天」需要幾行才裝得下待辦/請假內容
+    # （超過GRID_MAX_LINES行的天，只會顯示到上限、最後一行改顯示「+N 更多」，見下方畫格子的迴圈），
+    # 再用這個最大行數統一算出每一格的高度，這樣資料少的月份格子還是維持精簡，
+    # 資料多的月份格子會自動長高，把每項待辦/請假的完整內容都列出來，不會只看到數字。
+    max_lines_needed = 0
+    for date_str in all_dates:
+        data = grouped.get(date_str, {"leaves": [], "tasks": []})
+        n_lines = len(_day_lines(data))
+        max_lines_needed = max(max_lines_needed, min(n_lines, GRID_MAX_LINES))
+    cell_h = GRID_DAYNUM_H + max_lines_needed * GRID_LINE_H + GRID_CELL_BOTTOM_PAD
+
+    height = GRID_TOP + GRID_HEADER_H + n_rows * cell_h + PADDING
     img = Image.new("RGB", (WIDTH, height), config.COLOR_BG)
     draw = ImageDraw.Draw(img)
 
@@ -293,16 +325,17 @@ def render_month_card(
     grid_top_y = y
 
     # 逐日畫格子
+    line_font = _font(12)
     for i, date_str in enumerate(all_dates):
         col = (first_col + i) % 7
         row = (first_col + i) // 7
         cx = PADDING + col * cell_w
-        cy = grid_top_y + row * GRID_CELL_H
+        cy = grid_top_y + row * cell_h
 
         is_today = today_str is not None and date_str == today_str
-        draw.rectangle([cx, cy, cx + cell_w, cy + GRID_CELL_H], outline=GRID_BORDER, width=1)
+        draw.rectangle([cx, cy, cx + cell_w, cy + cell_h], outline=GRID_BORDER, width=1)
         if is_today:
-            draw.rectangle([cx + 1, cy + 1, cx + cell_w - 1, cy + GRID_CELL_H - 1], outline=config.COLOR_MINT, width=2)
+            draw.rectangle([cx + 1, cy + 1, cx + cell_w - 1, cy + cell_h - 1], outline=config.COLOR_MINT, width=2)
 
         day_num = str(int(date_str[-2:]))
         day_color = config.COLOR_MINT if is_today else (
@@ -311,24 +344,28 @@ def render_month_card(
         draw.text((cx + 10, cy + 8), day_num, font=_font(18, bold=True), fill=day_color)
 
         data = grouped.get(date_str, {"leaves": [], "tasks": []})
-        inner_y = cy + 34
-        inner_max_w = cell_w - 16
+        day_lines = _day_lines(data)
+        inner_y = cy + GRID_DAYNUM_H
+        inner_max_w = cell_w - 18
 
-        if data["leaves"]:
-            names = "、".join(
-                f"{lv['person_name']}{lv.get('leave_type') or '請假'}" for lv in data["leaves"]
-            )
-            names = _truncate_to_width(draw, names, _font(12), inner_max_w)
-            draw.text((cx + 8, inner_y), names, font=_font(12), fill=config.COLOR_YELLOW)
-            inner_y += 18
+        if len(day_lines) > GRID_MAX_LINES:
+            visible = day_lines[:GRID_MAX_LINES - 1]
+            overflow = len(day_lines) - (GRID_MAX_LINES - 1)
+        else:
+            visible = day_lines
+            overflow = 0
 
-        if data["tasks"]:
-            pending = [t for t in data["tasks"] if t["status"] != "done"]
-            if pending:
-                _draw_dot(draw, cx + 9, inner_y + 6, config.COLOR_MINT)
-                draw.text((cx + 18, inner_y), f"{len(pending)}待辦", font=_font(12), fill=config.COLOR_MINT)
+        for text, color, dot_color in visible:
+            if dot_color:
+                _draw_dot(draw, cx + 9, inner_y + 7, dot_color)
+                text_x = cx + 18
             else:
-                draw.text((cx + 8, inner_y), "已完成", font=_font(12), fill=config.COLOR_TEXT_DIM)
-            inner_y += 18
+                text_x = cx + 8
+            draw.text((text_x, inner_y), _truncate_to_width(draw, text, line_font, inner_max_w),
+                      font=line_font, fill=color)
+            inner_y += GRID_LINE_H
+
+        if overflow > 0:
+            draw.text((cx + 8, inner_y), f"+{overflow} 更多", font=line_font, fill=config.COLOR_TEXT_DIM)
 
     return img
