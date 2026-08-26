@@ -230,7 +230,7 @@ async def build_month_card_path() -> str:
         weekday_zh_map[d.strftime("%Y-%m-%d")] = WEEKDAY_ZH[d.weekday()]
         d += timedelta(days=1)
 
-    img = card_renderer.render_month_card(year, month, leaves, tasks, weekday_zh_map)
+    img = card_renderer.render_month_card(year, month, leaves, tasks, weekday_zh_map, today_str=db.today_str())
     card_renderer.save_card(img, MONTH_CARD_PATH)
     return MONTH_CARD_PATH
 
