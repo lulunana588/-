@@ -48,6 +48,9 @@ PAYMENT_PROGRESS_OPTIONS = [
 # 完全相同金額 -> 直接視為同一筆自動編輯；金額在誤差範圍內但不完全相同 -> 會先跳出確認，不會自動合併
 PAYMENT_AMOUNT_TOLERANCE = int(os.getenv("PAYMENT_AMOUNT_TOLERANCE", "50"))
 
+# 款項登記後超過這個天數還沒付款，每日提醒會用🔴特別標註出來，排在提醒訊息最前面
+PAYMENT_OVERDUE_DAYS = int(os.getenv("PAYMENT_OVERDUE_DAYS", "5"))
+
 # --- 允許授權可操作此機器人的 Telegram 使用者 (留空 = 不限制，建議正式上線後填寫) ---
 _allowed = os.getenv("ALLOWED_USER_IDS", "")
 ALLOWED_USER_IDS = {int(x) for x in _allowed.split(",") if x.strip().isdigit()}
