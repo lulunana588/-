@@ -42,7 +42,6 @@ PAYMENT_GID = int(os.getenv("PAYMENT_GID", "1471681931"))
 PAYMENT_PROGRESS_OPTIONS = [
     "已提交請款單及發票",
     "已提交請款單候補發票",
-    "尚未提交",
 ]
 
 # 快速指令比對「是否為同一筆既有款項」時，金額允許的誤差範圍（NT$）
