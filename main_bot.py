@@ -1161,6 +1161,17 @@ async def send_monthly_water_summary(context: ContextTypes.DEFAULT_TYPE):
         logger.exception("發送每月桶裝水盤點提醒失敗")
 
 
+def _days_since_date_str(date_str: str, today: datetime.date):
+    """把 '2026/09/03' 這種格式的日期字串轉成距今天數，格式不對或空白回傳 None"""
+    if not date_str:
+        return None
+    try:
+        d = datetime.datetime.strptime(date_str.strip(), "%Y/%m/%d").date()
+    except ValueError:
+        return None
+    return (today - d).days
+
+
 async def send_payment_reminder(context: ContextTypes.DEFAULT_TYPE):
     if not config.REMINDER_CHAT_ID:
         logger.warning("REMINDER_CHAT_ID 未設定，跳過每日提醒")
@@ -1179,16 +1190,44 @@ async def send_payment_reminder(context: ContextTypes.DEFAULT_TYPE):
         if payment_summary["count"] == 0:
             sections.append("💰 款項追蹤：目前沒有需要追蹤的款項 🎉")
         else:
-            lines = "\n".join(
-                f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
-                f" - {item['status']}／{item['progress']}"
-                for i, item in enumerate(payment_summary["items"][:15])
-            )
-            more = ""
-            if payment_summary["count"] > 15:
-                more = f"\n...還有 {payment_summary['count'] - 15} 筆，輸入 /start 查完整清單"
+            today = datetime.datetime.now(ZoneInfo("Asia/Taipei")).date()
+            threshold = getattr(config, "PAYMENT_OVERDUE_DAYS", 5)
+
+            overdue_items = []
+            normal_items = []
+            for item in payment_summary["items"]:
+                days = _days_since_date_str(item.get("submit_date", ""), today)
+                if days is not None and days >= threshold:
+                    overdue_items.append((item, days))
+                else:
+                    normal_items.append(item)
+
+            lines = []
+            if overdue_items:
+                lines.append(f"🔴 已超過{threshold}天未付款，請優先處理：")
+                for i, (item, days) in enumerate(overdue_items):
+                    lines.append(
+                        f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
+                        f" 已{days}天未付 - {item['status']}／{item['progress']}"
+                    )
+                if normal_items:
+                    lines.append("")
+
+            if normal_items:
+                if overdue_items:
+                    lines.append("其餘待追蹤：")
+                shown_normal = normal_items[:15]
+                for i, item in enumerate(shown_normal):
+                    lines.append(
+                        f"{i + 1}. #{item['id']} {item['name']}（NT${item['amount']:,}）"
+                        f" - {item['status']}／{item['progress']}"
+                    )
+                if len(normal_items) > 15:
+                    lines.append(f"...還有 {len(normal_items) - 15} 筆，輸入 /start 查完整清單")
+
             sections.append(
-                f"💰 款項追蹤：{payment_summary['count']} 筆，共 NT${payment_summary['total']:,}\n{lines}{more}"
+                f"💰 款項追蹤：{payment_summary['count']} 筆，共 NT${payment_summary['total']:,}\n"
+                + "\n".join(lines)
             )
 
     # --- 綜辦文件繳回 ---
@@ -1242,7 +1281,7 @@ async def _on_startup(application: Application):
         logger.exception("發送上線通知失敗")
 
 
-async def _notify_group_topic(context: ContextTypes.DEFAULT_TYPE, thread_id, text: str):
+async def _notify_group_topic(context: ContextTypes.DEFAULT_TYPE, thread_id, text: str, parse_mode=None):
     """把訊息同步發送到群組指定話題（需要 config.GROUP_CHAT_ID 跟對應的 thread_id 都有設定）。
     找不到設定或發送失敗都只記錄log，不中斷主流程——群組同步是錦上添花，不能因為它失敗
     連累使用者原本在私訊/群組裡本來就該收到的結果訊息。"""
@@ -1253,6 +1292,7 @@ async def _notify_group_topic(context: ContextTypes.DEFAULT_TYPE, thread_id, tex
             chat_id=config.GROUP_CHAT_ID,
             message_thread_id=thread_id,
             text=text,
+            parse_mode=parse_mode,
         )
     except Exception:
         logger.exception("同步訊息到群組話題失敗")
@@ -1273,7 +1313,34 @@ def _extract_chat_and_thread_id(source):
     return chat, thread_id
 
 
-async def _notify_topic_if_elsewhere(source, context: ContextTypes.DEFAULT_TYPE, thread_id, text: str):
+def _extract_user(source):
+    """source 可能是 telegram.Update 或 telegram.CallbackQuery，統一取出操作人的 telegram User 物件"""
+    if isinstance(source, Update):
+        return source.effective_user
+    return getattr(source, "from_user", None)
+
+
+def _html_escape(text: str) -> str:
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _operator_mention_html(source) -> str:
+    """
+    取得可以在話題裡 @提及、真正會通知到對方的 HTML 格式連結。
+    用 tg://user?id= 連結而不是純文字 @username，這樣就算對方沒有設定公開帳號名稱
+    （username）也還是能正確標註、跳出通知——單純打 @顯示名稱 文字不會真的通知到人。
+    找不到使用者資訊時回傳空字串。
+    """
+    user = _extract_user(source)
+    if not user:
+        return ""
+    display_name = user.full_name or (f"@{user.username}" if user.username else str(user.id))
+    return f'<a href="tg://user?id={user.id}">{_html_escape(display_name)}</a>'
+
+
+async def _notify_topic_if_elsewhere(
+    source, context: ContextTypes.DEFAULT_TYPE, thread_id, text: str, parse_mode=None
+):
     """
     避免重複貼同一則訊息：如果這個操作原本就是在目標話題裡直接發生的
     （例如同仁直接在「桶裝水」話題裡打快速指令），該話題已經看得到這則訊息了，
@@ -1289,7 +1356,7 @@ async def _notify_topic_if_elsewhere(source, context: ContextTypes.DEFAULT_TYPE,
     )
     if same_place:
         return
-    await _notify_group_topic(context, thread_id, text)
+    await _notify_group_topic(context, thread_id, text, parse_mode=parse_mode)
 
 
 async def _notify_water_topic(source, context: ContextTypes.DEFAULT_TYPE, text: str):
@@ -1297,7 +1364,18 @@ async def _notify_water_topic(source, context: ContextTypes.DEFAULT_TYPE, text: 
 
 
 async def _notify_payment_topic(source, context: ContextTypes.DEFAULT_TYPE, text: str):
-    await _notify_topic_if_elsewhere(source, context, getattr(config, "PAYMENT_TOPIC_THREAD_ID", None), text)
+    """款項追蹤話題的通知會額外在最前面加一行 @登記人（會真的跳通知），
+    讓登記人自己知道這筆款項已經同步進話題了。"""
+    mention = _operator_mention_html(source)
+    if mention:
+        topic_text = f"{mention}\n{_html_escape(text)}"
+        parse_mode = ParseMode.HTML
+    else:
+        topic_text = text
+        parse_mode = None
+    await _notify_topic_if_elsewhere(
+        source, context, getattr(config, "PAYMENT_TOPIC_THREAD_ID", None), topic_text, parse_mode=parse_mode
+    )
 
 
 def build_app() -> Application:
