@@ -318,7 +318,7 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
         return ConversationHandler.END
 
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：{action_label}　📅 日期：{result['date']}\n"
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
@@ -327,6 +327,8 @@ async def _handle_quick_water(update: Update, context: ContextTypes.DEFAULT_TYPE
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_water_topic(update, context, confirm_text)
     return ConversationHandler.END
 
 
@@ -366,13 +368,15 @@ async def _handle_quick_water_batch(
     flagged = sum(1 for line in result_lines if "❌" in line)
     header_note = f"🔺 有 {flagged} 筆需要您額外確認（標記❌），建議優先查看\n\n" if flagged else ""
 
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 批次桶裝水登記完成（共 {len(water_lines)} 筆）　📅 {sheets.today_str()}\n"
         f"👤 操作人：{operator}\n\n"
         f"{header_note}"
         + "\n".join(result_lines)
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_water_topic(update, context, confirm_text)
     return ConversationHandler.END
 
 
@@ -419,7 +423,7 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
 
     if len(matches) == 1:
         return await _apply_payment_update(
-            update, matches[0], parsed, operator, note_for_sheet
+            update, matches[0], parsed, operator, note_for_sheet, context
         )
 
     # 沒有找到金額完全相同的既有款項，再看看有沒有金額很接近的（可能是打錯字/誤差）
@@ -455,10 +459,10 @@ async def _handle_quick_payment(update: Update, context: ContextTypes.DEFAULT_TY
         return ConversationHandler.END
 
     # 沒有金額相符或相近的既有款項 -> 新增一筆
-    return await _apply_payment_add(update, parsed, operator, note_for_sheet)
+    return await _apply_payment_add(update, parsed, operator, note_for_sheet, context)
 
 
-async def _apply_payment_update(update_or_query, row, parsed, operator, note_for_sheet):
+async def _apply_payment_update(update_or_query, row, parsed, operator, note_for_sheet, context: ContextTypes.DEFAULT_TYPE):
     message = update_or_query.effective_message if isinstance(update_or_query, Update) else update_or_query.message
     processing_msg = await message.reply_text(
         f"{BOT_DISPLAY_NAME}\n🔄 動作：更新既有款項\n⏳ 處理中，請稍候..."
@@ -478,7 +482,7 @@ async def _apply_payment_update(update_or_query, row, parsed, operator, note_for
         return ConversationHandler.END
 
     extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：更新既有款項　📅 {sheets.today_str()}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
@@ -487,10 +491,12 @@ async def _apply_payment_update(update_or_query, row, parsed, operator, note_for
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_payment_topic(update_or_query, context, confirm_text)
     return ConversationHandler.END
 
 
-async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet):
+async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet, context: ContextTypes.DEFAULT_TYPE):
     message = update_or_query.effective_message if isinstance(update_or_query, Update) else update_or_query.message
     processing_msg = await message.reply_text(
         f"{BOT_DISPLAY_NAME}\n🔄 動作：新增款項\n⏳ 處理中，請稍候..."
@@ -512,7 +518,7 @@ async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet):
         return ConversationHandler.END
 
     extra = f"　實付日期：{result['paid_date']}" if result["paid_date"] else ""
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：新增款項　📅 日期：{result['submit_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
@@ -520,6 +526,8 @@ async def _apply_payment_add(update_or_query, parsed, operator, note_for_sheet):
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_payment_topic(update_or_query, context, confirm_text)
     return ConversationHandler.END
 
 
@@ -536,10 +544,10 @@ async def quick_payment_near_match(update: Update, context: ContextTypes.DEFAULT
 
     if query.data == "qpnear_update":
         return await _apply_payment_update(
-            query, pending["row"], pending["parsed"], pending["operator"], pending["note_for_sheet"]
+            query, pending["row"], pending["parsed"], pending["operator"], pending["note_for_sheet"], context
         )
     return await _apply_payment_add(
-        query, pending["parsed"], pending["operator"], pending["note_for_sheet"]
+        query, pending["parsed"], pending["operator"], pending["note_for_sheet"], context
     )
 
 
@@ -649,12 +657,14 @@ async def _handle_quick_payment_batch(update: Update, context: ContextTypes.DEFA
         f"🔺 有 {flagged} 筆需要您額外確認（標記⚠️/❓/❌），建議優先查看\n\n" if flagged else ""
     )
 
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 批次款項處理完成（共 {len(blocks)} 筆）　📅 {sheets.today_str()}\n\n"
         f"{header_note}"
         + "\n".join(result_lines)
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_payment_topic(update, context, confirm_text)
     return ConversationHandler.END
 
 
@@ -811,7 +821,7 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await processing_msg.edit_text(f"❌ 更新失敗：{e}")
         return ConversationHandler.END
 
-    await processing_msg.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：{action_label}　📅 日期：{result['date']}\n"
         f"✅ {result['location']} → {result['old_stock']}桶 → {result['new_stock']}桶\n"
@@ -820,6 +830,8 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await processing_msg.edit_text(confirm_text)
+    await _notify_water_topic(update, context, confirm_text)
     context.user_data.clear()
     await update.message.reply_text("輸入 /start 可繼續操作。")
     return ConversationHandler.END
@@ -926,7 +938,7 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"❌ 新增失敗：{e}")
         return ConversationHandler.END
 
-    await query.edit_message_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：新增款項　📅 日期：{result['submit_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
@@ -934,6 +946,8 @@ async def pay_add_progress(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await query.edit_message_text(confirm_text)
+    await _notify_payment_topic(update, context, confirm_text)
     context.user_data.clear()
     await query.message.reply_text("輸入 /start 可繼續操作。")
     return ConversationHandler.END
@@ -1016,7 +1030,7 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await processing.edit_text(f"❌ 更新失敗：{e}")
         return ConversationHandler.END
 
-    await processing.edit_text(
+    confirm_text = (
         f"{BOT_DISPLAY_NAME}\n"
         f"🔄 動作：更新付款狀態　📅 日期：{result['paid_date']}\n"
         f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
@@ -1024,6 +1038,8 @@ async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"👤 操作人：{operator}\n"
         f"已更新"
     )
+    await processing.edit_text(confirm_text)
+    await _notify_payment_topic(update, context, confirm_text)
     context.user_data.clear()
     await update.message.reply_text("輸入 /start 可繼續操作。")
     return ConversationHandler.END
@@ -1170,20 +1186,62 @@ async def _on_startup(application: Application):
         logger.exception("發送上線通知失敗")
 
 
-async def _debug_log_topic_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """
-    暫時性除錯工具：記錄每則群組訊息的 chat_id 跟 message_thread_id（話題ID）。
-    不回覆任何訊息、不影響其他功能，只是寫進log，方便抓出「桶裝水」「款項追蹤」
-    這兩個話題各自的 message_thread_id，設定好群組回報功能後可以移除這個handler。
-    用 group=1 註冊，跟主要的 ConversationHandler（group=0）並行執行，不會互相干擾。
-    """
-    chat = update.effective_chat
-    msg = update.effective_message
-    if chat and chat.type in ("group", "supergroup") and msg:
-        logger.info(
-            f"[話題ID除錯] chat_id={chat.id} chat_title={chat.title!r} "
-            f"message_thread_id={msg.message_thread_id} text={msg.text!r}"
+async def _notify_group_topic(context: ContextTypes.DEFAULT_TYPE, thread_id, text: str):
+    """把訊息同步發送到群組指定話題（需要 config.GROUP_CHAT_ID 跟對應的 thread_id 都有設定）。
+    找不到設定或發送失敗都只記錄log，不中斷主流程——群組同步是錦上添花，不能因為它失敗
+    連累使用者原本在私訊/群組裡本來就該收到的結果訊息。"""
+    if not getattr(config, "GROUP_CHAT_ID", None) or not thread_id:
+        return
+    try:
+        await context.bot.send_message(
+            chat_id=config.GROUP_CHAT_ID,
+            message_thread_id=thread_id,
+            text=text,
         )
+    except Exception:
+        logger.exception("同步訊息到群組話題失敗")
+
+
+def _extract_chat_and_thread_id(source):
+    """source 可能是 telegram.Update（一般訊息）或 telegram.CallbackQuery（按鈕點擊），
+    這裡統一取出 (chat, message_thread_id)，供話題同步判斷使用。"""
+    if isinstance(source, Update):
+        chat = source.effective_chat
+        msg = source.effective_message
+        thread_id = msg.message_thread_id if msg else None
+        return chat, thread_id
+    # CallbackQuery：來源訊息在 .message 底下
+    msg = getattr(source, "message", None)
+    chat = msg.chat if msg else None
+    thread_id = getattr(msg, "message_thread_id", None) if msg else None
+    return chat, thread_id
+
+
+async def _notify_topic_if_elsewhere(source, context: ContextTypes.DEFAULT_TYPE, thread_id, text: str):
+    """
+    避免重複貼同一則訊息：如果這個操作原本就是在目標話題裡直接發生的
+    （例如同仁直接在「桶裝水」話題裡打快速指令），該話題已經看得到這則訊息了，
+    就不用再重複貼一次。只有「操作發生在別處」（例如私訊機器人）時才需要同步過去。
+    source 可以是 Update 或 CallbackQuery。
+    """
+    chat, origin_thread_id = _extract_chat_and_thread_id(source)
+    same_place = (
+        chat is not None
+        and getattr(config, "GROUP_CHAT_ID", None)
+        and chat.id == config.GROUP_CHAT_ID
+        and origin_thread_id == thread_id
+    )
+    if same_place:
+        return
+    await _notify_group_topic(context, thread_id, text)
+
+
+async def _notify_water_topic(source, context: ContextTypes.DEFAULT_TYPE, text: str):
+    await _notify_topic_if_elsewhere(source, context, getattr(config, "WATER_TOPIC_THREAD_ID", None), text)
+
+
+async def _notify_payment_topic(source, context: ContextTypes.DEFAULT_TYPE, text: str):
+    await _notify_topic_if_elsewhere(source, context, getattr(config, "PAYMENT_TOPIC_THREAD_ID", None), text)
 
 
 def build_app() -> Application:
@@ -1223,8 +1281,6 @@ def build_app() -> Application:
 
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(quick_payment_near_match, pattern="^qpnear_(update|addnew)$"))
-    # 暫時性除錯用，抓完「桶裝水」「款項追蹤」兩個話題的ID之後可以移除這行
-    app.add_handler(MessageHandler(filters.ALL, _debug_log_topic_info), group=1)
 
     if config.REMINDER_CHAT_ID and app.job_queue is not None:
         app.job_queue.run_daily(
