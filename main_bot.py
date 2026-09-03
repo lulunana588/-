@@ -44,8 +44,7 @@ BOT_DISPLAY_NAME = "Luna-資深行政專員-TW"
     PAY_ADD_PROGRESS,
     PAY_UPDATE_SEARCH,
     PAY_UPDATE_PICK,
-    PAY_UPDATE_NOTE,
-) = range(12)
+) = range(11)
 
 
 def _authorized(update: Update) -> bool:
@@ -841,6 +840,27 @@ async def water_receive_qty(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # 款項追蹤 - 新增
 # =========================================================
 
+def _build_payment_checklist_keyboard(matches: list, selected_rows: set) -> InlineKeyboardMarkup:
+    """
+    產生「打勾多選」款項清單的按鈕。每筆款項一顆按鈕，勾選狀態用☐/☑表示，
+    點擊會切換勾選狀態；底部固定附「確認已勾選」「手動搜尋」「返回主選單」三顆按鈕。
+    不需要打字，全程按按鈕完成。
+    """
+    keyboard = []
+    for m in matches:
+        row = m["row"]
+        v = m["values"]
+        checked = "☑" if row in selected_rows else "☐"
+        label = f"{checked} #{v[0]} {v[3]}（NT${v[4]}）"
+        keyboard.append([InlineKeyboardButton(label, callback_data=f"paytoggle_{row}")])
+    keyboard.append(
+        [InlineKeyboardButton(f"✅ 確認已勾選（{len(selected_rows)}筆）標記為已付", callback_data="pay_confirm_paid")]
+    )
+    keyboard.append([InlineKeyboardButton("🔍 手動搜尋其他款項", callback_data="pay_update_manual")])
+    keyboard.append([InlineKeyboardButton("⬅️ 返回主選單", callback_data="back_main")])
+    return InlineKeyboardMarkup(keyboard)
+
+
 async def pay_menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -862,17 +882,13 @@ async def pay_menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return ConversationHandler.END
 
         context.user_data["pay_matches"] = {str(m["row"]): m["values"] for m in matches}
-
-        keyboard = []
-        for m in matches:
-            v = m["values"]
-            pay_status = v[6] if len(v) > 6 else ""
-            label = f"#{v[0]} {v[3]}（{pay_status}）"
-            keyboard.append([InlineKeyboardButton(label, callback_data=f"payrow_{m['row']}")])
-        keyboard.append([InlineKeyboardButton("🔍 手動搜尋其他款項", callback_data="pay_update_manual")])
+        context.user_data["pay_selected_rows"] = set()
 
         if matches:
-            text = f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n以下是您登記過、還沒付款的款項，請選擇要更新的："
+            text = (
+                f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n"
+                f"以下是您登記過、還沒付款的款項，點選勾選要標記為已付的項目，再按下方「確認」："
+            )
         else:
             text = (
                 f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n"
@@ -880,7 +896,8 @@ async def pay_menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"如果要更新別人登記的款項，可以用下方按鈕手動搜尋："
             )
 
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        keyboard = _build_payment_checklist_keyboard(matches, context.user_data["pay_selected_rows"])
+        await query.edit_message_text(text, reply_markup=keyboard)
         return PAY_UPDATE_PICK
 
 
@@ -994,22 +1011,30 @@ async def pay_update_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("找不到符合的款項，請重新輸入編號或關鍵字（或 /cancel 取消）：")
         return PAY_UPDATE_SEARCH
 
+    # 已經是「已付」的排除掉，這個清單只給還沒付的款項打勾
+    matches = [m for m in matches if (m["values"][6].strip() if len(m["values"]) > 6 else "") != "已付"]
+    if not matches:
+        await update.message.reply_text("找到的都已經是「已付」狀態了，不需要重複更新。輸入 /start 可返回主選單。")
+        return ConversationHandler.END
+
     context.user_data["pay_matches"] = {str(m["row"]): m["values"] for m in matches}
+    context.user_data["pay_selected_rows"] = set()
 
-    keyboard = []
-    for m in matches:
-        v = m["values"]
-        pay_status = v[6] if len(v) > 6 else ""
-        label = f"#{v[0]} {v[3]}（{pay_status}）"
-        keyboard.append([InlineKeyboardButton(label, callback_data=f"payrow_{m['row']}")])
-
+    keyboard = _build_payment_checklist_keyboard(matches, context.user_data["pay_selected_rows"])
     await update.message.reply_text(
-        "請選擇要更新的款項：", reply_markup=InlineKeyboardMarkup(keyboard)
+        "點選勾選要標記為已付的款項，再按下方「確認」：", reply_markup=keyboard
     )
     return PAY_UPDATE_PICK
 
 
 async def pay_update_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    處理打勾清單裡的所有按鈕：
+      - paytoggle_{row}：切換該筆的勾選狀態，重繪按鈕
+      - pay_confirm_paid：把目前所有勾選的款項一次標記為已付（不問備註，全程不用打字）
+      - pay_update_manual：改用打字搜尋（備案，找別人登記的款項用）
+      - back_main：返回主選單
+    """
     query = update.callback_query
     await query.answer()
 
@@ -1020,61 +1045,60 @@ async def pay_update_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return PAY_UPDATE_SEARCH
 
-    row_key = query.data.replace("payrow_", "")
-    values = context.user_data["pay_matches"].get(row_key)
-    if not values:
-        await query.edit_message_text("❌ 資料異常，請重新 /start")
-        return ConversationHandler.END
+    if query.data == "back_main":
+        return await start(update, context)
 
-    context.user_data["pay_target_row"] = int(row_key)
-    context.user_data["pay_target_values"] = values
+    if query.data == "pay_confirm_paid":
+        selected_rows = context.user_data.get("pay_selected_rows") or set()
+        if not selected_rows:
+            await query.answer("請先勾選至少一筆款項", show_alert=True)
+            return PAY_UPDATE_PICK
 
-    pay_status = values[6] if len(values) > 6 else ""
-    if pay_status == "已付":
-        await query.edit_message_text(
-            f"#{values[0]} {values[3]} 目前狀態已經是「已付」了，不需要重複更新。\n"
-            f"輸入 /start 可返回主選單。"
+        operator = _operator_name(update)
+        await query.edit_message_text(f"{BOT_DISPLAY_NAME}\n🔄 動作：更新付款狀態\n⏳ 處理中，請稍候...")
+
+        result_lines = []
+        for row in sorted(selected_rows):
+            try:
+                result = sheets.mark_payment_paid(row, operator=operator)
+                result_lines.append(f"✅ 編號 {result['id']} {result['name']}（NT${result['amount']}）")
+            except Exception as e:
+                logger.exception("批次標記已付失敗")
+                result_lines.append(f"❌ 第{row}列更新失敗：{e}")
+
+        confirm_text = (
+            f"{BOT_DISPLAY_NAME}\n"
+            f"🔄 動作：更新付款狀態（共 {len(selected_rows)} 筆）　📅 {sheets.today_str()}\n"
+            f"付款狀態：待付 → 已付\n"
+            f"👤 操作人：{operator}\n\n" + "\n".join(result_lines)
         )
+        await query.edit_message_text(confirm_text)
+        await _notify_payment_topic(update, context, confirm_text)
+        context.user_data.pop("pay_matches", None)
+        context.user_data.pop("pay_selected_rows", None)
+        await query.message.reply_text("輸入 /start 可繼續操作。")
         return ConversationHandler.END
 
-    await query.edit_message_text(
-        f"#{values[0]} {values[3]}（NT${values[4]}）\n\n"
-        f"確定要標記為「已付」嗎？若要附加備註，請直接輸入文字；\n"
-        f"不需要備註請輸入「略過」。"
-    )
-    return PAY_UPDATE_NOTE
+    if query.data.startswith("paytoggle_"):
+        row_key = query.data.replace("paytoggle_", "")
+        values = context.user_data.get("pay_matches", {}).get(row_key)
+        if not values:
+            await query.answer("找不到這筆資料，請重新 /start", show_alert=True)
+            return PAY_UPDATE_PICK
 
+        row = int(row_key)
+        selected_rows = context.user_data.setdefault("pay_selected_rows", set())
+        if row in selected_rows:
+            selected_rows.discard(row)
+        else:
+            selected_rows.add(row)
 
-async def pay_update_note(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    note = update.message.text.strip()
-    note = None if note in ("略過", "skip", "") else note
-    operator = _operator_name(update)
+        matches = [{"row": int(k), "values": v} for k, v in context.user_data["pay_matches"].items()]
+        keyboard = _build_payment_checklist_keyboard(matches, selected_rows)
+        await query.edit_message_reply_markup(reply_markup=keyboard)
+        return PAY_UPDATE_PICK
 
-    row = context.user_data["pay_target_row"]
-    processing = await update.message.reply_text(
-        f"{BOT_DISPLAY_NAME}\n🔄 動作：更新付款狀態\n⏳ 處理中，請稍候..."
-    )
-
-    try:
-        result = sheets.mark_payment_paid(row, note=note, operator=operator)
-    except Exception as e:
-        logger.exception("更新付款狀態失敗")
-        await processing.edit_text(f"❌ 更新失敗：{e}")
-        return ConversationHandler.END
-
-    confirm_text = (
-        f"{BOT_DISPLAY_NAME}\n"
-        f"🔄 動作：更新付款狀態　📅 日期：{result['paid_date']}\n"
-        f"✅ 編號 {result['id']} → {result['name']}（NT${result['amount']}）\n"
-        f"付款狀態：待付 → 已付\n"
-        f"👤 操作人：{operator}\n"
-        f"已更新"
-    )
-    await processing.edit_text(confirm_text)
-    await _notify_payment_topic(update, context, confirm_text)
-    context.user_data.clear()
-    await update.message.reply_text("輸入 /start 可繼續操作。")
-    return ConversationHandler.END
+    return PAY_UPDATE_PICK
 
 
 # =========================================================
@@ -1300,8 +1324,7 @@ def build_app() -> Application:
             ],
             PAY_ADD_PROGRESS: [CallbackQueryHandler(pay_add_progress, pattern="^prog_")],
             PAY_UPDATE_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_update_search)],
-            PAY_UPDATE_PICK: [CallbackQueryHandler(pay_update_pick, pattern="^(payrow_|pay_update_manual)")],
-            PAY_UPDATE_NOTE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_update_note)],
+            PAY_UPDATE_PICK: [CallbackQueryHandler(pay_update_pick, pattern="^(payrow_|paytoggle_|pay_update_manual|pay_confirm_paid|back_main)")],
         },
         fallbacks=[
             CommandHandler("cancel", cancel),
