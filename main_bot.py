@@ -1170,6 +1170,22 @@ async def _on_startup(application: Application):
         logger.exception("發送上線通知失敗")
 
 
+async def _debug_log_topic_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    暫時性除錯工具：記錄每則群組訊息的 chat_id 跟 message_thread_id（話題ID）。
+    不回覆任何訊息、不影響其他功能，只是寫進log，方便抓出「桶裝水」「款項追蹤」
+    這兩個話題各自的 message_thread_id，設定好群組回報功能後可以移除這個handler。
+    用 group=1 註冊，跟主要的 ConversationHandler（group=0）並行執行，不會互相干擾。
+    """
+    chat = update.effective_chat
+    msg = update.effective_message
+    if chat and chat.type in ("group", "supergroup") and msg:
+        logger.info(
+            f"[話題ID除錯] chat_id={chat.id} chat_title={chat.title!r} "
+            f"message_thread_id={msg.message_thread_id} text={msg.text!r}"
+        )
+
+
 def build_app() -> Application:
     app = Application.builder().token(config.TELEGRAM_BOT_TOKEN).post_init(_on_startup).build()
 
@@ -1207,6 +1223,8 @@ def build_app() -> Application:
 
     app.add_handler(conv)
     app.add_handler(CallbackQueryHandler(quick_payment_near_match, pattern="^qpnear_(update|addnew)$"))
+    # 暫時性除錯用，抓完「桶裝水」「款項追蹤」兩個話題的ID之後可以移除這行
+    app.add_handler(MessageHandler(filters.ALL, _debug_log_topic_info), group=1)
 
     if config.REMINDER_CHAT_ID and app.job_queue is not None:
         app.job_queue.run_daily(
