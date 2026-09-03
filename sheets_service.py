@@ -655,6 +655,7 @@ def get_pending_payments():
                 "amount": amount,
                 "status": status or "（未填）",
                 "progress": progress or "（未填）",
+                "submit_date": row[1].strip() if len(row) > 1 else "",
             }
         )
 
