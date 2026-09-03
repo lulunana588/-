@@ -95,3 +95,8 @@ TAIWAN_HOLIDAYS = {
         "2026-12-25", "2026-12-26", "2026-12-27",
     },
 }
+# 群組話題ID設定（2026/09/03 新增）
+# 用於：完成桶裝水/款項操作後，把確認訊息同步發到對應的群組話題
+GROUP_CHAT_ID = -1003755120614
+WATER_TOPIC_THREAD_ID = 1046
+PAYMENT_TOPIC_THREAD_ID = 3884
