@@ -853,11 +853,35 @@ async def pay_menu_router(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return PAY_ADD_NAME
     elif query.data == "pay_update":
-        await query.edit_message_text(
-            f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n"
-            f"請輸入要更新的「編號」或「款項名稱關鍵字」："
-        )
-        return PAY_UPDATE_SEARCH
+        operator = _operator_name(update)
+        try:
+            matches = sheets.find_payment_records_by_operator(operator)
+        except Exception as e:
+            logger.exception("讀取自己登記過的款項失敗")
+            await query.edit_message_text(f"❌ 讀取失敗：{e}")
+            return ConversationHandler.END
+
+        context.user_data["pay_matches"] = {str(m["row"]): m["values"] for m in matches}
+
+        keyboard = []
+        for m in matches:
+            v = m["values"]
+            pay_status = v[6] if len(v) > 6 else ""
+            label = f"#{v[0]} {v[3]}（{pay_status}）"
+            keyboard.append([InlineKeyboardButton(label, callback_data=f"payrow_{m['row']}")])
+        keyboard.append([InlineKeyboardButton("🔍 手動搜尋其他款項", callback_data="pay_update_manual")])
+
+        if matches:
+            text = f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n以下是您登記過、還沒付款的款項，請選擇要更新的："
+        else:
+            text = (
+                f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n"
+                f"目前沒有您登記過、還沒付款的款項。\n"
+                f"如果要更新別人登記的款項，可以用下方按鈕手動搜尋："
+            )
+
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        return PAY_UPDATE_PICK
 
 
 async def pay_add_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -988,6 +1012,14 @@ async def pay_update_search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def pay_update_pick(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+
+    if query.data == "pay_update_manual":
+        await query.edit_message_text(
+            f"{BOT_DISPLAY_NAME}\n🔄 更新付款狀態\n\n"
+            f"請輸入要更新的「編號」或「款項名稱關鍵字」："
+        )
+        return PAY_UPDATE_SEARCH
+
     row_key = query.data.replace("payrow_", "")
     values = context.user_data["pay_matches"].get(row_key)
     if not values:
@@ -1268,7 +1300,7 @@ def build_app() -> Application:
             ],
             PAY_ADD_PROGRESS: [CallbackQueryHandler(pay_add_progress, pattern="^prog_")],
             PAY_UPDATE_SEARCH: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_update_search)],
-            PAY_UPDATE_PICK: [CallbackQueryHandler(pay_update_pick, pattern="^payrow_")],
+            PAY_UPDATE_PICK: [CallbackQueryHandler(pay_update_pick, pattern="^(payrow_|pay_update_manual)")],
             PAY_UPDATE_NOTE: [MessageHandler(filters.TEXT & ~filters.COMMAND, pay_update_note)],
         },
         fallbacks=[
