@@ -536,6 +536,29 @@ def update_payment_fields(
     }
 
 
+def find_payment_records_by_operator(operator_name: str, limit: int = 20):
+    """
+    找出「操作人」欄位等於 operator_name、且付款狀態還不是「已付」的所有款項列。
+    用於：同仁點選「更新付款狀態」時，直接列出自己登記過、還沒結清的款項，
+    不用再手動輸入編號或關鍵字搜尋。
+    回傳 [{row, values}, ...]，依表格原本順序（越早登記的排越前面）。
+    """
+    ws = get_payment_worksheet()
+    all_values = ws.get_all_values()
+    header_idx = _payment_header_row_idx(all_values)
+
+    results = []
+    for i in range(header_idx + 1, len(all_values)):
+        row = all_values[i]
+        if not row or not row[0].strip():
+            continue
+        row_operator = row[2].strip() if len(row) > 2 else ""
+        row_status = row[6].strip() if len(row) > 6 else ""
+        if row_operator == operator_name and row_status != "已付":
+            results.append({"row": i + 1, "values": row})
+    return results[:limit]
+
+
 def find_payment_records(query: str, limit: int = 8):
     """
     依編號完全比對優先，否則用款項名稱模糊比對。
