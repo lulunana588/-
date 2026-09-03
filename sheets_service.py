@@ -42,6 +42,42 @@ def today_str() -> str:
 # 桶裝水庫存表
 # =========================================================
 
+def get_detail_last_balance(location_name: str):
+    """
+    唯讀版本：只讀取該地點分頁「真正最後一筆」的剩餘數量，不做任何寫入。
+    邏輯跟 append_water_log() 裡找 prev_balance 的方式一致（含跳過人工留白列），
+    主要給健康檢查／對帳用，確認總覽表跟分頁數字有沒有兜起來。
+    找不到任何資料列時回傳 None。
+    """
+    tab_title, col_start = _resolve_detail_target(location_name)
+    ws = get_water_detail_worksheet(tab_title)
+    values = ws.get_all_values()
+
+    header_idx = None
+    for i, row in enumerate(values):
+        cell = row[col_start - 1] if len(row) >= col_start else ""
+        if cell.strip() == "日期":
+            header_idx = i
+            break
+    if header_idx is None:
+        raise RuntimeError(f"在分頁「{tab_title}」找不到「日期」標題欄")
+
+    balance_col = col_start + 4
+    last_balance = None
+    for i in range(header_idx + 1, len(values)):
+        row = values[i]
+        date_cell = row[col_start - 1] if len(row) >= col_start else ""
+        if not date_cell.strip():
+            continue
+        bal_cell = row[balance_col - 1] if len(row) >= balance_col else ""
+        if bal_cell.strip():
+            try:
+                last_balance = int(bal_cell.strip())
+            except ValueError:
+                pass
+    return last_balance
+
+
 def get_water_worksheet():
     return _open_worksheet(config.WATER_SHEET_ID, config.WATER_GID)
 
