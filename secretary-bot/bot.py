@@ -852,10 +852,9 @@ SIBLING_SCRIPTS = {
         "log": "/root/diary-bot/backup_to_drive.log",
         "max_silent_hours": 24 * 9,
     },
-    "bill-reminder（每日帳單提醒）": {
-        "log": "/root/bill-reminder/log.txt",
-        "max_silent_hours": 30,
-    },
+    # 2026-09-07：鵝鵝帳單提醒的「發訊息到群組」功能已經併入秘書Bot自己的
+    # send_bill_group_reminder排程（見setup_scheduler），原本獨立的cron已經停用，
+    # 所以這個log檔案之後不會再更新，移除這裡的監控，不然會被誤判成「太久沒更新」。
 }
 
 _LOG_ERROR_KEYWORDS = ("Traceback", "Error", "錯誤", "Exception", "failed")
@@ -1672,6 +1671,38 @@ async def evening_push(app: Application):
     logger.info("已推播下班前提醒")
 
 
+async def send_bill_group_reminder(app: Application):
+    """
+    2026-09-07：原本「鵝鵝帳單提醒」是VPS上一支獨立程式，每天固定時間檢查一次今天有沒有
+    帳單到期，有的話發訊息到一個Telegram群組（不是Luna個人）。現在併入秘書Bot，改成這個排程函式，
+    每天在跟原本cron一樣的台灣時間下午6:06檢查一次。
+
+    直接沿用bill_reminder.py既有的get_bills()/format_msg()（跟generate_tasks_from_bill_reminder
+    共用同一份規則檔案，不重新實作、不複製規則清單），只把發送方式從它原本自己用requests.post
+    打Telegram API，換成秘書Bot自己的app.bot.send_message——訊息格式完全不變，只是改由
+    Lulu小秘書發送。沒有到期帳單的日子，跟原本行為一樣，直接跳過不發送。
+    """
+    try:
+        if BILL_REMINDER_SCRIPT_DIR not in sys.path:
+            sys.path.insert(0, BILL_REMINDER_SCRIPT_DIR)
+        import bill_reminder
+    except Exception:
+        logger.warning("讀取bill_reminder.py規則失敗，略過群組帳單提醒", exc_info=True)
+        return
+
+    today = datetime.now(TW_TZ)
+    try:
+        bills = bill_reminder.get_bills(today)
+        if not bills:
+            logger.info(f"帳單群組提醒：{today.strftime('%Y-%m-%d')} 沒有到期帳單，不發送")
+            return
+        msg = bill_reminder.format_msg(bills, today)
+        await app.bot.send_message(chat_id=config.BILL_REMINDER_GROUP_CHAT_ID, text=msg)
+        logger.info(f"帳單群組提醒已發送（{today.strftime('%Y-%m-%d')}）")
+    except Exception:
+        logger.error("帳單群組提醒發送失敗", exc_info=True)
+
+
 async def scheduled_backup(app: Application):
     """每週日晚上22:00把資料庫備份到Google Drive"""
     try:
@@ -1740,6 +1771,14 @@ def setup_scheduler(app: Application):
         args=[app],
         misfire_grace_time=3600 * 6,
         name="週日資料庫備份",
+    )
+    scheduler.add_job(
+        send_bill_group_reminder,
+        # 沿用鵝鵝帳單提醒原本cron「6 10 * * *」（VPS系統UTC）換算出的台灣時間：UTC 10:06 = 台灣18:06
+        trigger=CronTrigger(hour=18, minute=6, timezone="Asia/Taipei"),
+        args=[app],
+        misfire_grace_time=3600,
+        name="帳單群組提醒（原鵝鵝帳單提醒併入）",
     )
     scheduler.add_job(
         check_due_reminders,
