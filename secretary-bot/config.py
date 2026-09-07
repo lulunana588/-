@@ -22,6 +22,10 @@ EVENING_PUSH_MINUTE = 0
 
 TAIWAN_TZ_OFFSET_HOURS = 8  # 台灣時間 = UTC+8
 
+# 2026-09-07：原本「鵝鵝帳單提醒」獨立程式負責發送的Telegram群組chat_id，
+# 併入秘書Bot後改由秘書Bot自己的bot.send_message發送到這裡（見bot.py的send_bill_group_reminder）
+BILL_REMINDER_GROUP_CHAT_ID = "-1003755120614"
+
 # 視覺風格：深色 + 薄荷綠（沿用 diary-bot 風格）
 COLOR_BG = (13, 17, 23)
 COLOR_CARD = (22, 27, 34)
