@@ -51,8 +51,18 @@ def handle_event(ev):
     if eid and not db.mark_event(eid):
         return  # LINE 重送的重複事件
 
-    uid = (ev.get('source') or {}).get('userId')
+    src = ev.get('source') or {}
+    uid = src.get('userId')
     token = ev.get('replyToken')
+
+    # 隱私保護：只在一對一聊天運作。被加進群組／多人聊天室時，說明後立刻離開，
+    # 避免任何人的體重數字出現在其他人看得到的地方。
+    if src.get('type') != 'user':
+        if ev.get('type') in ('join', 'message') and token:
+            line.reply(token, [line.text('🔒 為了保護每個人的體重隱私，小秘書只在一對一聊天中使用，現在會離開這個群組。')])
+        line.leave(src)
+        log.info('已離開非一對一聊天：%s', src.get('type'))
+        return
 
     if not cfg.OWNER_USER_IDS:
         if token and uid:
