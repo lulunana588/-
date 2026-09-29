@@ -1,7 +1,10 @@
-"""VVS小秘書｜每週摘要（cron 週日晚上執行）
+"""VVS小秘書｜每週／每月摘要（cron）
 
-每個人只收到自己的摘要；本週沒有紀錄的人不推播。
+  python vvs_weekly.py            週日晚上：本週摘要
+  python vvs_weekly.py --monthly  每月 1 號：上個月摘要
+每個人只收到自己的摘要；期間內沒有紀錄的人不推播。
 """
+import sys
 from datetime import datetime
 
 import vvs_config as cfg
@@ -10,14 +13,15 @@ import vvs_line as line
 import vvs_weight as weight
 
 
-def main():
+def main(monthly=False):
     db.init()
+    kind = 'monthly' if monthly else 'weekly'
     for uid in cfg.OWNER_USER_IDS:
-        msg = weight.weekly_summary(uid)
+        msg = weight.monthly_summary(uid) if monthly else weight.weekly_summary(uid)
         if msg:
             ok = line.push(uid, [msg], quick=weight.QUICK)
-            print(f'{datetime.now(cfg.TZ):%Y-%m-%d %H:%M} weekly {uid[:6]}… {"OK" if ok else "FAIL"}', flush=True)
+            print(f'{datetime.now(cfg.TZ):%Y-%m-%d %H:%M} {kind} {uid[:6]}… {"OK" if ok else "FAIL"}', flush=True)
 
 
 if __name__ == '__main__':
-    main()
+    main(monthly='--monthly' in sys.argv)
