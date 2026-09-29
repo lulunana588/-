@@ -24,6 +24,7 @@ FALLBACK = ('目前小秘書只開放體重功能 🙂\n'
             '直接輸入體重即可，例如：84.5\n'
             '輸入「說明」看全部指令')
 CHART_RE = re.compile(r'^[0-9a-f]{32}\.png$')
+EXPORT_RE = re.compile(r'^[0-9a-f]{48}\.csv$')
 
 
 def valid_signature(body: bytes, sig: str) -> bool:
@@ -89,6 +90,12 @@ def handle_event(ev):
         line.reply(token, [weight.help_msg()], quick=weight.QUICK)
         return
 
+    if ev.get('type') == 'postback':
+        msgs = weight.handle_postback(uid, (ev.get('postback') or {}).get('data', ''))
+        if msgs:
+            line.reply(token, msgs, quick=weight.QUICK)
+        return
+
     msg = ev.get('message') or {}
     if ev.get('type') != 'message' or msg.get('type') != 'text':
         return
@@ -110,6 +117,18 @@ def chart(name):
     if not CHART_RE.match(name):
         abort(404)
     return send_from_directory(cfg.CHART_DIR, name, mimetype='image/png', max_age=86400)
+
+
+@app.get('/exports/<name>')
+def export_file(name):
+    if not EXPORT_RE.match(name):
+        abort(404)
+    weight.cleanup_temp()            # 過期的先刪掉，過期連結一律 404
+    resp = send_from_directory(weight.EXPORT_DIR, name, mimetype='text/csv', as_attachment=True,
+                               download_name='我的體重紀錄.csv', max_age=0)
+    resp.headers['Cache-Control'] = 'no-store'
+    resp.headers['X-Robots-Tag'] = 'noindex'
+    return resp
 
 
 @app.get('/health')
