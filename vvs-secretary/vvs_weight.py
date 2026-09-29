@@ -6,6 +6,7 @@ handle(uid, text) → LINE 訊息列表；不是體重指令時回傳 None，
 import os
 import re
 import time
+import unicodedata
 import uuid
 from datetime import datetime, timedelta
 
@@ -19,8 +20,12 @@ QUICK = ['最近', '本週', '本月', '趨勢', '撤銷', '說明']
 
 RE_RECORD = re.compile(
     r'^(?:(\d{1,2})[/-](\d{1,2})\s+)?(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?(?:\s+(.*))?$', re.I)
-RE_HEIGHT = re.compile(r'^身高\s*(\d{2,3}(?:\.\d)?)\s*(?:cm|公分)?$', re.I)
-RE_TARGET = re.compile(r'^目標\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?$', re.I)
+# 身高／目標：可單獨或寫在同一則；接受冒號、單位、全形字（先經 NFKC 正規化）
+RE_SETTINGS = re.compile(
+    r'^(?:身高\s*[:=]?\s*(\d{2,3}(?:\.\d)?)\s*(?:cm|公分)?)?'
+    r'[\s,，、;；]*'
+    r'(?:目標(?:體重)?\s*[:=]?\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?)?$', re.I)
+NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170」「目標 70」就會幫你算 BMI 和距離目標'
 
 HELP = """🤖 VVS小秘書｜體重記錄使用規則
 
@@ -88,7 +93,7 @@ BMI、跟上一次比增減多少、7筆平均、距離目標還差多少
 # ================= 入口 =================
 
 def handle(uid, raw):
-    t = re.sub(r'\s+', ' ', (raw or '').strip())
+    t = re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', raw or '').strip())
     low = t.lower()
     if low in ('說明', '規則', '使用規則', 'help', '?', '？'):
         return [line.text(HELP)]
@@ -102,12 +107,9 @@ def handle(uid, raw):
         return trend(uid)
     if low in ('撤銷', '刪除', 'undo'):
         return [undo(uid)]
-    m = RE_HEIGHT.match(t)
-    if m:
-        return [set_height(uid, float(m.group(1)))]
-    m = RE_TARGET.match(t)
-    if m:
-        return [set_target(uid, float(m.group(1)))]
+    m = RE_SETTINGS.match(t)
+    if m and (m.group(1) or m.group(2)):
+        return [set_settings(uid, m.group(1), m.group(2))]
     m = RE_RECORD.match(t)
     if m:
         return [record(uid, m)]
@@ -121,14 +123,15 @@ def help_msg():
 # ================= 計算 =================
 
 def settings(uid):
-    h = float(db.get_setting(uid, 'height_cm', cfg.DEFAULT_HEIGHT_CM))
-    g = float(db.get_setting(uid, 'target_kg', cfg.DEFAULT_TARGET_KG))
-    return h, g
+    """只用使用者自己設定的值；沒設定就回傳 None，不套用任何預設"""
+    h = db.get_setting(uid, 'height_cm')
+    g = db.get_setting(uid, 'target_kg')
+    return (float(h) if h else None), (float(g) if g else None)
 
 
 def compute_rows(rows, height_cm, target_kg):
     """rows 需已依時間排序；回傳附帶 BMI、差異、增減%、7筆平均、距離目標的列表"""
-    h2 = (height_cm / 100) ** 2
+    h2 = (height_cm / 100) ** 2 if height_cm else None
     out = []
     for i, r in enumerate(rows):
         w = r['weight']
@@ -137,11 +140,11 @@ def compute_rows(rows, height_cm, target_kg):
         out.append({
             **r,
             'when': datetime.fromisoformat(r['ts']),
-            'bmi': round(w / h2, 1),
+            'bmi': round(w / h2, 1) if h2 else None,
             'diff': None if prev is None else round(w - prev, 1),
             'pct': None if prev is None else (w - prev) / prev * 100,
             'avg': avg,
-            'dist': round(w - target_kg, 1),
+            'dist': round(w - target_kg, 1) if target_kg else None,
         })
     return out
 
@@ -178,13 +181,14 @@ def record_text(o, uid, backdated):
     _, target = settings(uid)
     when = f"{md(o['when'])}（補登）" if backdated else f"{md(o['when'])} {o['when']:%H:%M}"
     lines = [f"✅ 已記錄 {when}{'｜' + o['note'] if o['note'] else ''}",
-             f"體重：{o['weight']:.1f} kg",
-             f"BMI：{o['bmi']:.1f}"]
+             f"體重：{o['weight']:.1f} kg"]
+    if o['bmi'] is not None:
+        lines.append(f"BMI：{o['bmi']:.1f}")
     if o['diff'] is not None:
         lines.append(f"較前次：{arrow(o['diff'])} {signed(o['diff'], 1)} kg（{signed(o['pct'], 2)}%）")
     if o['avg'] is not None:
         lines.append(f"7筆平均：{o['avg']:.1f} kg")
-    lines.append(dist_text(o['dist'], target))
+    lines.append(dist_text(o['dist'], target) if target else NEED_SETUP)
     return '\n'.join(lines)
 
 
@@ -223,11 +227,11 @@ def period(uid, kind):
     return line.text('\n'.join([
         f'📊 {label}摘要（{md(start)} 起）',
         f'記錄：{len(rows)} 筆',
-        f"最新：{last['weight']:.1f} kg（BMI {last['bmi']:.1f}）",
+        f"最新：{last['weight']:.1f} kg" + (f"（BMI {last['bmi']:.1f}）" if last['bmi'] is not None else ''),
         f"變化：{arrow(change)} {signed(change, 1)} kg（對比 {md(base['when'])} {base['weight']:.1f}）",
         f'平均：{sum(ws) / len(ws):.1f} kg',
         f'最低／最高：{min(ws):.1f}／{max(ws):.1f} kg',
-        dist_text(last['dist'], target),
+        dist_text(last['dist'], target) if target else NEED_SETUP,
     ]))
 
 
@@ -244,7 +248,7 @@ def trend(uid):
         return [line.text('趨勢圖暫時產生失敗，先用「最近」看文字紀錄')]
     last = rows[-1]
     return [line.image(f'{cfg.PUBLIC_BASE_URL}/charts/{name}'),
-            line.text(f"最新 {last['weight']:.1f} kg｜{dist_text(last['dist'], target)}")]
+            line.text(f"最新 {last['weight']:.1f} kg" + (f"｜{dist_text(last['dist'], target)}" if target else ''))]
 
 
 def undo(uid):
@@ -255,22 +259,36 @@ def undo(uid):
     return line.text(f"🗑️ 已刪除：{md(when)} {when:%H:%M}  {r['weight']:.1f} kg")
 
 
-def set_height(uid, cm):
-    if not (100 <= cm <= 250):
-        return line.text('身高請輸入 100–250 之間（cm）')
-    db.set_setting(uid, 'height_cm', cm)
-    rows = compute(uid)
-    extra = f"\n最新 BMI：{rows[-1]['bmi']:.1f}" if rows else ''
-    return line.text(f'✅ 身高已設為 {cm:g} cm{extra}')
+def set_settings(uid, height, target):
+    msgs = []
+    if height is not None:
+        cm = float(height)
+        if not (100 <= cm <= 250):
+            return line.text('身高請輸入 100–250 之間（cm），例如：身高 170')
+    if target is not None:
+        kg = float(target)
+        if not (W_MIN <= kg <= W_MAX):
+            return line.text(f'目標請輸入 {W_MIN}–{W_MAX} 之間（kg），例如：目標 70')
+    if height is not None:
+        db.set_setting(uid, 'height_cm', cm)
+        msgs.append(f'✅ 身高已設為 {cm:g} cm')
+    if target is not None:
+        db.set_setting(uid, 'target_kg', kg)
+        msgs.append(f'✅ 目標已設為 {kg:g} kg')
 
-
-def set_target(uid, kg):
-    if not (W_MIN <= kg <= W_MAX):
-        return line.text(f'目標請輸入 {W_MIN}–{W_MAX} 之間（kg）')
-    db.set_setting(uid, 'target_kg', kg)
+    h, g = settings(uid)
     rows = compute(uid)
-    extra = '\n' + dist_text(rows[-1]['dist'], kg) if rows else ''
-    return line.text(f'✅ 目標已設為 {kg:g} kg{extra}')
+    if rows:
+        last = rows[-1]
+        if last['bmi'] is not None:
+            msgs.append(f"最新 BMI：{last['bmi']:.1f}")
+        if g:
+            msgs.append(dist_text(last['dist'], g))
+    if not h:
+        msgs.append('💡 再傳「身高 170」就能算 BMI')
+    if not g:
+        msgs.append('💡 再傳「目標 70」就能算距離目標')
+    return line.text('\n'.join(msgs))
 
 
 def reminder_for(uid):
@@ -297,7 +315,8 @@ def render_chart(rows, target):
     avg_pts = [(x, r['avg']) for x, r in zip(xs, rows) if r['avg'] is not None]
     if avg_pts:
         ax.plot(*zip(*avg_pts), marker='o', ms=2, lw=2, color='#F5A623', label='7筆平均')
-    ax.axhline(target, ls='--', lw=1.5, color='#7ED321', label=f'目標 {target:g} kg')
+    if target:
+        ax.axhline(target, ls='--', lw=1.5, color='#7ED321', label=f'目標 {target:g} kg')
 
     step = max(1, len(xs) // 10)
     ax.set_xticks(xs[::step])
@@ -314,7 +333,7 @@ def render_chart(rows, target):
     return name
 
 
-def _cleanup_charts(max_age_sec=2 * 86400):
+def _cleanup_charts(max_age_sec=86400):
     cutoff = time.time() - max_age_sec
     for p in cfg.CHART_DIR.glob('*.png'):
         try:
@@ -371,6 +390,7 @@ def dist_text(dist, target):
 def selftest():
     """健康檢查用：驗證解析與計算邏輯"""
     assert RE_RECORD.match('84.5') and RE_RECORD.match('9/20 85.2 起床後')
+    assert RE_SETTINGS.match('身高:170 目標70kg').groups() == ('170', '70')
     rows = compute_rows([{'id': 1, 'ts': '2026-01-01T08:00:00+08:00', 'weight': 90.0, 'note': ''},
                          {'id': 2, 'ts': '2026-01-02T08:00:00+08:00', 'weight': 89.5, 'note': ''}], 180, 85)
     assert rows[1]['diff'] == -0.5 and rows[1]['bmi'] == 27.6 and rows[1]['dist'] == 4.5
