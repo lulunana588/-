@@ -1,6 +1,8 @@
 #!/bin/bash
 # VVS小秘書｜安全部署
 # 用法：bash vvs_deploy.sh vvs_weight.py vvs_app.py ...
+#       bash vvs_deploy.sh --history          看最近的版本紀錄
+#       bash vvs_deploy.sh --rollback 版本號   退回某個舊版本（一樣要先通過全部測試）
 #
 # 新程式必須先在「隔離區」通過全部測試，才會取代線上版本：
 #   1. 語法檢查
@@ -19,6 +21,25 @@ PY=$APP/venv/bin/python
 if [ $# -eq 0 ]; then
   echo "用法：bash vvs_deploy.sh 檔名1 檔名2 ..."
   exit 1
+fi
+
+if [ "$1" = "--history" ]; then
+  cd "$APP" && git log --date=format:'%m/%d %H:%M' --pretty='%h  %ad  %s' -15 2>/dev/null \
+    || echo "還沒有版本紀錄（下次部署後就會開始記錄）"
+  exit 0
+fi
+
+if [ "$1" = "--rollback" ]; then
+  [ -n "${2:-}" ] || { echo "用法：bash vvs_deploy.sh --rollback 版本號（用 --history 查）"; exit 1; }
+  cd "$APP" && git rev-parse --verify -q "$2^{commit}" >/dev/null || { echo "找不到版本 $2"; exit 1; }
+  SRC=$(mktemp -d /tmp/vvs_rollback.XXXXXX)
+  git archive "$2" | tar -x -C "$SRC"
+  FILES=$(cd "$SRC" && ls *.py)
+  echo "↩️ 準備退回版本 $2（會先跑完全部測試才上線）"
+  VVS_SRC="$SRC" VVS_MSG="rollback to $2" bash "$0" $FILES
+  RC=$?
+  rm -rf "$SRC"
+  exit $RC
 fi
 
 STAGE=$(mktemp -d /tmp/vvs_stage.XXXXXX)
@@ -85,6 +106,20 @@ if curl -s https://vivicare.duckdns.org/health | grep -q '"ok":true'; then
   echo ""
   echo "✅ 部署完成，已上線：$*"
   echo "   舊版本保存在 $BK"
+  if command -v git >/dev/null; then
+    (
+      cd "$APP"
+      if [ ! -d .git ]; then
+        git init -q
+        printf 'data/\nvenv/\n.env\n__pycache__/\n*.pyc\n' > .gitignore
+        git config user.name vvs-deploy
+        git config user.email vvs-deploy@localhost
+      fi
+      git add -A >/dev/null 2>&1
+      git commit -qm "${VVS_MSG:-deploy: $*}" >/dev/null 2>&1 \
+        && echo "   版本紀錄：$(git rev-parse --short HEAD)（查詢：bash vvs_deploy.sh --history）"
+    )
+  fi
 else
   echo "⚠️ 上線後健康檢查失敗，自動還原舊版本…"
   for f in "$@"; do
