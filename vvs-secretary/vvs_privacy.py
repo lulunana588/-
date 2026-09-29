@@ -14,8 +14,9 @@
   4. 網域：vivicare.duckdns.org 是否仍指向這台 VPS
   5. 對外路徑：資料庫、設定檔、圖表目錄都不能從網路讀到；/health 只回傳是非值
   6. 檔案權限：.env、資料庫、備份只有 root 能讀（自動修正）
-  7. 暫存檔案：超過 24 小時的趨勢圖、超過 30 分鐘的匯出檔自動刪除
-  8. 異常事件：近 7 天被拉進群組、陌生人傳訊息的次數
+  7. 暫存檔案：超過 1 小時的趨勢圖、超過 10 分鐘的匯出檔自動刪除（過期連結一律打不開）
+  8. 備份加密：上傳 Google Drive 的備份必須是加密檔，金鑰只存在 VPS
+  9. 異常事件：近 7 天被拉進群組、陌生人傳訊息的次數
 """
 import hashlib
 import json
@@ -97,6 +98,8 @@ def check_isolation():
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     problems = []
+    if not res.get('a_streak_ok', True):
+        problems.append('A 的連續天數算到了別人的紀錄')
     if res.get('leaked'):
         problems.append(f'A 看到了 B 的數字 {res["leaked"]}')
     if not res.get('b_intact'):
@@ -110,42 +113,55 @@ def _isolation_child():
     """在暫存資料庫裡跑，完全不碰真實資料、不呼叫 LINE。涵蓋所有會回傳資料的功能。"""
     import vvs_db as db
     import vvs_weight as w
+    from datetime import timedelta
     db.init()
     A, B = 'U_PRIVACY_TEST_A', 'U_PRIVACY_TEST_B'
-    b_secrets = ['173.4', '77.7', '88.8', '89.9', '87.6']
+    now = w.now_tpe()
+    ago = lambda d: now - timedelta(days=d)
+    last_month = now.replace(day=1) - timedelta(days=2)
+    md = lambda d: f'{d.month}/{d.day}'
+    b_secrets = ['173.4', '77.7', '86.5', '87.9', '89.1', '87.6', '88.8']
+    # B 的紀錄刻意分散在「上個月、前幾天、昨天、今天」，讓每種摘要與連續天數都有機會讀錯人
     w.handle(B, '身高 173.4 目標 77.7')
-    w.handle(B, '9/1 89.9')
+    for d, wt in ((last_month, '86.5'), (ago(3), '87.9'), (ago(2), '89.1'), (ago(1), '87.6')):
+        w.handle(B, f'{md(d)} {wt}')
     w.handle(B, '88.8 B的秘密註記')
-    w.handle(B, '87.6')
     b_ids = [r['id'] for r in db.list_weights(B)]
     b_count = len(b_ids)
 
     w.handle(A, '身高 160 目標 55')
-    w.handle(A, '56.2')
+    w.handle(A, f'{md(last_month)} 57.3')
+    w.handle(A, '56.2')        # A 只有上個月一筆與今天，連續天數應該是 1
     outs = []
 
     def run(msgs):
         for m in msgs or []:
             outs.append(json.dumps(m, ensure_ascii=False))
 
+    w.handle(B, '提醒 06:15')
     for cmd in ['最近', '本週', '本月', '趨勢', '趨勢 全部', '趨勢 90', '刪除', '說明',
-                '70.5', '確認記錄', '撤銷', '撤銷', '撤銷', '56.1', '身高 161']:
+                '70.5', '確認記錄', '撤銷', '撤銷', '撤銷', '56.1', '身高 161',
+                '提醒', '提醒 07:30', '提醒 關閉', '提醒 開啟', '提醒']:
         run(w.handle(A, cmd))
     for bid in b_ids:                                   # A 試圖用按鈕刪 B 的紀錄
         run(w.handle_postback(A, f'del:{bid}'))
-    run([w.weekly_summary(A)])
+    run([w.weekly_summary(A), w.monthly_summary(A)])
+    a_streak = w.streak(A)
+    b_remind_ok = w.reminder_setting(B) == '06:15'
     exp = w.handle(A, '匯出')
     run(exp)
     for f in w.EXPORT_DIR.glob('*.csv'):                 # 匯出檔內容也要檢查
         outs.append(f.read_text(encoding='utf-8'))
-    run([w.reminder_for(A)])
+    run([w.reminder_for(A), w.reminder_due(A)])
     run(w.handle(A, '刪除我的資料'))
     run(w.handle(A, '確認刪除全部資料'))
     text = '\n'.join(o for o in outs if o)
     print(json.dumps({
         'leaked': [s for s in b_secrets + ['B的秘密'] if s in text],
-        'b_intact': len(db.list_weights(B)) == b_count,
-        'settings_separate': w.settings(B) == (173.4, 77.7) and w.settings(A) == (None, None),
+        'b_intact': len(db.list_weights(B)) == b_count and b_count == 5,
+        'a_streak_ok': a_streak == 1,
+        'settings_separate': (w.settings(B) == (173.4, 77.7) and w.settings(A) == (None, None)
+                              and b_remind_ok and w.reminder_setting(B) == '06:15'),
     }))
 
 
@@ -207,7 +223,7 @@ def check_permissions():
     targets = [(BASE / '.env', 0o600), (cfg.DATA_DIR, 0o700), (cfg.DATA_DIR / 'backups', 0o700)]
     targets += [(p, 0o600) for p in cfg.DATA_DIR.glob('secretary.db*')]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'backups').glob('*.db')]
-    targets += [(cfg.DATA_DIR / 'exports', 0o700)]
+    targets += [(cfg.DATA_DIR / 'exports', 0o700), (cfg.DATA_DIR / 'backup.key', 0o600)]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'exports').glob('*.csv')]
     for p, mode in targets:
         if not p.exists():
@@ -223,6 +239,24 @@ def check_charts():
     import vvs_weight as w
     removed = w.cleanup_temp()
     return True, (f'已刪除 {removed} 個過期的趨勢圖／匯出檔' if removed else '沒有過期檔案')
+
+
+def check_backup_encryption():
+    key = cfg.DATA_DIR / 'backup.key'
+    if not key.exists():
+        return False, '找不到備份金鑰，雲端備份可能沒有加密'
+    if stat.S_IMODE(key.stat().st_mode) & 0o077:
+        os.chmod(key, 0o600)
+    last = ''
+    try:
+        for ln in (cfg.DATA_DIR / 'backup.log').read_text(encoding='utf-8').splitlines():
+            if 'Drive 上傳：成功' in ln:
+                last = ln
+    except OSError:
+        pass
+    if last and '.db.enc' not in last:
+        return False, '最近一次上傳 Google Drive 的備份沒有加密'
+    return True, '雲端備份為 AES-256 加密檔，金鑰只在 VPS'
 
 
 def check_events():
@@ -250,6 +284,7 @@ def run_audit():
         ('對外路徑', check_public_paths),
         ('檔案權限', check_permissions),
         ('暫存檔案', check_charts),
+        ('備份加密', check_backup_encryption),
         ('異常事件', check_events),
     ]
     results = []
