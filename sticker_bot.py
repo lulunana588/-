@@ -42,7 +42,8 @@ import requests
 from PIL import Image
 
 # ============ 設定 ============
-BOT_TOKEN = "8745310156:AAFbYA_zcAmzpz4pD8-D4iD76dqmpBEWSD8"
+import os
+BOT_TOKEN = os.environ["8745310156:AAFbYA_zcAmzpz4pD8-D4iD76dqmpBEWSD8"]
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 BOT_USERNAME = None  # 啟動時自動抓取，不用手動填
 
