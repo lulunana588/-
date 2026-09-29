@@ -24,8 +24,9 @@ BACKDATE_HOUR = 8
 JUMP_KG = 3.0                 # 跟前一筆差超過這個數字就先確認
 PENDING_TTL = 10 * 60         # 待確認紀錄的有效時間
 WIPE_TTL = 5 * 60             # 刪除全部資料的確認時間
-EXPORT_TTL = 30 * 60          # 匯出連結有效時間
-CHART_TTL = 24 * 3600
+EXPORT_TTL = 10 * 60          # 匯出連結有效時間
+CHART_TTL = 60 * 60           # 趨勢圖有效時間
+REMIND_DEFAULT = '09:00'
 AVG_DAYS, AVG_MIN_DAYS = 7, 3
 EXPORT_DIR = cfg.DATA_DIR / 'exports'
 QUICK = ['最近', '本週', '本月', '趨勢', '撤銷', '刪除', '說明']
@@ -37,6 +38,8 @@ RE_SETTINGS = re.compile(
     r'[\s,，、;；]*'
     r'(?:目標(?:體重)?\s*[:=]?\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?)?$', re.I)
 RE_TREND = re.compile(r'^(?:趨勢|圖表)\s*(\d{1,4}|全部)?\s*(?:天|日)?$')
+RE_REMIND = re.compile(
+    r'^提醒(?:時間)?\s*[:=]?\s*(?:(關閉|關掉|關|停止)|(開啟|打開|開)|(\d{1,2})\s*(?:[:點時]\s*(\d{1,2})?\s*分?)?)?$')
 NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170 目標 70」就會幫你算 BMI 和距離目標'
 WIPE_CONFIRM = '確認刪除全部資料'
 
@@ -76,14 +79,16 @@ HELP = """🤖 VVS小秘書｜使用手冊
 ━━━━━━━━━━━━━━
 🔐 我的資料
 ━━━━━━━━━━━━━━
-匯出　→ 下載自己的完整紀錄（CSV）
+匯出　→ 下載自己的完整紀錄（CSV，10 分鐘有效）
 刪除我的資料 → 清除自己全部紀錄
 
 ━━━━━━━━━━━━━━
 ⏰ 自動通知
 ━━━━━━━━━━━━━━
-・早上 9 點還沒記錄會提醒
+・每天 9 點還沒記錄會提醒（可自訂）
+　提醒 07:30／提醒 關閉／提醒 開啟
 ・週日晚上 9 點收到本週摘要
+・每月 1 號晚上 9 點收到上月摘要
 
 ━━━━━━━━━━━━━━
 ⚖️ 小叮嚀
@@ -117,6 +122,9 @@ def handle(uid, raw):
     m = RE_TREND.match(t)
     if m:
         return trend(uid, m.group(1))
+    m = RE_REMIND.match(t)
+    if m:
+        return [set_reminder(uid, m)]
     if low in ('撤銷', 'undo'):
         return [undo(uid)]
     if t in ('刪除', '刪除紀錄'):
@@ -285,6 +293,11 @@ def record_card(o, uid, backdated):
                 {'type': 'text', 'text': k, 'size': 'sm', 'color': '#8C8C8C', 'flex': 0},
                 {'type': 'text', 'text': v, 'size': 'sm', 'color': '#111111', 'align': 'end', 'wrap': True},
             ]} for k, v in rows]})
+    n = streak(uid)
+    if n >= 2:
+        alt.append(f'🔥 已連續記錄 {n} 天')
+        body.append({'type': 'text', 'text': f'🔥 已連續記錄 {n} 天', 'size': 'xs', 'color': '#E67E22',
+                     'margin': 'lg'})
     if not target:
         body.append({'type': 'text', 'text': NEED_SETUP, 'size': 'xs', 'color': '#8C8C8C',
                       'wrap': True, 'margin': 'lg'})
@@ -308,19 +321,12 @@ def recent(uid):
     return line.text('\n'.join(lines))
 
 
-def period(uid, kind, title=None):
-    now = now_tpe()
-    midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    if kind == 'week':
-        start, label = midnight - timedelta(days=now.weekday()), '本週'
-    else:
-        start, label = midnight.replace(day=1), f'{now.month}月'
-
+def summary_range(uid, start, end, title, label, show_streak=True):
+    """start <= 時間 < end 的摘要；只讀 uid 本人的資料"""
     all_rows = compute(uid)
-    rows = [o for o in all_rows if o['when'] >= start]
+    rows = [o for o in all_rows if start <= o['when'] < end]
     if not rows:
-        return line.text(f'{label}還沒有紀錄')
-
+        return None
     _, target = settings(uid)
     ws = [o['weight'] for o in rows]
     last = rows[-1]
@@ -328,9 +334,8 @@ def period(uid, kind, title=None):
     base = before[-1] if before else rows[0]
     change = round(last['weight'] - base['weight'], 2)
     days = len({o['when'].date() for o in rows})
-
     out = [
-        title or f'📊 {label}摘要（{md(start)} 起）',
+        title,
         f'記錄：{days} 天、{len(rows)} 筆',
         f"最新：{fw(last['weight'])} kg" + (f"（BMI {last['bmi']:.1f}）" if last['bmi'] is not None else ''),
         f"變化：{arrow(change)} {fd(change)} kg（對比 {md(base['when'])} {fw(base['weight'])}）",
@@ -340,16 +345,56 @@ def period(uid, kind, title=None):
     if last['avg'] is not None:
         out.append(f"7日平均：{last['avg']:.1f} kg")
     out.append(dist_text(last['dist'], target) if target else NEED_SETUP)
+    n = streak(uid) if show_streak else 0
+    if n >= 2:
+        out.append(f'🔥 已連續記錄 {n} 天')
     return line.text('\n'.join(out))
+
+
+def _week_start(now):
+    return now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+
+
+def _month_start(now):
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+def period(uid, kind):
+    now = now_tpe()
+    if kind == 'week':
+        start, label = _week_start(now), '本週'
+    else:
+        start, label = _month_start(now), f'{now.month}月'
+    msg = summary_range(uid, start, now + timedelta(seconds=1), f'📊 {label}摘要（{md(start)} 起）', label)
+    return msg or line.text(f'{label}還沒有紀錄')
 
 
 def weekly_summary(uid):
     """週日推播用；本週沒有紀錄就回傳 None"""
     now = now_tpe()
-    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
-    if not any(datetime.fromisoformat(r['ts']) >= start for r in db.list_weights(uid)):
-        return None
-    return period(uid, 'week', title=f'📅 本週摘要（{md(start)}～{md(now)}）')
+    start = _week_start(now)
+    return summary_range(uid, start, now + timedelta(seconds=1),
+                         f'📅 本週摘要（{md(start)}～{md(now)}）', '本週')
+
+
+def monthly_summary(uid):
+    """每月 1 號推播上個月的摘要；上個月沒有紀錄就回傳 None"""
+    this_start = _month_start(now_tpe())
+    last_start = _month_start(this_start - timedelta(days=1))
+    return summary_range(uid, last_start, this_start, f'🗓️ {last_start.month}月摘要', f'{last_start.month}月', show_streak=False)
+
+
+def streak(uid):
+    """到今天（或昨天）為止，連續有記錄的天數"""
+    days = {datetime.fromisoformat(r['ts']).date() for r in db.list_weights(uid)}
+    d = now_tpe().date()
+    if d not in days:
+        d -= timedelta(days=1)
+    n = 0
+    while d in days:
+        n += 1
+        d -= timedelta(days=1)
+    return n
 
 
 def trend(uid, span=None):
@@ -456,7 +501,7 @@ def export(uid):
     path.write_text('\ufeff' + buf.getvalue(), encoding='utf-8')   # BOM 讓 Excel 正確顯示中文
     os.chmod(path, 0o600)
     return line.text(f'📄 你的完整紀錄（{len(rows)} 筆）\n{cfg.PUBLIC_BASE_URL}/exports/{name}\n\n'
-                     '・只包含你自己的資料\n・連結 30 分鐘後自動失效\n・請不要轉傳這個連結')
+                     '・只包含你自己的資料\n・連結 10 分鐘後自動失效\n・請不要轉傳這個連結')
 
 
 def wipe_request(uid):
@@ -476,12 +521,63 @@ def wipe_confirm(uid):
     n = db.wipe_user(uid)
     return line.text(f'✅ 已刪除你的 {n} 筆紀錄和所有設定\n\n'
                      '備註：系統每天的備份檔中仍有刪除前的資料，'
-                     '伺服器上的備份會在 14 天內自動淘汰，雲端備份由管理者保管。')
+                     '伺服器上的備份會在 14 天內自動淘汰；雲端備份是加密檔，沒有金鑰無法打開。')
 
 
 # ================= 提醒 =================
 
+def reminder_setting(uid):
+    """回傳 'HH:MM' 或 'off'"""
+    return db.get_setting(uid, 'remind') or REMIND_DEFAULT
+
+
+def set_reminder(uid, m):
+    off, on, hh, mm = m.groups()
+    now = now_tpe()
+    if off:
+        db.set_setting(uid, 'remind', 'off')
+        return line.text('🔕 已關閉每日提醒\n想再打開傳「提醒 開啟」或「提醒 07:30」')
+    if on:
+        t = db.get_setting(uid, 'remind_last') or REMIND_DEFAULT
+    elif hh is not None:
+        h, mi = int(hh), int(mm or 0)
+        if not (0 <= h <= 23 and 0 <= mi <= 59):
+            return line.text('時間格式不對，例如：提醒 07:30、提醒 21:00')
+        t = f'{h:02d}:{mi:02d}'
+    else:
+        cur = reminder_setting(uid)
+        state = '已關閉' if cur == 'off' else f'每天 {cur}'
+        return line.text(f'⏰ 目前提醒：{state}\n\n改時間：提醒 07:30\n關閉：提醒 關閉\n打開：提醒 開啟')
+    db.set_setting(uid, 'remind', t)
+    db.set_setting(uid, 'remind_last', t)
+    h, mi = map(int, t.split(':'))
+    note = ''
+    if (now.hour, now.minute) >= (h, mi):
+        db.set_setting(uid, 'reminded_on', now.date().isoformat())
+        note = '（今天的時間已過，明天開始）'
+    return line.text(f'⏰ 好，每天 {t} 左右提醒你{note}\n當天已經記錄就不會提醒')
+
+
+def reminder_due(uid, now=None):
+    """cron 每 5 分鐘呼叫；到了本人設定的時間、今天還沒提醒過、也還沒記錄，才回傳提醒訊息"""
+    now = now or now_tpe()
+    t = reminder_setting(uid)
+    if t == 'off':
+        return None
+    h, mi = map(int, t.split(':'))
+    if (now.hour, now.minute) < (h, mi):
+        return None
+    today = now.date()
+    if db.get_setting(uid, 'reminded_on') == today.isoformat():
+        return None
+    db.set_setting(uid, 'reminded_on', today.isoformat())
+    if any(datetime.fromisoformat(r['ts']).date() == today for r in db.list_weights(uid)):
+        return None
+    return line.text('⏰ 今天還沒量體重喔，量完直接輸入數字即可')
+
+
 def reminder_for(uid):
+    """相容舊版：今天還沒記錄就回傳提醒（不看時間）"""
     today = now_tpe().date()
     if any(datetime.fromisoformat(r['ts']).date() == today for r in db.list_weights(uid)):
         return None
