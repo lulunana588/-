@@ -22,9 +22,22 @@ def _quick(labels):
                       for l in labels]}
 
 
+def quick_items(items):
+    """items: [(label, action)]；action 為 message 文字或 {'postback': data, 'display': 文字}"""
+    out = []
+    for label, act in items[:13]:
+        if isinstance(act, dict):
+            action = {'type': 'postback', 'label': label[:20], 'data': act['postback'],
+                      'displayText': act.get('display', label)}
+        else:
+            action = {'type': 'message', 'label': label[:20], 'text': act}
+        out.append({'type': 'action', 'action': action})
+    return {'items': out}
+
+
 def _prepare(msgs, quick):
     msgs = [dict(m) for m in msgs[:5]]
-    if quick and msgs:
+    if quick and msgs and 'quickReply' not in msgs[-1]:
         msgs[-1]['quickReply'] = _quick(quick)
     return msgs
 
