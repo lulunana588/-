@@ -11,6 +11,7 @@ from flask import Flask, abort, jsonify, request, send_from_directory
 import vvs_config as cfg
 import vvs_db as db
 import vvs_line as line
+import vvs_privacy as privacy
 import vvs_weight as weight
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
@@ -61,7 +62,11 @@ def handle_event(ev):
         if ev.get('type') in ('join', 'message') and token:
             line.reply(token, [line.text('🔒 為了保護每個人的體重隱私，小秘書只在一對一聊天中使用，現在會離開這個群組。')])
         line.leave(src)
+        gid = src.get('groupId') or src.get('roomId') or ''
         log.info('已離開非一對一聊天：%s', src.get('type'))
+        privacy.record_event('group', gid)
+        if ev.get('type') == 'join':
+            privacy.alert_admin('🔒 隱私警報\n有人把小秘書加入了群組／聊天室，已自動離開，沒有透露任何資料。')
         return
 
     if not cfg.OWNER_USER_IDS:
@@ -71,7 +76,14 @@ def handle_event(ev):
                 '請填入 .env 的 OWNER_USER_IDS 後重啟服務。')])
         return
     if uid not in cfg.OWNER_USER_IDS:
-        return  # 非白名單，靜默忽略
+        # 非白名單：不回覆任何內容；每個陌生帳號每天通知管理者一次
+        if uid and ev.get('type') in ('message', 'follow'):
+            privacy.record_event('stranger', uid)
+            today = f'{weight.now_tpe():%Y-%m-%d}'
+            if db.get_setting('_stranger_alert', uid) != today:
+                db.set_setting('_stranger_alert', uid, today)
+                privacy.alert_admin(f'👀 隱私警報\n有不在白名單的帳號（{uid[:8]}…）傳訊息給小秘書，已忽略，沒有回覆任何資料。')
+        return
 
     if ev.get('type') == 'follow':
         line.reply(token, [weight.help_msg()], quick=weight.QUICK)
@@ -81,7 +93,12 @@ def handle_event(ev):
     if ev.get('type') != 'message' or msg.get('type') != 'text':
         return
 
-    msgs = weight.handle(uid, msg.get('text', ''))
+    text = (msg.get('text') or '').strip()
+    if text in ('隱私檢查', '隱私') and uid == privacy.ADMIN:
+        line.reply(token, [line.text(privacy.format_report(privacy.run_audit()))], quick=weight.QUICK)
+        return
+
+    msgs = weight.handle(uid, text)
     # 之後新增的模組（AI、天氣、匯率…）接在這裡：msgs = msgs or other.handle(...)
     if msgs is None:
         msgs = [line.text(FALLBACK)]
