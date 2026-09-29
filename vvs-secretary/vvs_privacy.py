@@ -7,14 +7,14 @@
 管理者在 LINE 傳「隱私檢查」也會即時執行。
 
 檢查項目：
-  1. 資料隔離：用兩個測試帳號在「暫存資料庫」實測，A 的任何查詢都不能出現 B 的數字，
-     A 撤銷也不能刪到 B（不碰真實資料）
+  1. 資料隔離：用兩個測試帳號在「暫存資料庫」實測所有功能（查詢、趨勢、匯出、週摘要、
+     刪除按鈕、刪除全部資料），A 不能看到 B 的數字或註記，也不能刪到 B（不碰真實資料）
   2. 白名單：使用者名單有沒有被改動
   3. Webhook：LINE 的訊息是否只送到你的伺服器
   4. 網域：vivicare.duckdns.org 是否仍指向這台 VPS
   5. 對外路徑：資料庫、設定檔、圖表目錄都不能從網路讀到；/health 只回傳是非值
   6. 檔案權限：.env、資料庫、備份只有 root 能讀（自動修正）
-  7. 趨勢圖：超過 24 小時的圖檔自動刪除
+  7. 暫存檔案：超過 24 小時的趨勢圖、超過 30 分鐘的匯出檔自動刪除
   8. 異常事件：近 7 天被拉進群組、陌生人傳訊息的次數
 """
 import hashlib
@@ -100,33 +100,52 @@ def check_isolation():
     if res.get('leaked'):
         problems.append(f'A 看到了 B 的數字 {res["leaked"]}')
     if not res.get('b_intact'):
-        problems.append('A 撤銷時動到了 B 的紀錄')
+        problems.append('A 撤銷／刪除時動到了 B 的紀錄')
     if not res.get('settings_separate'):
-        problems.append('兩人的身高／目標沒有分開')
+        problems.append('兩人的設定沒有分開，或刪除自己資料時動到別人')
     return (not problems), ('；'.join(problems) or '兩個測試帳號互相看不到')
 
 
 def _isolation_child():
-    """在暫存資料庫裡跑，完全不碰真實資料、不呼叫 LINE"""
+    """在暫存資料庫裡跑，完全不碰真實資料、不呼叫 LINE。涵蓋所有會回傳資料的功能。"""
     import vvs_db as db
     import vvs_weight as w
     db.init()
     A, B = 'U_PRIVACY_TEST_A', 'U_PRIVACY_TEST_B'
-    b_secrets = ['173.4', '77.7', '88.8', '89.9']
+    b_secrets = ['173.4', '77.7', '88.8', '89.9', '87.6']
     w.handle(B, '身高 173.4 目標 77.7')
     w.handle(B, '9/1 89.9')
-    w.handle(B, '88.8')
+    w.handle(B, '88.8 B的秘密註記')
+    w.handle(B, '87.6')
+    b_ids = [r['id'] for r in db.list_weights(B)]
+    b_count = len(b_ids)
+
     w.handle(A, '身高 160 目標 55')
     w.handle(A, '56.2')
     outs = []
-    for cmd in ['最近', '本週', '本月', '趨勢', '撤銷', '撤銷', '最近', '56.1', '說明', '身高 161']:
-        for m in w.handle(A, cmd) or []:
-            outs.append(m.get('text', '') + ' ' + m.get('originalContentUrl', ''))
-    text = '\n'.join(outs)
+
+    def run(msgs):
+        for m in msgs or []:
+            outs.append(json.dumps(m, ensure_ascii=False))
+
+    for cmd in ['最近', '本週', '本月', '趨勢', '趨勢 全部', '趨勢 90', '刪除', '說明',
+                '70.5', '確認記錄', '撤銷', '撤銷', '撤銷', '56.1', '身高 161']:
+        run(w.handle(A, cmd))
+    for bid in b_ids:                                   # A 試圖用按鈕刪 B 的紀錄
+        run(w.handle_postback(A, f'del:{bid}'))
+    run([w.weekly_summary(A)])
+    exp = w.handle(A, '匯出')
+    run(exp)
+    for f in w.EXPORT_DIR.glob('*.csv'):                 # 匯出檔內容也要檢查
+        outs.append(f.read_text(encoding='utf-8'))
+    run([w.reminder_for(A)])
+    run(w.handle(A, '刪除我的資料'))
+    run(w.handle(A, '確認刪除全部資料'))
+    text = '\n'.join(o for o in outs if o)
     print(json.dumps({
-        'leaked': [s for s in b_secrets if s in text],
-        'b_intact': len(db.list_weights(B)) == 2,
-        'settings_separate': w.settings(B) == (173.4, 77.7) and w.settings(A)[0] == 161.0,
+        'leaked': [s for s in b_secrets + ['B的秘密'] if s in text],
+        'b_intact': len(db.list_weights(B)) == b_count,
+        'settings_separate': w.settings(B) == (173.4, 77.7) and w.settings(A) == (None, None),
     }))
 
 
@@ -165,7 +184,8 @@ def check_dns():
 
 def check_public_paths():
     bad = []
-    for path in ['/', '/charts/', '/data/secretary.db', '/secretary.db', '/.env', '/data/']:
+    for path in ['/', '/charts/', '/exports/', '/data/secretary.db', '/secretary.db', '/.env', '/data/',
+                 '/exports/' + '0' * 48 + '.csv']:
         try:
             r = requests.get(cfg.PUBLIC_BASE_URL + path, timeout=10, allow_redirects=False)
             if r.status_code not in (404, 405):
@@ -187,6 +207,8 @@ def check_permissions():
     targets = [(BASE / '.env', 0o600), (cfg.DATA_DIR, 0o700), (cfg.DATA_DIR / 'backups', 0o700)]
     targets += [(p, 0o600) for p in cfg.DATA_DIR.glob('secretary.db*')]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'backups').glob('*.db')]
+    targets += [(cfg.DATA_DIR / 'exports', 0o700)]
+    targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'exports').glob('*.csv')]
     for p, mode in targets:
         if not p.exists():
             continue
@@ -198,16 +220,9 @@ def check_permissions():
 
 
 def check_charts():
-    cutoff = time.time() - CHART_MAX_AGE
-    removed = 0
-    for p in cfg.CHART_DIR.glob('*.png') if cfg.CHART_DIR.exists() else []:
-        try:
-            if p.stat().st_mtime < cutoff:
-                p.unlink()
-                removed += 1
-        except OSError:
-            pass
-    return True, (f'已刪除 {removed} 張過期圖檔' if removed else '沒有過期圖檔')
+    import vvs_weight as w
+    removed = w.cleanup_temp()
+    return True, (f'已刪除 {removed} 個過期的趨勢圖／匯出檔' if removed else '沒有過期檔案')
 
 
 def check_events():
@@ -234,7 +249,7 @@ def run_audit():
         ('網域', check_dns),
         ('對外路徑', check_public_paths),
         ('檔案權限', check_permissions),
-        ('趨勢圖', check_charts),
+        ('暫存檔案', check_charts),
         ('異常事件', check_events),
     ]
     results = []
