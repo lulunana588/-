@@ -87,6 +87,25 @@ def delete_last(uid):
     return dict(row) if row else None
 
 
+def delete_weight(uid, record_id):
+    """刪除指定的一筆；只刪得到自己的（user_id 必須相符）"""
+    with tx() as c:
+        row = c.execute(
+            'SELECT id, ts, weight, note FROM weight_log WHERE id=? AND user_id=?',
+            (record_id, uid)).fetchone()
+        if row:
+            c.execute('DELETE FROM weight_log WHERE id=? AND user_id=?', (record_id, uid))
+    return dict(row) if row else None
+
+
+def wipe_user(uid):
+    """刪除這個人的全部體重紀錄與設定"""
+    with tx() as c:
+        n = c.execute('DELETE FROM weight_log WHERE user_id=?', (uid,)).rowcount
+        c.execute('DELETE FROM settings WHERE user_id=?', (uid,))
+    return n
+
+
 # ---------- 設定 ----------
 
 def get_setting(uid, key, default=None):
@@ -101,6 +120,11 @@ def set_setting(uid, key, value):
             'INSERT INTO settings(user_id, key, value) VALUES (?,?,?) '
             'ON CONFLICT(user_id, key) DO UPDATE SET value=excluded.value',
             (uid, key, str(value)))
+
+
+def delete_setting(uid, key):
+    with tx() as c:
+        c.execute('DELETE FROM settings WHERE user_id=? AND key=?', (uid, key))
 
 
 # ---------- Webhook 去重 ----------
