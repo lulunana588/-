@@ -2,10 +2,16 @@
 
 1. 用 SQLite backup API 產生一致的快照 → data/backups/，保留最近 14 份
 2. 檢查快照完整性，異常就中止
-3. 上傳到 Google Drive（沿用 diary-bot 的 GAS 端點格式：{"filename", "data"}）
+3. 用 AES-256 加密後才上傳 Google Drive（金鑰只存在 VPS 的 data/backup.key）；
+   上傳前先試解密比對，確認加密檔可還原
+   還原：openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in 檔名.db.enc -out 還原.db -pass file:data/backup.key
 4. 失敗時只推播 LINE 通知給管理者（OWNER_USER_IDS 第一位）
 """
 import base64
+import hashlib
+import secrets
+import subprocess
+import tempfile
 import os
 import sqlite3
 import sys
@@ -18,6 +24,8 @@ import vvs_line as line
 
 BACKUP_DIR = cfg.DATA_DIR / 'backups'
 KEEP_LOCAL = 14
+KEY_FILE = cfg.DATA_DIR / 'backup.key'
+OPENSSL = ['openssl', 'enc', '-aes-256-cbc', '-pbkdf2', '-iter', '200000']
 GAS_URL = os.environ.get('BACKUP_GAS_URL', '').strip()
 ADMIN = os.environ.get('ADMIN_USER_ID', '').strip() or (cfg.OWNER_USER_IDS[0] if cfg.OWNER_USER_IDS else '')
 
@@ -61,15 +69,40 @@ def prune():
         p.unlink()
 
 
+def ensure_key():
+    if not KEY_FILE.exists():
+        KEY_FILE.write_text(secrets.token_hex(32), encoding='utf-8')
+        os.chmod(KEY_FILE, 0o600)
+        log('已產生新的備份金鑰 data/backup.key，請務必另外保存一份')
+    os.chmod(KEY_FILE, 0o600)
+    return KEY_FILE
+
+
+def encrypt(path):
+    """加密並驗證可解密還原；回傳加密後的 bytes"""
+    key = ensure_key()
+    with tempfile.TemporaryDirectory() as tmp:
+        enc, dec = os.path.join(tmp, 'x.enc'), os.path.join(tmp, 'x.dec')
+        subprocess.run(OPENSSL + ['-salt', '-in', str(path), '-out', enc, '-pass', f'file:{key}'],
+                       check=True, capture_output=True)
+        subprocess.run(OPENSSL + ['-d', '-in', enc, '-out', dec, '-pass', f'file:{key}'],
+                       check=True, capture_output=True)
+        digest = lambda p: hashlib.sha256(open(p, 'rb').read()).hexdigest()
+        if digest(dec) != digest(str(path)):
+            raise RuntimeError('加密檔試解密後內容不一致')
+        return open(enc, 'rb').read()
+
+
 def upload(path, today):
-    payload = {'filename': f'vvs_backup_{today}.db',
-               'data': base64.b64encode(path.read_bytes()).decode()}
+    fname = f'vvs_backup_{today}.db.enc'
+    payload = {'filename': fname,
+               'data': base64.b64encode(encrypt(path)).decode()}
     s = requests.Session()
     s.max_redirects = 10
     r = s.post(GAS_URL, json=payload, timeout=60, allow_redirects=True)
     text = r.text[:200].replace('\n', ' ')
     ok = r.status_code == 200 and 'error' not in text.lower()
-    return ok, f'HTTP {r.status_code} {text}'
+    return ok, f'{fname}｜HTTP {r.status_code} {text}'
 
 
 def main():
