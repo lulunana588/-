@@ -5,6 +5,7 @@ import hmac
 import json
 import logging
 import re
+import time
 
 from flask import Flask, abort, jsonify, request, send_from_directory
 
@@ -112,18 +113,28 @@ def handle_event(ev):
     line.reply(token, msgs, quick=weight.QUICK)
 
 
+def _expired(path, ttl):
+    """檔案不存在或超過有效時間 → 刪除並視為不存在（過期連結一律 404）"""
+    try:
+        if time.time() - path.stat().st_mtime <= ttl:
+            return False
+        path.unlink()
+    except OSError:
+        pass
+    return True
+
+
 @app.get('/charts/<name>')
 def chart(name):
-    if not CHART_RE.match(name):
+    if not CHART_RE.match(name) or _expired(cfg.CHART_DIR / name, weight.CHART_TTL):
         abort(404)
     return send_from_directory(cfg.CHART_DIR, name, mimetype='image/png', max_age=86400)
 
 
 @app.get('/exports/<name>')
 def export_file(name):
-    if not EXPORT_RE.match(name):
+    if not EXPORT_RE.match(name) or _expired(weight.EXPORT_DIR / name, weight.EXPORT_TTL):
         abort(404)
-    weight.cleanup_temp()            # 過期的先刪掉，過期連結一律 404
     resp = send_from_directory(weight.EXPORT_DIR, name, mimetype='text/csv', as_attachment=True,
                                download_name='我的體重紀錄.csv', max_age=0)
     resp.headers['Cache-Control'] = 'no-store'
