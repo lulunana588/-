@@ -1,10 +1,15 @@
 """VVS小秘書｜體重記錄模組
 
-handle(uid, text) → LINE 訊息列表；不是體重指令時回傳 None，
-讓主程式交給其他模組（之後的 AI、天氣、匯率…）處理。
+handle(uid, text)          → LINE 訊息列表；不是體重指令時回傳 None
+handle_postback(uid, data) → 處理按鈕（刪除指定紀錄）
+隱私原則：每個函式都只讀寫 uid 本人的資料。
 """
+import csv
+import io
+import json
 import os
 import re
+import secrets
 import time
 import unicodedata
 import uuid
@@ -16,78 +21,76 @@ import vvs_line as line
 
 W_MIN, W_MAX = 30, 250
 BACKDATE_HOUR = 8
-QUICK = ['最近', '本週', '本月', '趨勢', '撤銷', '說明']
+JUMP_KG = 3.0                 # 跟前一筆差超過這個數字就先確認
+PENDING_TTL = 10 * 60         # 待確認紀錄的有效時間
+WIPE_TTL = 5 * 60             # 刪除全部資料的確認時間
+EXPORT_TTL = 30 * 60          # 匯出連結有效時間
+CHART_TTL = 24 * 3600
+AVG_DAYS, AVG_MIN_DAYS = 7, 3
+EXPORT_DIR = cfg.DATA_DIR / 'exports'
+QUICK = ['最近', '本週', '本月', '趨勢', '撤銷', '刪除', '說明']
 
 RE_RECORD = re.compile(
     r'^(?:(\d{1,2})[/-](\d{1,2})\s+)?(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?(?:\s+(.*))?$', re.I)
-# 身高／目標：可單獨或寫在同一則；接受冒號、單位、全形字（先經 NFKC 正規化）
 RE_SETTINGS = re.compile(
     r'^(?:身高\s*[:=]?\s*(\d{2,3}(?:\.\d)?)\s*(?:cm|公分)?)?'
     r'[\s,，、;；]*'
     r'(?:目標(?:體重)?\s*[:=]?\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?)?$', re.I)
-NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170」「目標 70」就會幫你算 BMI 和距離目標'
+RE_TREND = re.compile(r'^(?:趨勢|圖表)\s*(\d{1,4}|全部)?\s*(?:天|日)?$')
+NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170 目標 70」就會幫你算 BMI 和距離目標'
+WIPE_CONFIRM = '確認刪除全部資料'
 
-HELP = """🤖 VVS小秘書｜體重記錄使用規則
+HELP = """🤖 VVS小秘書｜使用手冊
 
 ━━━━━━━━━━━━━━
-🟢 第一次使用（只要做一次）
+🟢 第一次使用
 ━━━━━━━━━━━━━━
-先告訴小秘書你的身高和目標：
-　身高 165
-　目標 60
-（換成自己的數字，之後想改隨時再傳一次）
+傳自己的身高和目標：
+　身高 165 目標 60
+（之後想改隨時再傳）
 
-👥 兩個人的資料完全分開，各自只看得到自己的紀錄。
+👥 每個人的資料完全分開，只看得到自己的。
 
 ━━━━━━━━━━━━━━
 📝 每天記錄
 ━━━━━━━━━━━━━━
-① 直接傳體重數字
-　84.5
-
-② 想加註記，數字後面空一格
-　84.5 起床後
-　84.5 睡前
-
-③ 忘記記錄可以補登（月/日 空一格 體重）
-　9/20 85.2
-
-④ 打錯了？傳「撤銷」
-　會刪掉你最後新增的那一筆
-
-小秘書會自動算好：
-BMI、跟上一次比增減多少、7筆平均、距離目標還差多少
+・直接傳體重：84.5
+・加註記：84.5 起床後
+・補登：9/20 85.2
+・跟上一筆差超過 3 公斤，會先請你確認，避免打錯
 
 ━━━━━━━━━━━━━━
-📊 查詢（下方按鈕也能直接點）
+📊 查詢
 ━━━━━━━━━━━━━━
-最近　→ 最近 7 筆紀錄
-本週　→ 這週摘要
-本月　→ 這個月摘要
-趨勢　→ 最近 30 筆的折線圖
-說明　→ 忘記指令時看這裡
+最近　→ 最近 7 筆
+本週／本月 → 摘要
+趨勢　→ 最近 30 天折線圖
+趨勢 90／趨勢 全部 → 更長的範圍
 
 ━━━━━━━━━━━━━━
-⚖️ 量體重小規則
+✏️ 修改
 ━━━━━━━━━━━━━━
-・固定時間量：起床、上完廁所、吃早餐前
-・用同一台體重計，穿著盡量一樣
-・一天記一筆就夠了
-・一天內差個 0.5～1 公斤很正常
-　看「7筆平均」和「趨勢」比看單日數字準
+撤銷　→ 刪掉最後新增的一筆
+刪除　→ 選擇要刪掉哪一筆
 
 ━━━━━━━━━━━━━━
-⏰ 每日提醒
+🔐 我的資料
 ━━━━━━━━━━━━━━
-早上 9 點還沒記錄的人，小秘書會提醒一次
-已經記錄的人不會被打擾
+匯出　→ 下載自己的完整紀錄（CSV）
+刪除我的資料 → 清除自己全部紀錄
 
 ━━━━━━━━━━━━━━
-❗ 小提醒
+⏰ 自動通知
 ━━━━━━━━━━━━━━
-・體重請輸入 30～250 之間的數字
-・數字和註記、日期和數字之間都要空一格
-・傳其他文字小秘書看不懂，會提示你看說明"""
+・早上 9 點還沒記錄會提醒
+・週日晚上 9 點收到本週摘要
+
+━━━━━━━━━━━━━━
+⚖️ 小叮嚀
+━━━━━━━━━━━━━━
+・固定時間量：起床、上完廁所、早餐前
+・一天內差 0.5～1 公斤很正常
+　看「7日平均」和「趨勢」比單日準"""
 
 
 # ================= 入口 =================
@@ -95,24 +98,51 @@ BMI、跟上一次比增減多少、7筆平均、距離目標還差多少
 def handle(uid, raw):
     t = re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', raw or '').strip())
     low = t.lower()
-    if low in ('說明', '規則', '使用規則', 'help', '?', '？'):
+    if low in ('說明', '規則', '使用規則', '使用手冊', 'help', '?'):
         return [line.text(HELP)]
+    if t in ('確認記錄', '確認', '確定'):
+        return [confirm_pending(uid)]
+    if t == '取消':
+        return [cancel_pending(uid)]
+    if t == WIPE_CONFIRM:
+        return [wipe_confirm(uid)]
+    if t in ('刪除我的資料', '刪除全部資料', '清除我的資料'):
+        return [wipe_request(uid)]
     if t in ('最近', '紀錄', '記錄'):
         return [recent(uid)]
     if t == '本週':
         return [period(uid, 'week')]
     if t == '本月':
         return [period(uid, 'month')]
-    if t in ('趨勢', '圖表'):
-        return trend(uid)
-    if low in ('撤銷', '刪除', 'undo'):
+    m = RE_TREND.match(t)
+    if m:
+        return trend(uid, m.group(1))
+    if low in ('撤銷', 'undo'):
         return [undo(uid)]
+    if t in ('刪除', '刪除紀錄'):
+        return [delete_picker(uid)]
+    if t in ('匯出', '匯出資料', '下載'):
+        return [export(uid)]
     m = RE_SETTINGS.match(t)
     if m and (m.group(1) or m.group(2)):
         return [set_settings(uid, m.group(1), m.group(2))]
     m = RE_RECORD.match(t)
     if m:
         return [record(uid, m)]
+    return None
+
+
+def handle_postback(uid, data):
+    if (data or '').startswith('del:'):
+        try:
+            rid = int(data[4:])
+        except ValueError:
+            return [line.text('這個按鈕已失效，請重新傳「刪除」')]
+        r = db.delete_weight(uid, rid)          # 只刪得到自己的
+        if not r:
+            return [line.text('找不到這筆紀錄，可能已經刪除了')]
+        when = datetime.fromisoformat(r['ts'])
+        return [line.text(f"🗑️ 已刪除：{md(when)} {when:%H:%M}  {r['weight']:.1f} kg")]
     return None
 
 
@@ -130,16 +160,24 @@ def settings(uid):
 
 
 def compute_rows(rows, height_cm, target_kg):
-    """rows 需已依時間排序；回傳附帶 BMI、差異、增減%、7筆平均、距離目標的列表"""
+    """rows 需已依時間排序。7日平均：取近 7 天內每天的平均，再平均（至少 3 天有紀錄才顯示）"""
     h2 = (height_cm / 100) ** 2 if height_cm else None
+    whens = [datetime.fromisoformat(r['ts']) for r in rows]
+    by_day = {}
+    for r, w in zip(rows, whens):
+        by_day.setdefault(w.date(), []).append(r['weight'])
+    day_mean = {d: sum(v) / len(v) for d, v in by_day.items()}
+
     out = []
-    for i, r in enumerate(rows):
+    for i, (r, when) in enumerate(zip(rows, whens)):
         w = r['weight']
         prev = rows[i - 1]['weight'] if i else None
-        avg = round(sum(x['weight'] for x in rows[i - 6:i + 1]) / 7, 1) if i >= 6 else None
+        window = [day_mean[d] for d in (when.date() - timedelta(days=k) for k in range(AVG_DAYS))
+                  if d in day_mean]
+        avg = round(sum(window) / len(window), 1) if len(window) >= AVG_MIN_DAYS else None
         out.append({
             **r,
-            'when': datetime.fromisoformat(r['ts']),
+            'when': when,
             'bmi': round(w / h2, 1) if h2 else None,
             'diff': None if prev is None else round(w - prev, 1),
             'pct': None if prev is None else (w - prev) / prev * 100,
@@ -154,7 +192,7 @@ def compute(uid):
     return compute_rows(db.list_weights(uid), h, g)
 
 
-# ================= 指令 =================
+# ================= 記錄（含打錯防呆） =================
 
 def record(uid, m):
     w = float(m.group(3))
@@ -163,34 +201,99 @@ def record(uid, m):
     note = (m.group(4) or '')[:30]
     now = now_tpe()
     when, backdated = now, bool(m.group(1))
-
     if backdated:
         mon, day = int(m.group(1)), int(m.group(2))
         when = make_date(now.year, mon, day)
-        if when and when > now:  # 未來日期視為去年
+        if when and when > now:
             when = make_date(now.year - 1, mon, day)
         if not when:
             return line.text(f'日期「{mon}/{day}」不存在，請再確認')
 
-    new_id = db.add_weight(uid, iso(when), w, note, iso(now))
+    before = [r for r in db.list_weights(uid) if datetime.fromisoformat(r['ts']) <= when]
+    if before and abs(w - before[-1]['weight']) > JUMP_KG:
+        prev = before[-1]['weight']
+        db.set_setting(uid, 'pending', json.dumps(
+            {'w': w, 'ts': iso(when), 'note': note, 'back': backdated, 'at': time.time()}))
+        msg = line.text(f'⚠️ 請確認一下\n這次輸入 {w:.1f} kg，跟上一筆 {prev:.1f} kg 差了 {abs(w - prev):.1f} kg\n\n'
+                        f'數字沒錯的話按「確認記錄」，打錯了按「取消」再重新輸入')
+        msg['quickReply'] = line.quick_items([('✅ 確認記錄', '確認記錄'), ('✖️ 取消', '取消')])
+        return msg
+    return commit(uid, w, when, note, backdated)
+
+
+def commit(uid, w, when, note, backdated):
+    db.delete_setting(uid, 'pending')
+    new_id = db.add_weight(uid, iso(when), w, note, iso(now_tpe()))
     rec = next(r for r in compute(uid) if r['id'] == new_id)
-    return line.text(record_text(rec, uid, backdated))
+    return record_card(rec, uid, backdated)
 
 
-def record_text(o, uid, backdated):
+def confirm_pending(uid):
+    raw = db.get_setting(uid, 'pending')
+    if not raw:
+        return line.text('目前沒有等待確認的紀錄')
+    p = json.loads(raw)
+    if time.time() - p['at'] > PENDING_TTL:
+        db.delete_setting(uid, 'pending')
+        return line.text('確認時間已過，請重新輸入體重')
+    return commit(uid, p['w'], datetime.fromisoformat(p['ts']), p['note'], p['back'])
+
+
+def cancel_pending(uid):
+    had = db.get_setting(uid, 'pending') or db.get_setting(uid, 'pending_wipe')
+    db.delete_setting(uid, 'pending')
+    db.delete_setting(uid, 'pending_wipe')
+    return line.text('已取消，沒有記錄任何資料' if had else '目前沒有需要取消的操作')
+
+
+def record_lines(o, target):
+    rows = []
+    if o['bmi'] is not None:
+        rows.append(('BMI', f"{o['bmi']:.1f}"))
+    if o['diff'] is not None:
+        rows.append(('較前次', f"{arrow(o['diff'])} {signed(o['diff'], 1)} kg（{signed(o['pct'], 2)}%）"))
+    if o['avg'] is not None:
+        rows.append(('7日平均', f"{o['avg']:.1f} kg"))
+    if target:
+        rows.append((f'距離 {target:g} kg', dist_value(o['dist'])))
+    return rows
+
+
+def record_card(o, uid, backdated):
     _, target = settings(uid)
     when = f"{md(o['when'])}（補登）" if backdated else f"{md(o['when'])} {o['when']:%H:%M}"
-    lines = [f"✅ 已記錄 {when}{'｜' + o['note'] if o['note'] else ''}",
-             f"體重：{o['weight']:.1f} kg"]
-    if o['bmi'] is not None:
-        lines.append(f"BMI：{o['bmi']:.1f}")
-    if o['diff'] is not None:
-        lines.append(f"較前次：{arrow(o['diff'])} {signed(o['diff'], 1)} kg（{signed(o['pct'], 2)}%）")
-    if o['avg'] is not None:
-        lines.append(f"7筆平均：{o['avg']:.1f} kg")
-    lines.append(dist_text(o['dist'], target) if target else NEED_SETUP)
-    return '\n'.join(lines)
+    sub = when + (f"｜{o['note']}" if o['note'] else '')
+    rows = record_lines(o, target)
 
+    alt = [f'✅ 已記錄 {sub}', f"體重：{o['weight']:.1f} kg"] + [f'{k}：{v}' for k, v in rows]
+    if not target:
+        alt.append(NEED_SETUP)
+
+    body = [
+        {'type': 'text', 'text': '✅ 已記錄', 'weight': 'bold', 'size': 'md', 'color': '#1DB446'},
+        {'type': 'text', 'text': sub, 'size': 'xs', 'color': '#8C8C8C', 'wrap': True},
+        {'type': 'box', 'layout': 'baseline', 'margin': 'md', 'contents': [
+            {'type': 'text', 'text': f"{o['weight']:.1f}", 'size': '3xl', 'weight': 'bold',
+             'color': '#111111', 'flex': 0},
+            {'type': 'text', 'text': 'kg', 'size': 'md', 'color': '#8C8C8C', 'margin': 'sm'},
+        ]},
+    ]
+    if rows:
+        body.append({'type': 'separator', 'margin': 'lg'})
+        body.append({'type': 'box', 'layout': 'vertical', 'margin': 'lg', 'spacing': 'sm', 'contents': [
+            {'type': 'box', 'layout': 'horizontal', 'contents': [
+                {'type': 'text', 'text': k, 'size': 'sm', 'color': '#8C8C8C', 'flex': 0},
+                {'type': 'text', 'text': v, 'size': 'sm', 'color': '#111111', 'align': 'end', 'wrap': True},
+            ]} for k, v in rows]})
+    if not target:
+        body.append({'type': 'text', 'text': NEED_SETUP, 'size': 'xs', 'color': '#8C8C8C',
+                      'wrap': True, 'margin': 'lg'})
+    return {'type': 'flex', 'altText': '\n'.join(alt)[:400],
+            'contents': {'type': 'bubble', 'size': 'kilo',
+                         'body': {'type': 'box', 'layout': 'vertical', 'contents': body}}}
+
+
+# ================= 查詢 =================
 
 def recent(uid):
     rows = compute(uid)[-7:][::-1]
@@ -201,10 +304,11 @@ def recent(uid):
         d = '' if o['diff'] is None else f"  {arrow(o['diff'])}{signed(o['diff'], 1)}"
         n = '｜' + o['note'] if o['note'] else ''
         lines.append(f"{md(o['when'])} {o['when']:%H:%M}  {o['weight']:.1f}{d}{n}")
+    lines.append('\n要刪掉某一筆，傳「刪除」')
     return line.text('\n'.join(lines))
 
 
-def period(uid, kind):
+def period(uid, kind, title=None):
     now = now_tpe()
     midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
     if kind == 'week':
@@ -223,33 +327,57 @@ def period(uid, kind):
     before = [o for o in all_rows if o['when'] < start]
     base = before[-1] if before else rows[0]
     change = round(last['weight'] - base['weight'], 1)
+    days = len({o['when'].date() for o in rows})
 
-    return line.text('\n'.join([
-        f'📊 {label}摘要（{md(start)} 起）',
-        f'記錄：{len(rows)} 筆',
+    out = [
+        title or f'📊 {label}摘要（{md(start)} 起）',
+        f'記錄：{days} 天、{len(rows)} 筆',
         f"最新：{last['weight']:.1f} kg" + (f"（BMI {last['bmi']:.1f}）" if last['bmi'] is not None else ''),
         f"變化：{arrow(change)} {signed(change, 1)} kg（對比 {md(base['when'])} {base['weight']:.1f}）",
         f'平均：{sum(ws) / len(ws):.1f} kg',
         f'最低／最高：{min(ws):.1f}／{max(ws):.1f} kg',
-        dist_text(last['dist'], target) if target else NEED_SETUP,
-    ]))
+    ]
+    if last['avg'] is not None:
+        out.append(f"7日平均：{last['avg']:.1f} kg")
+    out.append(dist_text(last['dist'], target) if target else NEED_SETUP)
+    return line.text('\n'.join(out))
 
 
-def trend(uid):
-    rows = compute(uid)[-30:]
+def weekly_summary(uid):
+    """週日推播用；本週沒有紀錄就回傳 None"""
+    now = now_tpe()
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+    if not any(datetime.fromisoformat(r['ts']) >= start for r in db.list_weights(uid)):
+        return None
+    return period(uid, 'week', title=f'📅 本週摘要（{md(start)}～{md(now)}）')
+
+
+def trend(uid, span=None):
+    all_rows = compute(uid)
+    if span == '全部':
+        rows, label = all_rows, '全部紀錄'
+    else:
+        days = int(span) if span else 30
+        days = max(7, min(days, 3650))
+        cutoff = now_tpe() - timedelta(days=days)
+        rows, label = [o for o in all_rows if o['when'] >= cutoff], f'最近 {days} 天'
     if len(rows) < 2:
-        return [line.text('至少要有 2 筆紀錄才能畫趨勢圖')]
+        return [line.text(f'{label}至少要有 2 筆紀錄才能畫趨勢圖')]
     _, target = settings(uid)
     try:
-        name = render_chart(rows, target)
+        name = render_chart(rows, target, label)
     except Exception:
         import logging
         logging.getLogger('vvs.weight').exception('趨勢圖產生失敗')
         return [line.text('趨勢圖暫時產生失敗，先用「最近」看文字紀錄')]
     last = rows[-1]
     return [line.image(f'{cfg.PUBLIC_BASE_URL}/charts/{name}'),
-            line.text(f"最新 {last['weight']:.1f} kg" + (f"｜{dist_text(last['dist'], target)}" if target else ''))]
+            line.text(f"{label}｜最新 {last['weight']:.1f} kg" +
+                      (f"｜{dist_text(last['dist'], target)}" if target else '') +
+                      '\n想看更長可傳「趨勢 90」或「趨勢 全部」')]
 
+
+# ================= 修改 =================
 
 def undo(uid):
     r = db.delete_last(uid)
@@ -257,6 +385,21 @@ def undo(uid):
         return line.text('沒有可以撤銷的紀錄')
     when = datetime.fromisoformat(r['ts'])
     return line.text(f"🗑️ 已刪除：{md(when)} {when:%H:%M}  {r['weight']:.1f} kg")
+
+
+def delete_picker(uid):
+    rows = db.list_weights(uid)[-10:][::-1]
+    if not rows:
+        return line.text('還沒有任何紀錄可以刪除')
+    items = []
+    for r in rows:
+        when = datetime.fromisoformat(r['ts'])
+        items.append((f"🗑 {md(when)} {r['weight']:.1f}",
+                      {'postback': f"del:{r['id']}", 'display': f"刪除 {md(when)} {when:%H:%M} {r['weight']:.1f}"}))
+    items.append(('✖️ 取消', '取消'))
+    msg = line.text('要刪除哪一筆？點下方按鈕（最近 10 筆，由新到舊）\n按了就會直接刪除')
+    msg['quickReply'] = line.quick_items(items)
+    return msg
 
 
 def set_settings(uid, height, target):
@@ -291,8 +434,54 @@ def set_settings(uid, height, target):
     return line.text('\n'.join(msgs))
 
 
+# ================= 我的資料 =================
+
+def export(uid):
+    rows = compute(uid)
+    if not rows:
+        return line.text('還沒有任何紀錄可以匯出')
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(['日期時間', '體重kg', '備註', 'BMI', '較前次kg', '7日平均kg'])
+    for o in rows:
+        w.writerow([f"{o['when']:%Y-%m-%d %H:%M}", f"{o['weight']:.1f}", o['note'],
+                    '' if o['bmi'] is None else f"{o['bmi']:.1f}",
+                    '' if o['diff'] is None else f"{o['diff']:.1f}",
+                    '' if o['avg'] is None else f"{o['avg']:.1f}"])
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    os.chmod(EXPORT_DIR, 0o700)
+    cleanup_temp()
+    name = secrets.token_hex(24) + '.csv'
+    path = EXPORT_DIR / name
+    path.write_text('\ufeff' + buf.getvalue(), encoding='utf-8')   # BOM 讓 Excel 正確顯示中文
+    os.chmod(path, 0o600)
+    return line.text(f'📄 你的完整紀錄（{len(rows)} 筆）\n{cfg.PUBLIC_BASE_URL}/exports/{name}\n\n'
+                     '・只包含你自己的資料\n・連結 30 分鐘後自動失效\n・請不要轉傳這個連結')
+
+
+def wipe_request(uid):
+    n = len(db.list_weights(uid))
+    db.set_setting(uid, 'pending_wipe', str(time.time()))
+    msg = line.text(f'⚠️ 確定要刪除你的全部資料嗎？\n包含 {n} 筆體重紀錄、身高和目標設定，刪除後無法復原。\n\n'
+                    f'想先保留一份，可以先傳「匯出」。\n確定的話請在 5 分鐘內按「{WIPE_CONFIRM}」')
+    msg['quickReply'] = line.quick_items([(f'🗑 {WIPE_CONFIRM}', WIPE_CONFIRM), ('✖️ 取消', '取消')])
+    return msg
+
+
+def wipe_confirm(uid):
+    ts = db.get_setting(uid, 'pending_wipe')
+    if not ts or time.time() - float(ts) > WIPE_TTL:
+        db.delete_setting(uid, 'pending_wipe')
+        return line.text('確認時間已過或沒有刪除請求，請重新傳「刪除我的資料」')
+    n = db.wipe_user(uid)
+    return line.text(f'✅ 已刪除你的 {n} 筆紀錄和所有設定\n\n'
+                     '備註：系統每天的備份檔中仍有刪除前的資料，'
+                     '伺服器上的備份會在 14 天內自動淘汰，雲端備份由管理者保管。')
+
+
+# ================= 提醒 =================
+
 def reminder_for(uid):
-    """今天還沒記錄就回傳提醒訊息，否則 None"""
     today = now_tpe().date()
     if any(datetime.fromisoformat(r['ts']).date() == today for r in db.list_weights(uid)):
         return None
@@ -301,20 +490,22 @@ def reminder_for(uid):
 
 # ================= 趨勢圖 =================
 
-def render_chart(rows, target):
+def render_chart(rows, target, label):
     from matplotlib.figure import Figure
     from matplotlib.font_manager import FontProperties
 
     fp = FontProperties(fname=cfg.FONT_PATH) if os.path.exists(cfg.FONT_PATH) else None
     xs = list(range(len(rows)))
     labels = [md(r['when']) for r in rows]
+    dense = len(rows) > 60
 
     fig = Figure(figsize=(8, 4.5), dpi=120)
     ax = fig.subplots()
-    ax.plot(xs, [r['weight'] for r in rows], marker='o', ms=3, lw=2, color='#4A90D9', label='體重')
+    ax.plot(xs, [r['weight'] for r in rows], marker='' if dense else 'o', ms=3, lw=1.5 if dense else 2,
+            color='#4A90D9', label='體重')
     avg_pts = [(x, r['avg']) for x, r in zip(xs, rows) if r['avg'] is not None]
     if avg_pts:
-        ax.plot(*zip(*avg_pts), marker='o', ms=2, lw=2, color='#F5A623', label='7筆平均')
+        ax.plot(*zip(*avg_pts), marker='o', ms=2, lw=2, color='#F5A623', label='7日平均')
     if target:
         ax.axhline(target, ls='--', lw=1.5, color='#7ED321', label=f'目標 {target:g} kg')
 
@@ -322,25 +513,32 @@ def render_chart(rows, target):
     ax.set_xticks(xs[::step])
     ax.set_xticklabels(labels[::step])
     ax.grid(alpha=0.3)
-    ax.set_title(f'體重趨勢（最近 {len(rows)} 筆）', fontproperties=fp, fontsize=14)
+    ax.set_title(f'體重趨勢（{label}）', fontproperties=fp, fontsize=14)
     ax.legend(prop=fp, loc='best')
     fig.tight_layout()
 
     cfg.CHART_DIR.mkdir(parents=True, exist_ok=True)
-    _cleanup_charts()
+    cleanup_temp()
     name = uuid.uuid4().hex + '.png'
     fig.savefig(cfg.CHART_DIR / name, format='png')
     return name
 
 
-def _cleanup_charts(max_age_sec=86400):
-    cutoff = time.time() - max_age_sec
-    for p in cfg.CHART_DIR.glob('*.png'):
-        try:
-            if p.stat().st_mtime < cutoff:
-                p.unlink()
-        except OSError:
-            pass
+def cleanup_temp():
+    """刪除過期的趨勢圖與匯出檔；回傳刪除數量"""
+    now = time.time()
+    removed = 0
+    for folder, pattern, ttl in ((cfg.CHART_DIR, '*.png', CHART_TTL), (EXPORT_DIR, '*.csv', EXPORT_TTL)):
+        if not folder.exists():
+            continue
+        for p in folder.glob(pattern):
+            try:
+                if p.stat().st_mtime < now - ttl:
+                    p.unlink()
+                    removed += 1
+            except OSError:
+                pass
+    return removed
 
 
 # ================= 小工具 =================
@@ -379,19 +577,25 @@ def arrow(v):
     return '🔻' if v < 0 else '🔺' if v > 0 else '➖'
 
 
-def dist_text(dist, target):
+def dist_value(dist):
     if dist > 0:
-        return f'距離 {target:g} kg：還差 {dist:.1f} kg'
+        return f'還差 {dist:.1f} kg'
     if dist == 0:
-        return f'🎉 剛好達標 {target:g} kg'
-    return f'🎉 已達標（低於 {target:g} kg 共 {-dist:.1f} kg）'
+        return '🎉 剛好達標'
+    return f'🎉 已達標（低 {-dist:.1f} kg）'
+
+
+def dist_text(dist, target):
+    return f'距離 {target:g} kg：{dist_value(dist)}'
 
 
 def selftest():
     """健康檢查用：驗證解析與計算邏輯"""
     assert RE_RECORD.match('84.5') and RE_RECORD.match('9/20 85.2 起床後')
     assert RE_SETTINGS.match('身高:170 目標70kg').groups() == ('170', '70')
-    rows = compute_rows([{'id': 1, 'ts': '2026-01-01T08:00:00+08:00', 'weight': 90.0, 'note': ''},
-                         {'id': 2, 'ts': '2026-01-02T08:00:00+08:00', 'weight': 89.5, 'note': ''}], 180, 85)
+    assert RE_TREND.match('趨勢 90').group(1) == '90' and RE_TREND.match('趨勢全部').group(1) == '全部'
+    rows = compute_rows([{'id': i, 'ts': f'2026-01-0{i}T08:00:00+08:00', 'weight': wt, 'note': ''}
+                         for i, wt in [(1, 90.0), (2, 89.5), (3, 89.0), (3 + 1, 89.1)]], 180, 85)
     assert rows[1]['diff'] == -0.5 and rows[1]['bmi'] == 27.6 and rows[1]['dist'] == 4.5
+    assert rows[1]['avg'] is None and rows[3]['avg'] == 89.4
     return True
