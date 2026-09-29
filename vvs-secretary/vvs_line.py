@@ -52,3 +52,20 @@ def push(to, msgs, quick=None):
     if not to or not msgs:
         return False
     return _post('push', {'to': to, 'messages': _prepare(msgs, quick)})
+
+
+def leave(source):
+    """離開群組或多人聊天室"""
+    t = (source or {}).get('type')
+    if t == 'group' and source.get('groupId'):
+        url = f"https://api.line.me/v2/bot/group/{source['groupId']}/leave"
+    elif t == 'room' and source.get('roomId'):
+        url = f"https://api.line.me/v2/bot/room/{source['roomId']}/leave"
+    else:
+        return False
+    try:
+        r = requests.post(url, timeout=10, headers={'Authorization': f'Bearer {cfg.LINE_TOKEN}'})
+        return r.status_code == 200
+    except requests.RequestException:
+        log.exception('離開群組失敗')
+        return False
