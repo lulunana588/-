@@ -255,7 +255,7 @@ def progress_value(pct):
         return f'{progress_bar(pct)} 100% 🎉'
     if pct < 0:
         return f'{progress_bar(0)} 0%（比起始還遠）'
-    return f'{progress_bar(pct)} {pct:.0f}%'
+    return f'{progress_bar(pct)} {pct:.1f}%' if pct < 10 else f'{progress_bar(pct)} {pct:.0f}%'
 
 
 def progress_for(uid, current):
@@ -464,7 +464,28 @@ def recent(uid):
     return line.text('\n'.join(lines))
 
 
-def summary_range(uid, start, end, title, label, show_streak=True):
+def weekly_trend(uid, now=None, weeks=4):
+    """近 4 週平均每週變化：用每週平均體重比較（第一個有紀錄的週 → 最新有紀錄的週）。
+    回傳 (說明行列表)；有紀錄的週不到 2 週回傳 None。只讀 uid 本人的資料"""
+    now = now or now_tpe()
+    starts = [_week_start(now) - timedelta(weeks=k) for k in range(weeks, -1, -1)]
+    buckets = {s: [] for s in starts}
+    for r in db.list_weights(uid):
+        when = datetime.fromisoformat(r['ts'])
+        ws = _week_start(when)
+        if ws in buckets and when <= now:
+            buckets[ws].append(r['weight'])
+    means = [(s, sum(v) / len(v)) for s, v in buckets.items() if v]
+    if len(means) < 2:
+        return None
+    (s0, m0), (s1, m1) = means[0], means[-1]
+    rate = round((m1 - m0) / ((s1 - s0).days / 7), 2)
+    chain = ' → '.join(f'{md(s)} {m:.1f}' for s, m in means)
+    return [f'近 {weeks} 週平均：每週 {arrow(rate)} {fd(rate)} kg',
+            f'（每週平均體重：{chain}）']
+
+
+def summary_range(uid, start, end, title, label, show_streak=True, weeks4=False):
     """start <= 時間 < end 的摘要；只讀 uid 本人的資料"""
     all_rows = compute(uid)
     rows = [o for o in all_rows if start <= o['when'] < end]
@@ -487,6 +508,9 @@ def summary_range(uid, start, end, title, label, show_streak=True):
     ]
     if last['avg'] is not None:
         out.append(f"7日平均：{last['avg']:.1f} kg")
+    tr = weekly_trend(uid, end - timedelta(seconds=1)) if weeks4 else None
+    if tr:
+        out += tr
     out.append(dist_text(last['dist'], target) if target else NEED_SETUP)
     pct = progress_for(uid, last['weight'])
     if pct is not None:
@@ -511,7 +535,8 @@ def period(uid, kind):
         start, label = _week_start(now), '本週'
     else:
         start, label = _month_start(now), f'{now.month}月'
-    msg = summary_range(uid, start, now + timedelta(seconds=1), f'📊 {label}摘要（{md(start)} 起）', label)
+    msg = summary_range(uid, start, now + timedelta(seconds=1), f'📊 {label}摘要（{md(start)} 起）', label,
+                        weeks4=(kind == 'week'))
     return msg or line.text(f'{label}還沒有紀錄')
 
 
@@ -520,7 +545,7 @@ def weekly_summary(uid):
     now = now_tpe()
     start = _week_start(now)
     return summary_range(uid, start, now + timedelta(seconds=1),
-                         f'📅 本週摘要（{md(start)}～{md(now)}）', '本週')
+                         f'📅 本週摘要（{md(start)}～{md(now)}）', '本週', weeks4=True)
 
 
 def monthly_summary(uid):
@@ -1017,5 +1042,6 @@ def selftest():
     assert rows[1]['avg'] is None and rows[3]['avg'] == 89.4
     assert progress(90, 87.5, 85) == 50 and progress(60, 62, 65) == 40 and progress(85, 85, 85) is None
     assert progress_value(120).endswith('🎉') and progress_value(-10).startswith('░')
+    assert progress_value(0.49).endswith(' 0.5%') and progress_value(42.4).endswith(' 42%')
     assert RE_START.match('起始 90').group(1) == '90' and RE_START.match('起始重設').group(2)
     return True

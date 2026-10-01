@@ -107,6 +107,10 @@ def check_isolation():
         problems.append('A 撤銷／修改／刪除時動到了 B 的紀錄')
     if not res.get('b_start_ok'):
         problems.append('A 的操作改到或清掉了 B 的起始體重')
+    if not res.get('a_invariant', True):
+        problems.append('B 的資料一變，A 看到的摘要／平均就跟著變（間接洩漏）')
+    if not res.get('a_week4_ok', True):
+        problems.append('近 4 週平均沒有算出來（測試不完整）')
     if not res.get('a_start_ok', True):
         problems.append('目標進度沒有用自己的起始體重')
     if not res.get('b_body_intact'):
@@ -149,11 +153,30 @@ def _isolation_child():
     w.handle(A, '身高 160 目標 55')
     w.handle(A, f'{md(last_month)} 57.3')
     w.handle(A, '56.2')        # A 只有上個月一筆與今天，連續天數應該是 1
+    w.handle(A, f'{md(ago(14))} 56.9')                  # 兩週前一筆，讓「近 4 週平均」有東西可算
     outs = []
 
     def run(msgs):
         for m in msgs or []:
             outs.append(json.dumps(m, ensure_ascii=False))
+
+    run([w.weekly_summary(A), w.monthly_summary(A), w.weekly_trend(A)])   # 在「撤銷」測試之前先算
+    a_week4_ok = w.weekly_trend(A) is not None
+
+    # 反事實測試：A 的所有結果不能因為 B 的資料改變而改變（抓「被 B 拉偏的平均」這類間接洩漏）
+    def a_views():
+        return json.dumps([w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
+                           w.period(A, 'week'), w.period(A, 'month'), w.progress_msg(A),
+                           w.recent(A), w.body_recent(A), w.streak(A), w.start_weight(A)],
+                          ensure_ascii=False, default=str)
+    before = a_views()
+    extra = [db.add_weight(B, w.iso(ago(k * 7 + 1)), 120.5 + k, '反事實', w.iso(now)) for k in range(6)]
+    extra_body = [db.add_body(B, w.iso(ago(k * 7 + 1)), 'fat', 45.5 + k, w.iso(now))[0] for k in range(6)]
+    a_invariant = a_views() == before
+    for rid in extra:
+        db.delete_weight(B, rid)
+    for rid in extra_body:
+        db.delete_body(B, rid)
 
     w.handle(B, '提醒 06:15')
     for cmd in ['最近', '本週', '本月', '趨勢', '趨勢 全部', '趨勢 90', '刪除', '說明',
@@ -205,6 +228,8 @@ def _isolation_child():
                      and [(r['ts'], r['weight'], r['note']) for r in db.list_weights(B)] == b_snapshot),
         'a_edit_ok': a_edit_ok,
         'a_start_ok': a_start_own,
+        'a_week4_ok': a_week4_ok,
+        'a_invariant': a_invariant,
         'b_start_ok': db.get_setting(B, 'start_kg') == '99.9',
         'a_body_ok': a_body_ok and not db.list_body(A),        # 記錄正確，且刪除自己資料時有清掉
         'b_body_intact': db.list_body(B) == b_body and len(b_body) == 4,
