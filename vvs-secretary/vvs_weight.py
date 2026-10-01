@@ -1,7 +1,7 @@
 """VVS小秘書｜體重記錄模組
 
 handle(uid, text)          → LINE 訊息列表；不是體重指令時回傳 None
-handle_postback(uid, data) → 處理按鈕（刪除指定紀錄）
+handle_postback(uid, data) → 處理按鈕（修改／刪除指定紀錄）
 隱私原則：每個函式都只讀寫 uid 本人的資料。
 """
 import csv
@@ -24,12 +24,13 @@ BACKDATE_HOUR = 8
 JUMP_KG = 3.0                 # 跟前一筆差超過這個數字就先確認
 PENDING_TTL = 10 * 60         # 待確認紀錄的有效時間
 WIPE_TTL = 5 * 60             # 刪除全部資料的確認時間
+EDIT_TTL = 5 * 60             # 選好要修改的那筆後，輸入新數字的時間
 EXPORT_TTL = 10 * 60          # 匯出連結有效時間
 CHART_TTL = 60 * 60           # 趨勢圖有效時間
 REMIND_DEFAULT = '09:00'
 AVG_DAYS, AVG_MIN_DAYS = 7, 3
 EXPORT_DIR = cfg.DATA_DIR / 'exports'
-QUICK = ['最近', '本週', '本月', '趨勢', '撤銷', '刪除', '說明']
+QUICK = ['最近', '本週', '本月', '趨勢', '修改', '撤銷', '刪除', '說明']
 
 RE_RECORD = re.compile(
     r'^(?:(\d{1,2})[/-](\d{1,2})\s+)?(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?(?:\s+(.*))?$', re.I)
@@ -73,6 +74,7 @@ HELP = """🤖 VVS小秘書｜使用手冊
 ━━━━━━━━━━━━━━
 ✏️ 修改
 ━━━━━━━━━━━━━━
+修改　→ 選一筆，改成正確的體重（日期不變）
 撤銷　→ 刪掉最後新增的一筆
 刪除　→ 選擇要刪掉哪一筆
 
@@ -129,6 +131,8 @@ def handle(uid, raw):
         return [undo(uid)]
     if t in ('刪除', '刪除紀錄'):
         return [delete_picker(uid)]
+    if t in ('修改', '修改紀錄', '編輯', '改'):
+        return [edit_picker(uid)]
     if t in ('匯出', '匯出資料', '下載'):
         return [export(uid)]
     m = RE_SETTINGS.match(t)
@@ -136,11 +140,20 @@ def handle(uid, raw):
         return [set_settings(uid, m.group(1), m.group(2))]
     m = RE_RECORD.match(t)
     if m:
+        e = edit_pending(uid)
+        if e:
+            return [apply_edit(uid, e, m)]
         return [record(uid, m)]
     return None
 
 
 def handle_postback(uid, data):
+    if (data or '').startswith('edit:'):
+        try:
+            rid = int(data[5:])
+        except ValueError:
+            return [line.text('這個按鈕已失效，請重新傳「修改」')]
+        return [edit_start(uid, rid)]
     if (data or '').startswith('del:'):
         try:
             rid = int(data[4:])
@@ -248,9 +261,10 @@ def confirm_pending(uid):
 
 
 def cancel_pending(uid):
-    had = db.get_setting(uid, 'pending') or db.get_setting(uid, 'pending_wipe')
-    db.delete_setting(uid, 'pending')
-    db.delete_setting(uid, 'pending_wipe')
+    had = (db.get_setting(uid, 'pending') or db.get_setting(uid, 'pending_wipe')
+           or db.get_setting(uid, 'pending_edit'))
+    for k in ('pending', 'pending_wipe', 'pending_edit'):
+        db.delete_setting(uid, k)
     return line.text('已取消，沒有記錄任何資料' if had else '目前沒有需要取消的操作')
 
 
@@ -317,7 +331,7 @@ def recent(uid):
         d = '' if o['diff'] is None else f"  {arrow(o['diff'])}{fd(o['diff'])}"
         n = '｜' + o['note'] if o['note'] else ''
         lines.append(f"{md(o['when'])} {o['when']:%H:%M}  {fw(o['weight'])}{d}{n}")
-    lines.append('\n要刪掉某一筆，傳「刪除」')
+    lines.append('\n要修改或刪掉某一筆，傳「修改」或「刪除」')
     return line.text('\n'.join(lines))
 
 
@@ -445,6 +459,66 @@ def delete_picker(uid):
     msg = line.text('要刪除哪一筆？點下方按鈕（最近 10 筆，由新到舊）\n按了就會直接刪除')
     msg['quickReply'] = line.quick_items(items)
     return msg
+
+
+def edit_picker(uid):
+    rows = db.list_weights(uid)[-10:][::-1]
+    if not rows:
+        return line.text('還沒有任何紀錄可以修改')
+    items = []
+    for r in rows:
+        when = datetime.fromisoformat(r['ts'])
+        items.append((f"✏️ {md(when)} {fw(r['weight'])}",
+                      {'postback': f"edit:{r['id']}", 'display': f"修改 {md(when)} {when:%H:%M} {fw(r['weight'])}"}))
+    items.append(('✖️ 取消', '取消'))
+    msg = line.text('要修改哪一筆？點下方按鈕（最近 10 筆，由新到舊）\n選好後再傳正確的體重')
+    msg['quickReply'] = line.quick_items(items)
+    return msg
+
+
+def edit_start(uid, rid):
+    r = db.get_weight(uid, rid)                  # 只找得到自己的
+    if not r:
+        db.delete_setting(uid, 'pending_edit')
+        return line.text('找不到這筆紀錄，可能已經刪除了')
+    db.set_setting(uid, 'pending_edit', json.dumps({'id': rid, 'at': time.time()}))
+    when = datetime.fromisoformat(r['ts'])
+    msg = line.text(f"✏️ 要把 {md(when)} {when:%H:%M} 的 {fw(r['weight'])} kg 改成多少？\n"
+                    f"直接傳正確的體重，例如 {fw(r['weight'])}（也可以加註記）\n"
+                    f"5 分鐘內有效，不改了按「取消」")
+    msg['quickReply'] = line.quick_items([('✖️ 取消', '取消')])
+    return msg
+
+
+def edit_pending(uid):
+    raw = db.get_setting(uid, 'pending_edit')
+    if not raw:
+        return None
+    try:
+        p = json.loads(raw)
+        if time.time() - p['at'] <= EDIT_TTL:
+            return p
+    except (ValueError, KeyError, TypeError):
+        pass
+    db.delete_setting(uid, 'pending_edit')
+    return None
+
+
+def apply_edit(uid, p, m):
+    if m.group(1):
+        return line.text('修改只會改體重，日期維持原本那天\n請只傳數字，例如 84.3；不改了傳「取消」')
+    w = float(m.group(3))
+    if not (W_MIN <= w <= W_MAX):
+        return line.text(f'「{m.group(3)}」看起來不太對，請輸入 {W_MIN}–{W_MAX} 之間的體重')
+    db.delete_setting(uid, 'pending_edit')
+    old = db.get_weight(uid, p.get('id'))
+    if not old:
+        return line.text('找不到這筆紀錄，可能已經刪除了')
+    note = (m.group(4) or '')[:30] if m.group(4) else old['note']
+    db.update_weight(uid, old['id'], w, note)    # 只改得到自己的
+    when = datetime.fromisoformat(old['ts'])
+    n = f'\n註記：{note}' if note else ''
+    return line.text(f"✅ 已修改：{md(when)} {when:%H:%M}\n{fw(old['weight'])} → {fw(w)} kg{n}")
 
 
 def set_settings(uid, height, target):

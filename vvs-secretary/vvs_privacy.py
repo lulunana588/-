@@ -104,7 +104,9 @@ def check_isolation():
     if res.get('leaked'):
         problems.append(f'A 看到了 B 的數字 {res["leaked"]}')
     if not res.get('b_intact'):
-        problems.append('A 撤銷／刪除時動到了 B 的紀錄')
+        problems.append('A 撤銷／修改／刪除時動到了 B 的紀錄')
+    if not res.get('a_edit_ok', True):
+        problems.append('修改功能失效，無法改自己的紀錄（測試不完整）')
     if not res.get('settings_separate'):
         problems.append('兩人的設定沒有分開，或刪除自己資料時動到別人')
     return (not problems), ('；'.join(problems) or '兩個測試帳號互相看不到')
@@ -129,6 +131,7 @@ def _isolation_child():
     w.handle(B, '88.8 B的秘密註記')
     b_ids = [r['id'] for r in db.list_weights(B)]
     b_count = len(b_ids)
+    b_snapshot = [(r['ts'], r['weight'], r['note']) for r in db.list_weights(B)]
 
     w.handle(A, '身高 160 目標 55')
     w.handle(A, f'{md(last_month)} 57.3')
@@ -144,6 +147,19 @@ def _isolation_child():
                 '70.5', '確認記錄', '撤銷', '撤銷', '撤銷', '56.1', '身高 161',
                 '提醒', '提醒 07:30', '提醒 關閉', '提醒 開啟', '提醒']:
         run(w.handle(A, cmd))
+    for bid in b_ids:                                   # A 試圖用按鈕修改 B 的紀錄，再傳新數字
+        run(w.handle_postback(A, f'edit:{bid}'))
+        run(w.handle(A, '66.6 A改的'))
+    for bid in b_ids:                                   # A 偽造「正在修改 B 的紀錄」狀態
+        db.set_setting(A, 'pending_edit', json.dumps({'id': bid, 'at': time.time()}))
+        run(w.handle(A, '66.7'))
+    for bid in b_ids:                                   # 資料層本身也要擋（兩層防線各自測）
+        run([db.get_weight(A, bid), db.update_weight(A, bid, 66.8, 'A改的'), db.delete_weight(A, bid)])
+    run(w.handle(A, '修改'))
+    a_rec = db.list_weights(A)[-1]                      # A 修改自己的紀錄要成功（確認功能本身正常）
+    run(w.handle_postback(A, f"edit:{a_rec['id']}"))
+    run(w.handle(A, '56.4'))
+    a_edit_ok = db.get_weight(A, a_rec['id'])['weight'] == 56.4
     for bid in b_ids:                                   # A 試圖用按鈕刪 B 的紀錄
         run(w.handle_postback(A, f'del:{bid}'))
     run([w.weekly_summary(A), w.monthly_summary(A)])
@@ -159,7 +175,9 @@ def _isolation_child():
     text = '\n'.join(o for o in outs if o)
     print(json.dumps({
         'leaked': [s for s in b_secrets + ['B的秘密'] if s in text],
-        'b_intact': len(db.list_weights(B)) == b_count and b_count == 5,
+        'b_intact': (len(db.list_weights(B)) == b_count and b_count == 5
+                     and [(r['ts'], r['weight'], r['note']) for r in db.list_weights(B)] == b_snapshot),
+        'a_edit_ok': a_edit_ok,
         'a_streak_ok': a_streak == 1,
         'settings_separate': (w.settings(B) == (173.4, 77.7) and w.settings(A) == (None, None)
                               and b_remind_ok and w.reminder_setting(B) == '06:15'),

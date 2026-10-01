@@ -98,6 +98,27 @@ def delete_weight(uid, record_id):
     return dict(row) if row else None
 
 
+def get_weight(uid, record_id):
+    """讀取指定的一筆；只讀得到自己的（user_id 必須相符）"""
+    with tx() as c:
+        row = c.execute(
+            'SELECT id, ts, weight, note FROM weight_log WHERE id=? AND user_id=?',
+            (record_id, uid)).fetchone()
+    return dict(row) if row else None
+
+
+def update_weight(uid, record_id, weight, note):
+    """修改指定的一筆（體重與註記，日期不變）；只改得到自己的。回傳修改前的資料"""
+    with tx() as c:
+        row = c.execute(
+            'SELECT id, ts, weight, note FROM weight_log WHERE id=? AND user_id=?',
+            (record_id, uid)).fetchone()
+        if row:
+            c.execute('UPDATE weight_log SET weight=?, note=? WHERE id=? AND user_id=?',
+                      (weight, note, record_id, uid))
+    return dict(row) if row else None
+
+
 def wipe_user(uid):
     """刪除這個人的全部體重紀錄與設定"""
     with tx() as c:
