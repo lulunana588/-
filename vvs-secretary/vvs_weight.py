@@ -39,6 +39,8 @@ RE_SETTINGS = re.compile(
     r'[\s,，、;；]*'
     r'(?:目標(?:體重)?\s*[:=]?\s*(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?)?$', re.I)
 RE_TREND = re.compile(r'^(?:趨勢|圖表)\s*(\d{1,4}|全部)?\s*(?:天|日)?$')
+RE_START = re.compile(
+    r'^起始(?:體重)?\s*[:=]?\s*(?:(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?|(重設|重置|清除|預設))?$', re.I)
 RE_REMIND = re.compile(
     r'^提醒(?:時間)?\s*[:=]?\s*(?:(關閉|關掉|關|停止)|(開啟|打開|開)|(\d{1,2})\s*(?:[:點時]\s*(\d{1,2})?\s*分?)?)?$')
 NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170 目標 70」就會幫你算 BMI 和距離目標'
@@ -59,6 +61,8 @@ HELP = """🤖 VVS小秘書｜使用手冊
 傳自己的身高和目標：
 　身高 165 目標 60
 （之後想改隨時再傳）
+目標進度從第一筆體重開始算，
+想自己指定起點：起始 90（改回來：起始 重設）
 
 👥 每個人的資料完全分開，只看得到自己的。
 
@@ -75,6 +79,7 @@ HELP = """🤖 VVS小秘書｜使用手冊
 ━━━━━━━━━━━━━━
 最近　→ 最近 7 筆
 本週／本月 → 摘要
+進度　→ 起始 → 目前 → 目標，完成幾 %
 趨勢　→ 最近 30 天折線圖
 趨勢 90／趨勢 全部 → 更長的範圍
 
@@ -150,6 +155,11 @@ def handle(uid, raw):
         return [delete_picker(uid)]
     if t in ('修改', '修改紀錄', '編輯', '改'):
         return [edit_picker(uid)]
+    if t in ('進度', '目標進度'):
+        return [progress_msg(uid)]
+    m = RE_START.match(t)
+    if m:
+        return [set_start(uid, m)]
     if t in ('體態', '體脂', '腰圍', '體態紀錄'):
         return [body_recent(uid)]
     if t in ('刪除體態', '刪除體脂', '刪除腰圍'):
@@ -213,6 +223,87 @@ def settings(uid):
     h = db.get_setting(uid, 'height_cm')
     g = db.get_setting(uid, 'target_kg')
     return (float(h) if h else None), (float(g) if g else None)
+
+
+# ================= 目標進度 =================
+
+def start_weight(uid):
+    """(起始體重, 說明)；自訂優先，否則用自己的第一筆。沒有資料回傳 (None, '')"""
+    s = db.get_setting(uid, 'start_kg')
+    if s:
+        return float(s), '自訂'
+    rows = db.list_weights(uid)
+    if not rows:
+        return None, ''
+    return rows[0]['weight'], f"{md(datetime.fromisoformat(rows[0]['ts']))} 第一筆"
+
+
+def progress(start, current, target):
+    """完成百分比（可能 <0 或 >100）；起始等於目標時回傳 None"""
+    if start is None or current is None or not target or abs(start - target) < 0.05:
+        return None
+    return (start - current) / (start - target) * 100
+
+
+def progress_bar(pct, n=10):
+    k = max(0, min(n, round(pct / 100 * n)))
+    return '▓' * k + '░' * (n - k)
+
+
+def progress_value(pct):
+    if pct >= 100:
+        return f'{progress_bar(pct)} 100% 🎉'
+    if pct < 0:
+        return f'{progress_bar(0)} 0%（比起始還遠）'
+    return f'{progress_bar(pct)} {pct:.0f}%'
+
+
+def progress_for(uid, current):
+    _, target = settings(uid)
+    start, _ = start_weight(uid)
+    return progress(start, current, target)
+
+
+def progress_msg(uid):
+    _, target = settings(uid)
+    rows = db.list_weights(uid)
+    if not target:
+        return line.text(NEED_SETUP)
+    if not rows:
+        return line.text('還沒有任何紀錄，直接輸入體重開始吧，例如：84.5')
+    start, src = start_weight(uid)
+    cur = rows[-1]['weight']
+    pct = progress(start, cur, target)
+    if pct is None:
+        return line.text(f'起始體重（{fw(start)} kg）跟目標一樣，沒辦法算進度\n可以傳「起始 90」指定起點')
+    done = round(abs(start - cur), 2) if pct > 0 else 0
+    total = round(abs(start - target), 2)
+    return line.text('\n'.join([
+        '🎯 目標進度',
+        f'起始：{fw(start)} kg（{src}）',
+        f'目前：{fw(cur)} kg',
+        f'目標：{target:g} kg',
+        '',
+        progress_value(pct),
+        f'已完成 {fw(min(done, total))}／{fw(total)} kg',
+        '',
+        '想改起點：起始 90；改回第一筆：起始 重設',
+    ]))
+
+
+def set_start(uid, m):
+    if m.group(2):
+        db.delete_setting(uid, 'start_kg')
+        start, src = start_weight(uid)
+        msg = f'✅ 起始體重改回第一筆：{fw(start)} kg（{src}）' if start else '✅ 已清除自訂起始體重'
+        return line.text(msg)
+    if not m.group(1):
+        return progress_msg(uid)
+    kg = float(m.group(1))
+    if not (W_MIN <= kg <= W_MAX):
+        return line.text(f'起始體重請輸入 {W_MIN}–{W_MAX} 之間（kg），例如：起始 90')
+    db.set_setting(uid, 'start_kg', kg)
+    return line.text(f'✅ 起始體重已設為 {kg:g} kg\n傳「進度」看完成幾 %')
 
 
 def compute_rows(rows, height_cm, target_kg):
@@ -303,7 +394,7 @@ def cancel_pending(uid):
     return line.text('已取消，沒有記錄任何資料' if had else '目前沒有需要取消的操作')
 
 
-def record_lines(o, target):
+def record_lines(o, target, pct=None):
     rows = []
     if o['bmi'] is not None:
         rows.append(('BMI', f"{o['bmi']:.1f}"))
@@ -313,6 +404,8 @@ def record_lines(o, target):
         rows.append(('7日平均', f"{o['avg']:.1f} kg"))
     if target:
         rows.append((f'距離 {target:g} kg', dist_value(o['dist'])))
+    if pct is not None:
+        rows.append(('目標進度', progress_value(pct)))
     return rows
 
 
@@ -320,7 +413,8 @@ def record_card(o, uid, backdated):
     _, target = settings(uid)
     when = f"{md(o['when'])}（補登）" if backdated else f"{md(o['when'])} {o['when']:%H:%M}"
     sub = when + (f"｜{o['note']}" if o['note'] else '')
-    rows = record_lines(o, target)
+    latest = db.list_weights(uid)[-1]['weight']          # 進度一律看最新一筆（補登時也一樣）
+    rows = record_lines(o, target, progress_for(uid, latest))
 
     alt = [f'✅ 已記錄 {sub}', f"體重：{fw(o['weight'])} kg"] + [f'{k}：{v}' for k, v in rows]
     if not target:
@@ -394,6 +488,9 @@ def summary_range(uid, start, end, title, label, show_streak=True):
     if last['avg'] is not None:
         out.append(f"7日平均：{last['avg']:.1f} kg")
     out.append(dist_text(last['dist'], target) if target else NEED_SETUP)
+    pct = progress_for(uid, last['weight'])
+    if pct is not None:
+        out.append(f'目標進度：{progress_value(pct)}')
     n = streak(uid) if show_streak else 0
     if n >= 2:
         out.append(f'🔥 已連續記錄 {n} 天')
@@ -918,4 +1015,7 @@ def selftest():
                          for i, wt in [(1, 90.0), (2, 89.5), (3, 89.0), (3 + 1, 89.1)]], 180, 85)
     assert rows[1]['diff'] == -0.5 and rows[1]['bmi'] == 27.6 and rows[1]['dist'] == 4.5
     assert rows[1]['avg'] is None and rows[3]['avg'] == 89.4
+    assert progress(90, 87.5, 85) == 50 and progress(60, 62, 65) == 40 and progress(85, 85, 85) is None
+    assert progress_value(120).endswith('🎉') and progress_value(-10).startswith('░')
+    assert RE_START.match('起始 90').group(1) == '90' and RE_START.match('起始重設').group(2)
     return True
