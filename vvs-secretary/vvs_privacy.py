@@ -105,6 +105,10 @@ def check_isolation():
         problems.append(f'A 看到了 B 的數字 {res["leaked"]}')
     if not res.get('b_intact'):
         problems.append('A 撤銷／修改／刪除時動到了 B 的紀錄')
+    if not res.get('b_body_intact'):
+        problems.append('A 的體態操作動到了 B 的體脂／腰圍')
+    if not res.get('a_body_ok', True):
+        problems.append('體態功能失效，或刪除自己資料時沒清掉體態（測試不完整）')
     if not res.get('a_edit_ok', True):
         problems.append('修改功能失效，無法改自己的紀錄（測試不完整）')
     if not res.get('settings_separate'):
@@ -123,7 +127,7 @@ def _isolation_child():
     ago = lambda d: now - timedelta(days=d)
     last_month = now.replace(day=1) - timedelta(days=2)
     md = lambda d: f'{d.month}/{d.day}'
-    b_secrets = ['173.4', '77.7', '86.5', '87.9', '89.1', '87.6', '88.8']
+    b_secrets = ['173.4', '77.7', '86.5', '87.9', '89.1', '87.6', '88.8', '32.9', '31.7', '96.4', '93.3']
     # B 的紀錄刻意分散在「上個月、前幾天、昨天、今天」，讓每種摘要與連續天數都有機會讀錯人
     w.handle(B, '身高 173.4 目標 77.7')
     for d, wt in ((last_month, '86.5'), (ago(3), '87.9'), (ago(2), '89.1'), (ago(1), '87.6')):
@@ -132,6 +136,10 @@ def _isolation_child():
     b_ids = [r['id'] for r in db.list_weights(B)]
     b_count = len(b_ids)
     b_snapshot = [(r['ts'], r['weight'], r['note']) for r in db.list_weights(B)]
+    w.handle(B, f'{md(ago(7))} 體脂 32.9 腰圍 96.4')   # B 的體態：上週一筆、今天一筆
+    w.handle(B, '體脂 31.7 腰圍 93.3')
+    b_body = db.list_body(B)
+    b_body_ids = [r['id'] for r in b_body]
 
     w.handle(A, '身高 160 目標 55')
     w.handle(A, f'{md(last_month)} 57.3')
@@ -156,6 +164,13 @@ def _isolation_child():
     for bid in b_ids:                                   # 資料層本身也要擋（兩層防線各自測）
         run([db.get_weight(A, bid), db.update_weight(A, bid, 66.8, 'A改的'), db.delete_weight(A, bid)])
     run(w.handle(A, '修改'))
+    for cmd in ['體態', '體脂 24.1 腰圍 71', '體脂 24.0', '體態', '刪除體態', '腰圍']:   # 同一天覆蓋不能動到 B
+        run(w.handle(A, cmd))
+    for bid in b_body_ids:                              # A 試圖用按鈕刪 B 的體態，也直接打資料層
+        run(w.handle_postback(A, f'bdel:{bid}'))
+        run([db.delete_body(A, bid)])
+    run([db.list_body(A), db.list_body(A, 'fat'), db.list_body(A, 'waist')])
+    a_body_ok = [(r['kind'], r['value']) for r in db.list_body(A)] == [('waist', 71.0), ('fat', 24.0)]
     a_rec = db.list_weights(A)[-1]                      # A 修改自己的紀錄要成功（確認功能本身正常）
     run(w.handle_postback(A, f"edit:{a_rec['id']}"))
     run(w.handle(A, '56.4'))
@@ -178,6 +193,8 @@ def _isolation_child():
         'b_intact': (len(db.list_weights(B)) == b_count and b_count == 5
                      and [(r['ts'], r['weight'], r['note']) for r in db.list_weights(B)] == b_snapshot),
         'a_edit_ok': a_edit_ok,
+        'a_body_ok': a_body_ok and not db.list_body(A),        # 記錄正確，且刪除自己資料時有清掉
+        'b_body_intact': db.list_body(B) == b_body and len(b_body) == 4,
         'a_streak_ok': a_streak == 1,
         'settings_separate': (w.settings(B) == (173.4, 77.7) and w.settings(A) == (None, None)
                               and b_remind_ok and w.reminder_setting(B) == '06:15'),

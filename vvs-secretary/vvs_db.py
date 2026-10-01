@@ -16,6 +16,16 @@ CREATE TABLE IF NOT EXISTS weight_log (
 );
 CREATE INDEX IF NOT EXISTS idx_weight_user_ts ON weight_log(user_id, ts);
 
+CREATE TABLE IF NOT EXISTS body_log (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    TEXT NOT NULL,
+    ts         TEXT NOT NULL,          -- ISO 8601，台北時間 +08:00
+    kind       TEXT NOT NULL,          -- fat（體脂 %）／waist（腰圍 cm）
+    value      REAL NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_body_user_ts ON body_log(user_id, ts);
+
 CREATE TABLE IF NOT EXISTS settings (
     user_id TEXT NOT NULL,
     key     TEXT NOT NULL,
@@ -120,11 +130,49 @@ def update_weight(uid, record_id, weight, note):
 
 
 def wipe_user(uid):
-    """刪除這個人的全部體重紀錄與設定"""
+    """刪除這個人的全部體重、體態紀錄與設定；回傳刪除的紀錄筆數"""
     with tx() as c:
         n = c.execute('DELETE FROM weight_log WHERE user_id=?', (uid,)).rowcount
+        n += c.execute('DELETE FROM body_log WHERE user_id=?', (uid,)).rowcount
         c.execute('DELETE FROM settings WHERE user_id=?', (uid,))
     return n
+
+
+# ---------- 體態（體脂、腰圍） ----------
+
+def add_body(uid, ts, kind, value, created_at):
+    """同一天同一項目只留一筆：新的會取代舊的。回傳 (新 id, 被取代的舊值或 None)"""
+    with tx() as c:
+        old = c.execute(
+            'SELECT id, value FROM body_log WHERE user_id=? AND kind=? AND substr(ts,1,10)=?',
+            (uid, kind, ts[:10])).fetchone()
+        if old:
+            c.execute('DELETE FROM body_log WHERE id=? AND user_id=?', (old['id'], uid))
+        cur = c.execute(
+            'INSERT INTO body_log(user_id, ts, kind, value, created_at) VALUES (?,?,?,?,?)',
+            (uid, ts, kind, value, created_at))
+        return cur.lastrowid, (old['value'] if old else None)
+
+
+def list_body(uid, kind=None):
+    with tx() as c:
+        if kind:
+            rows = c.execute('SELECT id, ts, kind, value FROM body_log WHERE user_id=? AND kind=? '
+                             'ORDER BY ts, id', (uid, kind)).fetchall()
+        else:
+            rows = c.execute('SELECT id, ts, kind, value FROM body_log WHERE user_id=? '
+                             'ORDER BY ts, id', (uid,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_body(uid, record_id):
+    """刪除指定的一筆體態紀錄；只刪得到自己的"""
+    with tx() as c:
+        row = c.execute('SELECT id, ts, kind, value FROM body_log WHERE id=? AND user_id=?',
+                        (record_id, uid)).fetchone()
+        if row:
+            c.execute('DELETE FROM body_log WHERE id=? AND user_id=?', (record_id, uid))
+    return dict(row) if row else None
 
 
 # ---------- 設定 ----------

@@ -44,6 +44,13 @@ RE_REMIND = re.compile(
 NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170 目標 70」就會幫你算 BMI 和距離目標'
 WIPE_CONFIRM = '確認刪除全部資料'
 
+# 體態：kind → (名稱, 單位, 最小, 最大)
+BODY = {'fat': ('體脂', '%', 3, 70), 'waist': ('腰圍', ' cm', 40, 200)}
+RE_BODY_DATE = re.compile(r'^(\d{1,2})[/-](\d{1,2})\s+(.*)$')
+_BODY_ITEM = r'(體脂(?:率)?|腰圍)\s*[:=]?\s*(\d{1,3}(?:\.\d{1,2})?)\s*(?:%|cm|公分)?'
+RE_BODY = re.compile(rf'^(?:{_BODY_ITEM}[\s,、;]*)+$', re.I)
+RE_BODY_ITEM = re.compile(_BODY_ITEM, re.I)
+
 HELP = """🤖 VVS小秘書｜使用手冊
 
 ━━━━━━━━━━━━━━
@@ -77,6 +84,16 @@ HELP = """🤖 VVS小秘書｜使用手冊
 修改　→ 選一筆，改成正確的體重（日期不變）
 撤銷　→ 刪掉最後新增的一筆
 刪除　→ 選擇要刪掉哪一筆
+
+━━━━━━━━━━━━━━
+📏 體脂、腰圍
+━━━━━━━━━━━━━━
+・記錄：體脂 28.5／腰圍 82
+・一起記：體脂 28.5 腰圍 82
+・補登：9/30 腰圍 82
+・同一天再傳一次會覆蓋（打錯直接重傳）
+體態　→ 最近的體脂、腰圍變化
+刪除體態 → 選擇要刪掉哪一筆
 
 ━━━━━━━━━━━━━━
 🔐 我的資料
@@ -133,6 +150,13 @@ def handle(uid, raw):
         return [delete_picker(uid)]
     if t in ('修改', '修改紀錄', '編輯', '改'):
         return [edit_picker(uid)]
+    if t in ('體態', '體脂', '腰圍', '體態紀錄'):
+        return [body_recent(uid)]
+    if t in ('刪除體態', '刪除體脂', '刪除腰圍'):
+        return [body_delete_picker(uid)]
+    b = body_parse(t)
+    if b:
+        return [body_record(uid, *b)]
     if t in ('匯出', '匯出資料', '下載'):
         return [export(uid)]
     m = RE_SETTINGS.match(t)
@@ -154,6 +178,17 @@ def handle_postback(uid, data):
         except ValueError:
             return [line.text('這個按鈕已失效，請重新傳「修改」')]
         return [edit_start(uid, rid)]
+    if (data or '').startswith('bdel:'):
+        try:
+            rid = int(data[5:])
+        except ValueError:
+            return [line.text('這個按鈕已失效，請重新傳「刪除體態」')]
+        r = db.delete_body(uid, rid)            # 只刪得到自己的
+        if not r:
+            return [line.text('找不到這筆紀錄，可能已經刪除了')]
+        when = datetime.fromisoformat(r['ts'])
+        name, unit, _, _ = BODY[r['kind']]
+        return [line.text(f"🗑️ 已刪除：{md(when)} {name} {fv(r['value'])}{unit}")]
     if (data or '').startswith('del:'):
         try:
             rid = int(data[4:])
@@ -521,6 +556,98 @@ def apply_edit(uid, p, m):
     return line.text(f"✅ 已修改：{md(when)} {when:%H:%M}\n{fw(old['weight'])} → {fw(w)} kg{n}")
 
 
+# ================= 體態（體脂、腰圍） =================
+
+def body_parse(t):
+    """「體脂 28.5 腰圍 82」→ (日期或 None, [(kind, 數值字串)])；不是體態指令回傳 None"""
+    date, rest = None, t
+    m = RE_BODY_DATE.match(t)
+    if m:
+        date, rest = (int(m.group(1)), int(m.group(2))), m.group(3)
+    if not RE_BODY.match(rest):
+        return None
+    items = {}
+    for name, val in RE_BODY_ITEM.findall(rest):
+        items['fat' if name.startswith('體脂') else 'waist'] = val
+    return date, list(items.items())
+
+
+def fv(v):
+    return f'{v:.2f}'.rstrip('0').rstrip('.')
+
+
+def body_record(uid, date, items):
+    now = now_tpe()
+    when = now
+    if date:
+        mon, day = date
+        when = make_date(now.year, mon, day)
+        if when and when > now:
+            when = make_date(now.year - 1, mon, day)
+        if not when:
+            return line.text(f'日期「{mon}/{day}」不存在，請再確認')
+    for kind, val in items:
+        name, unit, lo, hi = BODY[kind]
+        if not (lo <= float(val) <= hi):
+            return line.text(f'{name}「{val}」看起來不太對，請輸入 {lo}–{hi} 之間的數字')
+    out = [f'✅ 已記錄 {md(when)}']
+    for kind, val in items:
+        v = float(val)
+        name, unit, _, _ = BODY[kind]
+        prev = [r for r in db.list_body(uid, kind) if r['ts'][:10] < iso(when)[:10]]
+        _, replaced = db.add_body(uid, iso(when), kind, v, iso(now))
+        s = f'{name} {fv(v)}{unit}'
+        if prev:
+            d = round(v - prev[-1]['value'], 2)
+            s += f"　{arrow(d)}{fd(d)}（上次 {md(datetime.fromisoformat(prev[-1]['ts']))}）"
+        else:
+            s += '　第一筆'
+        if replaced is not None:
+            s += f'\n　（已取代當天原本的 {fv(replaced)}）'
+        out.append(s)
+    out.append('\n傳「體態」看變化')
+    return line.text('\n'.join(out))
+
+
+def body_recent(uid):
+    lines = ['📏 體態紀錄']
+    has = False
+    for kind, (name, unit, _, _) in BODY.items():
+        rows = db.list_body(uid, kind)
+        if not rows:
+            continue
+        has = True
+        lines.append(f'\n{name}（{unit.strip()}）')
+        shown = rows[-6:]
+        for i, r in enumerate(shown[::-1]):
+            idx = len(rows) - 1 - i
+            d = '' if idx == 0 else f"  {arrow(r['value'] - rows[idx - 1]['value'])}{fd(round(r['value'] - rows[idx - 1]['value'], 2))}"
+            lines.append(f"{md(datetime.fromisoformat(r['ts']))}  {fv(r['value'])}{d}")
+        if len(rows) > 1:
+            total = round(rows[-1]['value'] - rows[0]['value'], 2)
+            lines.append(f"從 {md(datetime.fromisoformat(rows[0]['ts']))} 起：{arrow(total)}{fd(total)}{unit}")
+    if not has:
+        return line.text('還沒有體脂或腰圍紀錄\n傳「體脂 28.5」或「腰圍 82」開始記錄')
+    lines.append('\n要刪掉某一筆，傳「刪除體態」')
+    return line.text('\n'.join(lines))
+
+
+def body_delete_picker(uid):
+    rows = db.list_body(uid)[-10:][::-1]
+    if not rows:
+        return line.text('還沒有任何體態紀錄可以刪除')
+    items = []
+    for r in rows:
+        when = datetime.fromisoformat(r['ts'])
+        name, unit, _, _ = BODY[r['kind']]
+        items.append((f"🗑 {md(when)} {name}{fv(r['value'])}",
+                      {'postback': f"bdel:{r['id']}", 'display': f"刪除 {md(when)} {name} {fv(r['value'])}{unit}"}))
+    items.append(('✖️ 取消', '取消'))
+    msg = line.text('要刪除哪一筆體態紀錄？點下方按鈕（最近 10 筆，由新到舊）\n按了就會直接刪除')
+    msg['quickReply'] = line.quick_items(items)
+    return msg
+
+
 def set_settings(uid, height, target):
     msgs = []
     if height is not None:
@@ -557,7 +684,8 @@ def set_settings(uid, height, target):
 
 def export(uid):
     rows = compute(uid)
-    if not rows:
+    body = db.list_body(uid)
+    if not rows and not body:
         return line.text('還沒有任何紀錄可以匯出')
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -567,6 +695,12 @@ def export(uid):
                     '' if o['bmi'] is None else f"{o['bmi']:.1f}",
                     '' if o['diff'] is None else fd(o['diff']),
                     '' if o['avg'] is None else f"{o['avg']:.1f}"])
+    if body:
+        w.writerow([])
+        w.writerow(['日期', '項目', '數值', '單位'])
+        for r in body:
+            name, unit, _, _ = BODY[r['kind']]
+            w.writerow([r['ts'][:10], name, fv(r['value']), unit.strip()])
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     os.chmod(EXPORT_DIR, 0o700)
     cleanup_temp()
@@ -574,14 +708,15 @@ def export(uid):
     path = EXPORT_DIR / name
     path.write_text('\ufeff' + buf.getvalue(), encoding='utf-8')   # BOM 讓 Excel 正確顯示中文
     os.chmod(path, 0o600)
-    return line.text(f'📄 你的完整紀錄（{len(rows)} 筆）\n{cfg.PUBLIC_BASE_URL}/exports/{name}\n\n'
+    return line.text(f'📄 你的完整紀錄（體重 {len(rows)} 筆、體態 {len(body)} 筆）\n{cfg.PUBLIC_BASE_URL}/exports/{name}\n\n'
                      '・只包含你自己的資料\n・連結 10 分鐘後自動失效\n・請不要轉傳這個連結')
 
 
 def wipe_request(uid):
     n = len(db.list_weights(uid))
+    nb = len(db.list_body(uid))
     db.set_setting(uid, 'pending_wipe', str(time.time()))
-    msg = line.text(f'⚠️ 確定要刪除你的全部資料嗎？\n包含 {n} 筆體重紀錄、身高和目標設定，刪除後無法復原。\n\n'
+    msg = line.text(f'⚠️ 確定要刪除你的全部資料嗎？\n包含 {n} 筆體重、{nb} 筆體態紀錄、身高和目標設定，刪除後無法復原。\n\n'
                     f'想先保留一份，可以先傳「匯出」。\n確定的話請在 5 分鐘內按「{WIPE_CONFIRM}」')
     msg['quickReply'] = line.quick_items([(f'🗑 {WIPE_CONFIRM}', WIPE_CONFIRM), ('✖️ 取消', '取消')])
     return msg
@@ -775,6 +910,9 @@ def selftest():
     """健康檢查用：驗證解析與計算邏輯"""
     assert RE_RECORD.match('84.5') and RE_RECORD.match('9/20 85.2 起床後')
     assert RE_SETTINGS.match('身高:170 目標70kg').groups() == ('170', '70')
+    assert body_parse('體脂 28.5 腰圍 82') == (None, [('fat', '28.5'), ('waist', '82')])
+    assert body_parse('9/30 腰圍82cm') == ((9, 30), [('waist', '82')])
+    assert body_parse('體脂率:25.5%') == (None, [('fat', '25.5')]) and body_parse('84.5') is None
     assert RE_TREND.match('趨勢 90').group(1) == '90' and RE_TREND.match('趨勢全部').group(1) == '全部'
     rows = compute_rows([{'id': i, 'ts': f'2026-01-0{i}T08:00:00+08:00', 'weight': wt, 'note': ''}
                          for i, wt in [(1, 90.0), (2, 89.5), (3, 89.0), (3 + 1, 89.1)]], 180, 85)
