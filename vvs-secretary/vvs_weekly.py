@@ -9,6 +9,7 @@ from datetime import datetime
 
 import vvs_config as cfg
 import vvs_db as db
+import vvs_jobs as jobs
 import vvs_line as line
 import vvs_weight as weight
 
@@ -21,6 +22,7 @@ def main(monthly=False):
         if msg:
             ok = line.push(uid, [msg], quick=weight.QUICK)
             print(f'{datetime.now(cfg.TZ):%Y-%m-%d %H:%M} {kind} {uid[:6]}… {"OK" if ok else "FAIL"}', flush=True)
+    jobs.beat(kind)
 
 
 if __name__ == '__main__':

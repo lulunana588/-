@@ -5,7 +5,9 @@
 """
 import vvs_config as cfg
 import vvs_db as db
+import vvs_jobs as jobs
 import vvs_line as line
+import vvs_privacy as privacy
 import vvs_weight as weight
 
 
@@ -17,6 +19,10 @@ def main():
         if msg:
             ok = line.push(uid, [msg], quick=weight.QUICK)
             print(f'{now:%Y-%m-%d %H:%M} remind {uid[:6]}… {"OK" if ok else "FAIL"}', flush=True)
+    jobs.beat('remind')
+    admin = privacy.ADMIN
+    if admin and jobs.watch_health(lambda t: line.push(admin, [line.text(t)])):
+        print(f'{now:%Y-%m-%d %H:%M} 健康檢查逾時，已通知管理者', flush=True)
 
 
 if __name__ == '__main__':

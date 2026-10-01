@@ -20,6 +20,7 @@ from datetime import datetime
 import requests
 
 import vvs_config as cfg
+import vvs_jobs as jobs
 import vvs_line as line
 
 BACKUP_DIR = cfg.DATA_DIR / 'backups'
@@ -140,4 +141,8 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    try:
+        rc = main()
+    finally:
+        jobs.beat('backup')
+    sys.exit(rc)

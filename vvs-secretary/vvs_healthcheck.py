@@ -6,6 +6,8 @@
   3. LINE token 是否有效（呼叫 bot info，不會發訊息）
   4. 最近一次備份是否在 30 小時內
   5. 磁碟剩餘空間
+  6. 排程是否準時（提醒、備份、隱私稽核、週／月摘要；見 vvs_jobs.py）
+另外每月第一次執行時輪替 data/*.log，只保留 3 個月。
 
 服務或 /health 異常時會先自動重啟一次再複查。
 通知只推播給管理者（ADMIN_USER_ID，預設 OWNER_USER_IDS 第一位）：
@@ -24,6 +26,7 @@ from datetime import datetime
 import requests
 
 import vvs_config as cfg
+import vvs_jobs as jobs
 import vvs_line as line
 
 SERVICE = 'vvs-secretary'
@@ -89,12 +92,18 @@ def check_disk():
     return None if free_gb >= DISK_MIN_GB else f'磁碟剩 {free_gb:.1f} GB'
 
 
+def check_schedules():
+    late = jobs.late_jobs()
+    return '；'.join(late) if late else None
+
+
 CHECKS = [
     ('服務', check_service),
     ('網址', check_health_endpoint),
     ('LINE', check_line_token),
     ('備份', check_backup),
     ('磁碟', check_disk),
+    ('排程', check_schedules),
 ]
 
 
@@ -135,6 +144,13 @@ def notify(text):
 
 
 def main():
+    jobs.beat('health')
+    try:
+        renamed, removed = jobs.rotate_logs()
+        if renamed or removed:
+            log(f'紀錄檔輪替：封存 {renamed} 個、刪除 {removed} 個舊檔／舊行')
+    except Exception as e:
+        log(f'紀錄檔輪替失敗：{e}')
     problems = run_checks()
     healed = ''
 

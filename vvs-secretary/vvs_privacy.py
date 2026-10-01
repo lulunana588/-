@@ -35,6 +35,7 @@ from urllib.parse import urlparse
 import requests
 
 import vvs_config as cfg
+import vvs_jobs as jobs
 import vvs_line as line
 
 BASE = Path(__file__).resolve().parent
@@ -225,6 +226,8 @@ def check_permissions():
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'backups').glob('*.db')]
     targets += [(cfg.DATA_DIR / 'exports', 0o700), (cfg.DATA_DIR / 'backup.key', 0o600)]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'exports').glob('*.csv')]
+    targets += [(cfg.DATA_DIR / 'beats', 0o700)]
+    targets += [(p, 0o600) for p in cfg.DATA_DIR.glob('*.log*')]   # 紀錄檔與 3 個月內的封存
     for p, mode in targets:
         if not p.exists():
             continue
@@ -329,6 +332,7 @@ def main(argv):
 
     if '--report' in argv:
         return 0 if passed else 1
+    jobs.beat('privacy')
     if not passed:
         alert_admin(report)
     elif datetime.now(cfg.TZ).weekday() == 6:  # 週日回報一次，讓你知道它有在跑
