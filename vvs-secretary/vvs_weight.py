@@ -568,7 +568,22 @@ def streak(uid):
     return n
 
 
-def trend(uid, span=None):
+def chart_marks(rows, all_rows, target, losing=True):
+    """畫面範圍內的最高、最低點（同值取最近的一次），以及首次達標（看全部紀錄）。
+    回傳 {'high': i, 'low': i, 'goal': 畫面內的 i 或 None, 'goal_row': 首次達標那筆或 None}"""
+    ws = [o['weight'] for o in rows]
+    hi = max(range(len(ws)), key=lambda i: (ws[i], i))
+    lo = min(range(len(ws)), key=lambda i: (ws[i], -i))
+    goal_row = None
+    if target:
+        goal_row = next((o for o in all_rows
+                         if (o['weight'] <= target if losing else o['weight'] >= target)), None)
+    goal = next((i for i, o in enumerate(rows) if o is goal_row), None)
+    return {'high': hi, 'low': lo, 'goal': goal, 'goal_row': goal_row}
+
+
+def trend_data(uid, span=None):
+    """趨勢圖要用的資料（只讀 uid 本人）：(rows, label, target, marks, 說明文字)；不足 2 筆回傳 None 與提示"""
     all_rows = compute(uid)
     if span == '全部':
         rows, label = all_rows, '全部紀錄'
@@ -578,19 +593,36 @@ def trend(uid, span=None):
         cutoff = now_tpe() - timedelta(days=days)
         rows, label = [o for o in all_rows if o['when'] >= cutoff], f'最近 {days} 天'
     if len(rows) < 2:
-        return [line.text(f'{label}至少要有 2 筆紀錄才能畫趨勢圖')]
+        return None, f'{label}至少要有 2 筆紀錄才能畫趨勢圖'
     _, target = settings(uid)
+    start, _ = start_weight(uid)
+    losing = not (target and start is not None and target > start)
+    marks = chart_marks(rows, all_rows, target, losing)
+    last, hi, lo = rows[-1], rows[marks['high']], rows[marks['low']]
+    text = [f"{label}｜最新 {fw(last['weight'])} kg" +
+            (f"｜{dist_text(last['dist'], target)}" if target else '')]
+    if marks['high'] != marks['low']:
+        text.append(f"📈 最高 {fw(hi['weight'])}（{md(hi['when'])}）　📉 最低 {fw(lo['weight'])}（{md(lo['when'])}）")
+    g = marks['goal_row']
+    if g:
+        text.append(f"🎉 首次達標：{md(g['when'])} {fw(g['weight'])} kg" +
+                    ('' if marks['goal'] is not None else '（在這段範圍之前）'))
+    text.append('想看更長可傳「趨勢 90」或「趨勢 全部」')
+    return (rows, label, target, marks), '\n'.join(text)
+
+
+def trend(uid, span=None):
+    data, text = trend_data(uid, span)
+    if not data:
+        return [line.text(text)]
+    rows, label, target, marks = data
     try:
-        name = render_chart(rows, target, label)
+        name = render_chart(rows, target, label, marks)
     except Exception:
         import logging
         logging.getLogger('vvs.weight').exception('趨勢圖產生失敗')
         return [line.text('趨勢圖暫時產生失敗，先用「最近」看文字紀錄')]
-    last = rows[-1]
-    return [line.image(f'{cfg.PUBLIC_BASE_URL}/charts/{name}'),
-            line.text(f"{label}｜最新 {fw(last['weight'])} kg" +
-                      (f"｜{dist_text(last['dist'], target)}" if target else '') +
-                      '\n想看更長可傳「趨勢 90」或「趨勢 全部」')]
+    return [line.image(f'{cfg.PUBLIC_BASE_URL}/charts/{name}'), line.text(text)]
 
 
 # ================= 修改 =================
@@ -917,7 +949,7 @@ def reminder_for(uid):
 
 # ================= 趨勢圖 =================
 
-def render_chart(rows, target, label):
+def render_chart(rows, target, label, marks=None):
     from matplotlib.figure import Figure
     from matplotlib.font_manager import FontProperties
 
@@ -935,6 +967,22 @@ def render_chart(rows, target, label):
         ax.plot(*zip(*avg_pts), marker='o', ms=2, lw=2, color='#F5A623', label='7日平均')
     if target:
         ax.axhline(target, ls='--', lw=1.5, color='#7ED321', label=f'目標 {target:g} kg')
+
+    if marks:
+        def note(i, text, color, marker, dy, ms=8):
+            w = rows[i]['weight']
+            ax.plot(xs[i], w, marker=marker, ms=ms, color=color, zorder=5, ls='')
+            ax.annotate(text, (xs[i], w), xytext=(0, dy), textcoords='offset points',
+                        ha='center', va='bottom' if dy > 0 else 'top', color=color,
+                        fontproperties=fp, fontsize=9, zorder=6)
+        hi, lo, goal = marks['high'], marks['low'], marks['goal']
+        if hi != lo:
+            note(hi, f"最高 {fw(rows[hi]['weight'])}", '#D0021B', '^', 8)
+            note(lo, f"最低 {fw(rows[lo]['weight'])}", '#2E7D32', 'v', -8)
+        if goal is not None:
+            dy = -22 if goal == lo and hi != lo else -8
+            note(goal, f"達標 {md(rows[goal]['when'])}", '#E6A100', '*', dy, ms=16)
+        ax.margins(y=0.18)
 
     step = max(1, len(xs) // 10)
     ax.set_xticks(xs[::step])
@@ -1042,6 +1090,12 @@ def selftest():
     assert rows[1]['avg'] is None and rows[3]['avg'] == 89.4
     assert progress(90, 87.5, 85) == 50 and progress(60, 62, 65) == 40 and progress(85, 85, 85) is None
     assert progress_value(120).endswith('🎉') and progress_value(-10).startswith('░')
+    m = chart_marks([{'weight': x} for x in (90, 88, 91, 87, 87)], [], None)
+    assert (m['high'], m['low'], m['goal']) == (2, 4, None)
+    a = [{'weight': x} for x in (72, 70.5, 69.8, 70.2)]
+    m = chart_marks(a[1:], a, 70)
+    assert m['goal'] == 1 and m['goal_row']['weight'] == 69.8
+    assert chart_marks(a, a, 71, losing=False)['goal'] == 0
     assert progress_value(0.49).endswith(' 0.5%') and progress_value(42.4).endswith(' 42%')
     assert RE_START.match('起始 90').group(1) == '90' and RE_START.match('起始重設').group(2)
     return True

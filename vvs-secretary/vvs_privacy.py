@@ -167,12 +167,17 @@ def _isolation_child():
     def a_views():
         return json.dumps([w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
                            w.period(A, 'week'), w.period(A, 'month'), w.progress_msg(A),
-                           w.recent(A), w.body_recent(A), w.streak(A), w.start_weight(A)],
+                           w.recent(A), w.body_recent(A), w.streak(A), w.start_weight(A),
+                           w.trend_data(A)[1], w.trend_data(A, '全部')[1], w.trend_data(A, '90')[1]],
                           ensure_ascii=False, default=str)
     before = a_views()
+    # B 塞入「很高」和「比 A 的目標還低」的體重，並把 B 的起始體重改到另一個方向
     extra = [db.add_weight(B, w.iso(ago(k * 7 + 1)), 120.5 + k, '反事實', w.iso(now)) for k in range(6)]
+    extra += [db.add_weight(B, w.iso(ago(k * 7 + 2)), 40.5 + k, '反事實', w.iso(now)) for k in range(6)]
     extra_body = [db.add_body(B, w.iso(ago(k * 7 + 1)), 'fat', 45.5 + k, w.iso(now))[0] for k in range(6)]
+    db.set_setting(B, 'start_kg', 30.5)
     a_invariant = a_views() == before
+    db.set_setting(B, 'start_kg', 99.9)
     for rid in extra:
         db.delete_weight(B, rid)
     for rid in extra_body:
