@@ -98,6 +98,7 @@ HELP = """🤖 VVS小秘書｜使用手冊
 ・補登：9/30 腰圍 82
 ・同一天再傳一次會覆蓋（打錯直接重傳）
 體態　→ 最近的體脂、腰圍變化
+體態趨勢 → 體脂、腰圍的變化圖
 刪除體態 → 選擇要刪掉哪一筆
 
 ━━━━━━━━━━━━━━
@@ -160,6 +161,8 @@ def handle(uid, raw):
     m = RE_START.match(t)
     if m:
         return [set_start(uid, m)]
+    if t in ('體態趨勢', '體脂趨勢', '腰圍趨勢'):
+        return body_trend(uid)
     if t in ('體態', '體脂', '腰圍', '體態紀錄'):
         return [body_recent(uid)]
     if t in ('刪除體態', '刪除體脂', '刪除腰圍'):
@@ -515,6 +518,9 @@ def summary_range(uid, start, end, title, label, show_streak=True, weeks4=False)
     pct = progress_for(uid, last['weight'])
     if pct is not None:
         out.append(f'目標進度：{progress_value(pct)}')
+    bl = body_period_line(uid, start, end)
+    if bl:
+        out.append(bl)
     n = streak(uid) if show_streak else 0
     if n >= 2:
         out.append(f'🔥 已連續記錄 {n} 天')
@@ -763,6 +769,44 @@ def body_record(uid, date, items):
     return line.text('\n'.join(out))
 
 
+def body_period_line(uid, start, end):
+    """期間內有量體脂／腰圍才回傳一行，例如「📏 體脂 28.5%（🔻-0.5）｜腰圍 82 cm」"""
+    parts = []
+    for kind, (name, unit, _, _) in BODY.items():
+        rows = [(datetime.fromisoformat(r['ts']), r['value']) for r in db.list_body(uid, kind)]
+        inside = [v for t, v in rows if start <= t < end]
+        if not inside:
+            continue
+        before = [v for t, v in rows if t < start]
+        s = f'{name} {fv(inside[-1])}{unit}'
+        base = before[-1] if before else (inside[0] if len(inside) > 1 else None)
+        if base is not None:
+            d = round(inside[-1] - base, 2)
+            s += f'（{arrow(d)}{fd(d)}）'
+        parts.append(s)
+    return '📏 ' + '｜'.join(parts) if parts else None
+
+
+def body_trend(uid):
+    rows = {k: [(datetime.fromisoformat(r['ts']), r['value']) for r in db.list_body(uid, k)] for k in BODY}
+    kinds = [k for k in BODY if len(rows[k]) >= 2]
+    if not kinds:
+        return [line.text('體脂或腰圍至少要有 2 筆紀錄才能畫趨勢圖\n傳「體脂 28.5」或「腰圍 82」記錄')]
+    try:
+        name = render_body_chart({k: rows[k] for k in kinds})
+    except Exception:
+        import logging
+        logging.getLogger('vvs.weight').exception('體態趨勢圖產生失敗')
+        return [line.text('體態趨勢圖暫時產生失敗，先用「體態」看文字紀錄')]
+    text = ['📏 體態趨勢（全部紀錄）']
+    for k in kinds:
+        nm, unit, _, _ = BODY[k]
+        (t0, v0), (t1, v1) = rows[k][0], rows[k][-1]
+        d = round(v1 - v0, 2)
+        text.append(f'{nm}：{md(t0)} {fv(v0)} → {md(t1)} {fv(v1)}{unit}（{arrow(d)}{fd(d)}）')
+    return [line.image(f'{cfg.PUBLIC_BASE_URL}/charts/{name}'), line.text('\n'.join(text))]
+
+
 def body_recent(uid):
     lines = ['📏 體態紀錄']
     has = False
@@ -963,7 +1007,7 @@ def render_chart(rows, target, label, marks=None):
     ax.plot(xs, [r['weight'] for r in rows], marker='' if dense else 'o', ms=3, lw=1.5 if dense else 2,
             color='#4A90D9', label='體重')
     avg_pts = [(x, r['avg']) for x, r in zip(xs, rows) if r['avg'] is not None]
-    if avg_pts:
+    if len(avg_pts) >= 2:
         ax.plot(*zip(*avg_pts), marker='o', ms=2, lw=2, color='#F5A623', label='7日平均')
     if target:
         ax.axhline(target, ls='--', lw=1.5, color='#7ED321', label=f'目標 {target:g} kg')
@@ -992,6 +1036,37 @@ def render_chart(rows, target, label, marks=None):
     ax.legend(prop=fp, loc='best')
     fig.tight_layout()
 
+    cfg.CHART_DIR.mkdir(parents=True, exist_ok=True)
+    cleanup_temp()
+    name = uuid.uuid4().hex + '.png'
+    fig.savefig(cfg.CHART_DIR / name, format='png')
+    return name
+
+
+def render_body_chart(series):
+    """series: {kind: [(時間, 數值), ...]}；每個項目一張子圖"""
+    from matplotlib.figure import Figure
+    from matplotlib.font_manager import FontProperties
+
+    fp = FontProperties(fname=cfg.FONT_PATH) if os.path.exists(cfg.FONT_PATH) else None
+    colors = {'fat': '#9B59B6', 'waist': '#16A085'}
+    fig = Figure(figsize=(8, 3.2 * len(series)), dpi=120)
+    axes = fig.subplots(len(series), 1, squeeze=False)[:, 0]
+    for ax, (kind, pts) in zip(axes, series.items()):
+        name, unit, _, _ = BODY[kind]
+        xs = list(range(len(pts)))
+        vs = [v for _, v in pts]
+        ax.plot(xs, vs, marker='o', ms=4, lw=2, color=colors[kind])
+        for i in {0, len(vs) - 1, max(xs, key=lambda i: (vs[i], i)), min(xs, key=lambda i: (vs[i], -i))}:
+            ax.annotate(fv(vs[i]), (xs[i], vs[i]), xytext=(0, 7), textcoords='offset points',
+                        ha='center', fontsize=9, color=colors[kind])
+        step = max(1, len(xs) // 8)
+        ax.set_xticks(xs[::step])
+        ax.set_xticklabels([md(t) for t, _ in pts][::step])
+        ax.set_title(f'{name}（{unit.strip()}）', fontproperties=fp, fontsize=12)
+        ax.grid(alpha=0.3)
+        ax.margins(y=0.2)
+    fig.tight_layout()
     cfg.CHART_DIR.mkdir(parents=True, exist_ok=True)
     cleanup_temp()
     name = uuid.uuid4().hex + '.png'

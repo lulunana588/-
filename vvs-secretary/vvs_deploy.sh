@@ -85,8 +85,13 @@ STATUS=$?
 echo "   $RESULT"
 [ $STATUS -eq 0 ] || fail "隱私測試沒有通過，新程式可能會讓資料外洩"
 
-echo "🔍 5/6 計算邏輯測試"
-(cd "$STAGE" && env $TESTENV "$PY" -c "import vvs_weight as w; w.selftest()" >/dev/null 2>&1) || fail "計算邏輯測試沒有通過"
+echo "🔍 5/6 自我測試"
+if [ -f "$STAGE/vvs_selftest.py" ]; then
+  OUT=$(cd "$STAGE" && env $TESTENV "$PY" vvs_selftest.py 2>&1) || { echo "$OUT" | tail -n 8; fail "自我測試沒有通過"; }
+  echo "   $(echo "$OUT" | tail -n 1)"
+else
+  (cd "$STAGE" && env $TESTENV "$PY" -c "import vvs_weight as w; w.selftest()" >/dev/null 2>&1) || fail "計算邏輯測試沒有通過"
+fi
 
 if [ -n "${VVS_DRYRUN:-}" ]; then
   echo "✅ 測試全部通過（試跑模式，未上線）"

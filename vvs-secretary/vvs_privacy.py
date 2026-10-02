@@ -160,12 +160,27 @@ def _isolation_child():
         for m in msgs or []:
             outs.append(json.dumps(m, ensure_ascii=False))
 
+    w.handle(A, f'{md(ago(9))} 體脂 26.1 腰圍 74')      # A 的體態兩筆，讓體態趨勢圖畫得出來
+    w.handle(A, f'{md(ago(2))} 體脂 25.6 腰圍 73')
     run([w.weekly_summary(A), w.monthly_summary(A), w.weekly_trend(A)])   # 在「撤銷」測試之前先算
     a_week4_ok = w.weekly_trend(A) is not None
 
     # 反事實測試：A 的所有結果不能因為 B 的資料改變而改變（抓「被 B 拉偏的平均」這類間接洩漏）
+    def chart_hashes():
+        """A 的趨勢圖、體態趨勢圖的圖檔指紋（圖上的線也只能來自 A 自己的資料）"""
+        import hashlib
+        out = []
+        for msgs in (w.trend(A), w.trend(A, '全部'), w.body_trend(A)):
+            for m in msgs:
+                if m.get('type') == 'image':
+                    p = cfg.CHART_DIR / m['originalContentUrl'].rsplit('/', 1)[-1]
+                    out.append(hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'missing')
+                else:
+                    out.append(m.get('text', ''))
+        return out
+
     def a_views():
-        return json.dumps([w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
+        return json.dumps([chart_hashes(),w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
                            w.period(A, 'week'), w.period(A, 'month'), w.progress_msg(A),
                            w.recent(A), w.body_recent(A), w.streak(A), w.start_weight(A),
                            w.trend_data(A)[1], w.trend_data(A, '全部')[1], w.trend_data(A, '90')[1]],
@@ -209,7 +224,8 @@ def _isolation_child():
         run(w.handle_postback(A, f'bdel:{bid}'))
         run([db.delete_body(A, bid)])
     run([db.list_body(A), db.list_body(A, 'fat'), db.list_body(A, 'waist')])
-    a_body_ok = [(r['kind'], r['value']) for r in db.list_body(A)] == [('waist', 71.0), ('fat', 24.0)]
+    today = w.iso(now)[:10]
+    a_body_ok = [(r['kind'], r['value']) for r in db.list_body(A) if r['ts'][:10] == today] == [('waist', 71.0), ('fat', 24.0)]
     a_rec = db.list_weights(A)[-1]                      # A 修改自己的紀錄要成功（確認功能本身正常）
     run(w.handle_postback(A, f"edit:{a_rec['id']}"))
     run(w.handle(A, '56.4'))
@@ -302,7 +318,8 @@ def check_permissions():
     targets = [(BASE / '.env', 0o600), (cfg.DATA_DIR, 0o700), (cfg.DATA_DIR / 'backups', 0o700)]
     targets += [(p, 0o600) for p in cfg.DATA_DIR.glob('secretary.db*')]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'backups').glob('*.db')]
-    targets += [(cfg.DATA_DIR / 'exports', 0o700), (cfg.DATA_DIR / 'backup.key', 0o600)]
+    targets += [(cfg.DATA_DIR / 'exports', 0o700), (cfg.DATA_DIR / 'backup.key', 0o600),
+                (cfg.DATA_DIR / 'backup.key.fp', 0o600)]
     targets += [(p, 0o600) for p in (cfg.DATA_DIR / 'exports').glob('*.csv')]
     targets += [(cfg.DATA_DIR / 'beats', 0o700)]
     targets += [(p, 0o600) for p in cfg.DATA_DIR.glob('*.log*')]   # 紀錄檔與 3 個月內的封存

@@ -22,6 +22,7 @@ JOBS = {
     'privacy': ('隱私稽核', 26 * H, '每天 04:00'),
     'weekly':  ('週摘要', 7 * 24 * H + 3 * H, '每週日 21:00'),
     'monthly': ('月摘要', 31 * 24 * H + 3 * H, '每月 1 號 21:00'),
+    'drill':   ('備份還原演練', 31 * 24 * H + 3 * H, '每月初'),
 }
 HEALTH_MAX = 3 * H                 # 健康檢查每小時跑，超過 3 小時沒跑就由提醒排程通知
 WATCH_EVERY = 6 * H                # 看守通知最多每 6 小時一次
@@ -106,6 +107,20 @@ def watch_health(alert, now=None):
 
 
 # ================= 紀錄檔輪替 =================
+
+def monthly_due(name, now=None):
+    """這個月還沒跑過 name 就回傳 True 並記下本月（每月只會回傳一次 True）"""
+    now = now or datetime.now(cfg.TZ)
+    cur = _month_key(now)
+    p = _dir() / f'_month_{name}'
+    try:
+        if p.read_text(encoding='utf-8').strip() == cur:
+            return False
+    except OSError:
+        pass
+    p.write_text(cur, encoding='utf-8')
+    return True
+
 
 def _month_key(dt):
     return f'{dt.year:04d}-{dt.month:02d}'

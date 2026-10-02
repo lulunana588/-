@@ -6,9 +6,15 @@
    上傳前先試解密比對，確認加密檔可還原
    還原：openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in 檔名.db.enc -out 還原.db -pass file:data/backup.key
 4. 失敗時只推播 LINE 通知給管理者（OWNER_USER_IDS 第一位）
+
+每月還原演練（由每小時的健康檢查在每月第一次執行時呼叫；也可手動：python vvs_backup.py --drill）：
+  取最新一份本機備份 → 在暫存區還原 → 檢查完整性、資料表、每個帳號的紀錄都讀得出來
+  → 再做一次加密→解密比對 → 確認金鑰沒有被換過（金鑰一換，舊的雲端備份就要用舊金鑰才打得開）
+  通知只說「通過／哪一項失敗」，不含任何人的筆數或數字。
 """
 import base64
 import hashlib
+import shutil
 import secrets
 import subprocess
 import tempfile
@@ -106,6 +112,132 @@ def upload(path, today):
     return ok, f'{fname}｜HTTP {r.status_code} {text}'
 
 
+# ================= 每月還原演練 =================
+
+DRILL_MAX_AGE_DAYS = 2
+KEY_FP_FILE = cfg.DATA_DIR / 'backup.key.fp'
+TABLES = ('weight_log', 'body_log', 'settings')
+
+
+def key_fingerprint(key_file):
+    return hashlib.sha256(open(key_file, 'rb').read().strip()).hexdigest()[:8]
+
+
+def _ids(path, table, uid, before=None):
+    c = sqlite3.connect(path)
+    try:
+        q, args = f'SELECT id FROM {table} WHERE user_id=?', [uid]
+        if before:
+            q, args = q + ' AND created_at <= ?', args + [before]
+        return {r[0] for r in c.execute(q, args)}
+    finally:
+        c.close()
+
+
+def drill(db_path, backup_dir, key_file, fp_file, owners, now):
+    """回傳 (是否通過, 給管理者看的訊息)；訊息不含任何人的筆數或數字"""
+    files = sorted(backup_dir.glob('secretary_*.db'))
+    if not files:
+        return False, '找不到任何本機備份'
+    src = files[-1]
+    day = datetime.strptime(src.stem.split('_')[1], '%Y%m%d').replace(tzinfo=cfg.TZ)
+    if (now - day).days > DRILL_MAX_AGE_DAYS:
+        return False, f'最新的備份是 {day:%m/%d}，已經超過 {DRILL_MAX_AGE_DAYS} 天沒有新備份'
+    snap_time = datetime.fromtimestamp(src.stat().st_mtime, cfg.TZ).isoformat(timespec='seconds')
+    with tempfile.TemporaryDirectory() as tmp:
+        restored = os.path.join(tmp, 'restored.db')
+        shutil.copy(src, restored)
+        c = sqlite3.connect(restored)
+        try:
+            ok = c.execute('PRAGMA integrity_check').fetchone()[0]
+            tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        finally:
+            c.close()
+        if ok != 'ok':
+            return False, f'還原後的資料庫完整性異常（{ok}）'
+        missing = [t for t in TABLES if t not in tables]
+        if missing and missing != ['body_log']:       # 體態表是 10 月才加的，舊備份可以沒有
+            return False, f'還原後少了資料表：{"、".join(missing)}'
+        for n, uid in enumerate(owners, 1):
+            for table in TABLES[:2]:
+                if table not in tables:
+                    continue
+                live = _ids(db_path, table, uid, before=snap_time)
+                if not live <= _ids(restored, table, uid):
+                    return False, f'第 {n} 個帳號有紀錄在備份裡讀不到（{table}）'
+    try:
+        encrypt(src)
+    except Exception as e:
+        return False, f'加密→解密還原比對失敗：{e}'
+    fp = key_fingerprint(key_file)
+    old = fp_file.read_text(encoding='utf-8').strip() if fp_file.exists() else ''
+    if old and old != fp:
+        return False, (f'備份金鑰被換過（指紋 {old} → {fp}）\n'
+                       '之前上傳到雲端的備份要用舊金鑰才打得開，請確認舊金鑰還有保存')
+    fp_file.write_text(fp, encoding='utf-8')
+    os.chmod(fp_file, 0o600)
+    return True, (f'✅ 每月備份還原演練通過\n備份：{day:%m/%d}\n'
+                  '・還原後資料庫完整、資料表齊全\n'
+                  '・每個帳號的紀錄都能完整讀出\n'
+                  '・加密 → 解密還原內容一致\n'
+                  f'・金鑰指紋：{fp}\n'
+                  '（請確認你另外保存的那份金鑰，指紋也是這個）')
+
+
+def run_drill():
+    ok, msg = drill(cfg.DB_PATH, BACKUP_DIR, ensure_key(), KEY_FP_FILE,
+                    cfg.OWNER_USER_IDS, datetime.now(cfg.TZ))
+    log(('還原演練通過' if ok else '還原演練失敗：') + ('' if ok else msg))
+    if ADMIN:
+        line.push(ADMIN, [line.text(msg if ok else '⚠️ 小秘書每月備份還原演練失敗\n' + msg)])
+    jobs.beat('drill')
+    return ok
+
+
+def drill_selftest():
+    """部署用：在暫存目錄建一個假資料庫，確認演練抓得到「讀不到的紀錄」和「換過金鑰」"""
+    from pathlib import Path
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        live, bdir, key, fp = d / 'live.db', d / 'backups', d / 'k', d / 'fp'
+        bdir.mkdir()
+        key.write_text(secrets.token_hex(32))
+        old = '2000-01-01T00:00:00+08:00'
+        c = sqlite3.connect(live)
+        c.executescript('CREATE TABLE weight_log(id INTEGER PRIMARY KEY, user_id, ts, weight, note, created_at);'
+                        'CREATE TABLE body_log(id INTEGER PRIMARY KEY, user_id, ts, kind, value, created_at);'
+                        'CREATE TABLE settings(user_id, key, value);')
+        c.executemany('INSERT INTO weight_log(user_id, ts, weight, note, created_at) VALUES (?,?,?,?,?)',
+                      [('A', old, 60, '', old), ('B', old, 70, '', old)])
+        c.commit()
+        c.close()
+        now = datetime.now(cfg.TZ)
+        snap = bdir / f'secretary_{now:%Y%m%d}.db'
+        global KEY_FILE
+        real_key, KEY_FILE = KEY_FILE, key
+        try:
+            shutil.copy(live, snap)
+            assert drill(live, bdir, key, fp, ['A', 'B'], now)[0]
+            c = sqlite3.connect(live)                         # 備份後才新增的不算缺
+            c.execute('INSERT INTO weight_log(user_id, ts, weight, note, created_at) VALUES (?,?,?,?,?)',
+                      ('B', old, 71, '', '2999-01-01T00:00:00+08:00'))
+            c.commit()
+            c.close()
+            assert drill(live, bdir, key, fp, ['A', 'B'], now)[0]
+            c = sqlite3.connect(snap)                         # 備份裡少了 B 的一筆 → 要抓到
+            c.execute("DELETE FROM weight_log WHERE user_id='B'")
+            c.commit()
+            c.close()
+            ok, msg = drill(live, bdir, key, fp, ['A', 'B'], now)
+            assert not ok and '第 2 個帳號' in msg and '70' not in msg
+            shutil.copy(live, snap)
+            key.write_text(secrets.token_hex(32))             # 換金鑰 → 要抓到
+            assert not drill(live, bdir, key, fp, ['A', 'B'], now)[0]
+        finally:
+            KEY_FILE = real_key
+    return True
+
+
 def main():
     today = datetime.now(cfg.TZ).strftime('%Y%m%d')
 
@@ -141,6 +273,9 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--drill' in sys.argv:
+        jobs.monthly_due('drill')          # 手動跑過，這個月健康檢查就不再自動跑一次
+        sys.exit(0 if run_drill() else 1)
     try:
         rc = main()
     finally:

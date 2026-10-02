@@ -7,7 +7,7 @@
   4. 最近一次備份是否在 30 小時內
   5. 磁碟剩餘空間
   6. 排程是否準時（提醒、備份、隱私稽核、週／月摘要；見 vvs_jobs.py）
-另外每月第一次執行時輪替 data/*.log，只保留 3 個月。
+另外每月第一次執行時：輪替 data/*.log（只保留 3 個月）、做一次備份還原演練（見 vvs_backup.py）。
 
 服務或 /health 異常時會先自動重啟一次再複查。
 通知只推播給管理者（ADMIN_USER_ID，預設 OWNER_USER_IDS 第一位）：
@@ -151,6 +151,13 @@ def main():
             log(f'紀錄檔輪替：封存 {renamed} 個、刪除 {removed} 個舊檔／舊行')
     except Exception as e:
         log(f'紀錄檔輪替失敗：{e}')
+    if jobs.monthly_due('drill'):
+        try:
+            import vvs_backup
+            vvs_backup.run_drill()
+        except Exception as e:
+            log(f'還原演練執行失敗：{e}')
+            notify(f'⚠️ 小秘書每月備份還原演練無法執行\n{str(e)[:150]}')
     problems = run_checks()
     healed = ''
 
