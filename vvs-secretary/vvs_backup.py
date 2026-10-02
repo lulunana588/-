@@ -3,13 +3,15 @@
 1. 用 SQLite backup API 產生一致的快照 → data/backups/，保留最近 14 份
 2. 檢查快照完整性，異常就中止
 3. 用 AES-256 加密後才上傳 Google Drive（金鑰只存在 VPS 的 data/backup.key）；
+   上傳給 GAS（vvs_backup_gas.gs）時要帶通行碼 BACKUP_GAS_TOKEN；雲端只保留 60 天；
    上傳前先試解密比對，確認加密檔可還原
    還原：openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in 檔名.db.enc -out 還原.db -pass file:data/backup.key
 4. 失敗時只推播 LINE 通知給管理者（OWNER_USER_IDS 第一位）
 
 每月還原演練（由每小時的健康檢查在每月第一次執行時呼叫；也可手動：python vvs_backup.py --drill）：
   取最新一份本機備份 → 在暫存區還原 → 檢查完整性、資料表、每個帳號的紀錄都讀得出來
-  → 再做一次加密→解密比對 → 確認金鑰沒有被換過（金鑰一換，舊的雲端備份就要用舊金鑰才打得開）
+  → 再做一次加密→解密比對 → 確認金鑰沒有被換過
+  → 從雲端下載最新一份，用金鑰解密並檢查完整性（確認雲端那份真的打得開）（金鑰一換，舊的雲端備份就要用舊金鑰才打得開）
   通知只說「通過／哪一項失敗」，不含任何人的筆數或數字。
 """
 import base64
@@ -34,6 +36,7 @@ KEEP_LOCAL = 14
 KEY_FILE = cfg.DATA_DIR / 'backup.key'
 OPENSSL = ['openssl', 'enc', '-aes-256-cbc', '-pbkdf2', '-iter', '200000']
 GAS_URL = os.environ.get('BACKUP_GAS_URL', '').strip()
+GAS_TOKEN = os.environ.get('BACKUP_GAS_TOKEN', '').strip()
 ADMIN = os.environ.get('ADMIN_USER_ID', '').strip() or (cfg.OWNER_USER_IDS[0] if cfg.OWNER_USER_IDS else '')
 
 
@@ -100,16 +103,26 @@ def encrypt(path):
         return open(enc, 'rb').read()
 
 
-def upload(path, today):
-    fname = f'vvs_backup_{today}.db.enc'
-    payload = {'filename': fname,
-               'data': base64.b64encode(encrypt(path)).decode()}
+def gas_call(action, timeout=60, **kw):
+    """呼叫雲端備份 GAS；回傳 dict（失敗時 ok=False 並附 error）"""
     s = requests.Session()
     s.max_redirects = 10
-    r = s.post(GAS_URL, json=payload, timeout=60, allow_redirects=True)
-    text = r.text[:200].replace('\n', ' ')
-    ok = r.status_code == 200 and 'error' not in text.lower()
-    return ok, f'{fname}｜HTTP {r.status_code} {text}'
+    r = s.post(GAS_URL, json={'token': GAS_TOKEN, 'action': action, **kw},
+               timeout=timeout, allow_redirects=True)
+    try:
+        res = r.json()
+    except ValueError:
+        return {'ok': False, 'error': f'HTTP {r.status_code}，回應不是 JSON（GAS 網址可能失效）'}
+    return res if isinstance(res, dict) else {'ok': False, 'error': '回應格式不對'}
+
+
+def upload(path, today):
+    fname = f'vvs_backup_{today}.db.enc'
+    res = gas_call('upload', filename=fname, data=base64.b64encode(encrypt(path)).decode())
+    if not res.get('ok'):
+        return False, f"{fname}｜{res.get('error', '未知錯誤')}"
+    pruned = res.get('pruned') or 0
+    return True, f"{fname}｜{res.get('size')} bytes" + (f'｜清掉 {pruned} 份 60 天前的舊檔' if pruned else '')
 
 
 # ================= 每月還原演練 =================
@@ -184,9 +197,54 @@ def drill(db_path, backup_dir, key_file, fp_file, owners, now):
                   '（請確認你另外保存的那份金鑰，指紋也是這個）')
 
 
+def cloud_check(fetch, key_file, now):
+    """從雲端下載最新一份 → 用金鑰解密 → 檢查完整性。回傳 (是否通過, 說明)"""
+    res = fetch()
+    if not res.get('ok'):
+        return False, f"雲端備份下載失敗：{res.get('error', '未知錯誤')}"
+    name = res.get('name', '')
+    try:
+        day = datetime.strptime(name.split('_')[2][:8], '%Y%m%d').replace(tzinfo=cfg.TZ)
+    except (IndexError, ValueError):
+        return False, f'雲端備份檔名不對：{name[:40]}'
+    if (now - day).days > DRILL_MAX_AGE_DAYS:
+        return False, f'雲端最新的備份是 {day:%m/%d}，超過 {DRILL_MAX_AGE_DAYS} 天沒有上傳成功'
+    with tempfile.TemporaryDirectory() as tmp:
+        enc, dec = os.path.join(tmp, 'c.enc'), os.path.join(tmp, 'c.db')
+        with open(enc, 'wb') as f:
+            f.write(base64.b64decode(res.get('data', '')))
+        r = subprocess.run(OPENSSL + ['-d', '-in', enc, '-out', dec, '-pass', f'file:{key_file}'],
+                           capture_output=True)
+        if r.returncode != 0:
+            return False, '雲端備份用目前的金鑰解不開'
+        c = sqlite3.connect(dec)
+        try:
+            ok = c.execute('PRAGMA integrity_check').fetchone()[0]
+            tables = {x[0] for x in c.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        except sqlite3.DatabaseError as e:
+            return False, f'雲端備份解密後不是正常的資料庫（{e}）'
+        finally:
+            c.close()
+        if ok != 'ok' or 'weight_log' not in tables:
+            return False, '雲端備份解密後資料庫不完整'
+    return True, f'・雲端最新一份（{day:%m/%d}）可下載、可解密、資料庫完整'
+
+
 def run_drill():
-    ok, msg = drill(cfg.DB_PATH, BACKUP_DIR, ensure_key(), KEY_FP_FILE,
-                    cfg.OWNER_USER_IDS, datetime.now(cfg.TZ))
+    now = datetime.now(cfg.TZ)
+    ok, msg = drill(cfg.DB_PATH, BACKUP_DIR, ensure_key(), KEY_FP_FILE, cfg.OWNER_USER_IDS, now)
+    if ok:
+        if GAS_URL and GAS_TOKEN:
+            try:
+                cok, cmsg = cloud_check(lambda: gas_call('latest', timeout=120), KEY_FILE, now)
+            except Exception as e:
+                cok, cmsg = False, f'雲端備份下載失敗：{e}'
+        else:
+            cok, cmsg = False, '還沒設定雲端備份（BACKUP_GAS_URL／BACKUP_GAS_TOKEN）'
+        if cok:
+            msg = msg.replace('\n・金鑰指紋', '\n' + cmsg + '\n・金鑰指紋')
+        else:
+            ok, msg = False, f'本機備份沒問題，但雲端那份有狀況：\n{cmsg}'
     log(('還原演練通過' if ok else '還原演練失敗：') + ('' if ok else msg))
     if ADMIN:
         line.push(ADMIN, [line.text(msg if ok else '⚠️ 小秘書每月備份還原演練失敗\n' + msg)])
@@ -233,6 +291,16 @@ def drill_selftest():
             shutil.copy(live, snap)
             key.write_text(secrets.token_hex(32))             # 換金鑰 → 要抓到
             assert not drill(live, bdir, key, fp, ['A', 'B'], now)[0]
+
+            # 雲端驗證：正常的加密檔要通過；用別把金鑰加密的、太舊的、下載失敗的都要抓到
+            good = {'ok': True, 'name': f'vvs_backup_{now:%Y%m%d}.db.enc',
+                    'data': base64.b64encode(encrypt(live)).decode()}
+            assert cloud_check(lambda: good, key, now)[0]
+            other = d / 'k2'
+            other.write_text(secrets.token_hex(32))
+            assert not cloud_check(lambda: good, other, now)[0]
+            assert not cloud_check(lambda: {**good, 'name': 'vvs_backup_20000101.db.enc'}, key, now)[0]
+            assert not cloud_check(lambda: {'ok': False, 'error': 'unauthorized'}, key, now)[0]
         finally:
             KEY_FILE = real_key
     return True
@@ -258,9 +326,9 @@ def main():
         return 1
     prune()
 
-    if not GAS_URL:
-        log('未設定 BACKUP_GAS_URL，略過 Drive 上傳')
-        return 0
+    if not GAS_URL or not GAS_TOKEN:
+        alert('還沒設定 BACKUP_GAS_URL／BACKUP_GAS_TOKEN，今天沒有上傳雲端（本機備份仍有保留）。')
+        return 1
     try:
         ok, result = upload(snap, today)
     except Exception as e:
