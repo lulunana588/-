@@ -43,6 +43,11 @@ RE_START = re.compile(
     r'^起始(?:體重)?\s*[:=]?\s*(?:(\d{2,3}(?:\.\d{1,2})?)\s*(?:kg|公斤)?|(重設|重置|清除|預設))?$', re.I)
 RE_REMIND = re.compile(
     r'^提醒(?:時間)?\s*[:=]?\s*(?:(關閉|關掉|關|停止)|(開啟|打開|開)|(\d{1,2})\s*(?:[:點時]\s*(\d{1,2})?\s*分?)?)?$')
+RE_BODY_REMIND = re.compile(
+    r'^(?:體態|體脂|腰圍)提醒\s*(?:(關閉|關掉|關|停止)|(?:每?(?:週|周|星期|禮拜)([一二三四五六日天]))?\s*'
+    r'(?:(\d{1,2})\s*(?:[:點時]\s*(\d{1,2})?\s*分?)?)?)$')
+WEEKDAYS = '一二三四五六日'
+BODY_REMIND_DEFAULT = '6 09:00'      # 週日 09:00
 NEED_SETUP = '💡 還沒設定身高和目標\n傳「身高 170 目標 70」就會幫你算 BMI 和距離目標'
 WIPE_CONFIRM = '確認刪除全部資料'
 
@@ -100,6 +105,8 @@ HELP = """🤖 VVS小秘書｜使用手冊
 體態　→ 最近的體脂、腰圍變化
 體態趨勢 → 體脂、腰圍的變化圖
 刪除體態 → 選擇要刪掉哪一筆
+體態提醒 週日 09:00 → 每週提醒量體態（預設關閉）
+體態提醒 關閉 → 不再提醒
 
 ━━━━━━━━━━━━━━
 🔐 我的資料
@@ -161,6 +168,9 @@ def handle(uid, raw):
     m = RE_START.match(t)
     if m:
         return [set_start(uid, m)]
+    m = RE_BODY_REMIND.match(t)
+    if m:
+        return [set_body_reminder(uid, m)]
     if t in ('體態趨勢', '體脂趨勢', '腰圍趨勢'):
         return body_trend(uid)
     if t in ('體態', '體脂', '腰圍', '體態紀錄'):
@@ -983,6 +993,62 @@ def reminder_due(uid, now=None):
     return line.text('⏰ 今天還沒量體重喔，量完直接輸入數字即可')
 
 
+def body_reminder_setting(uid):
+    """'off' 或 '6 09:00'（星期幾 0=週一…6=週日、時間）；預設關閉"""
+    return db.get_setting(uid, 'body_remind') or 'off'
+
+
+def _weekday_text(d):
+    return f'週{WEEKDAYS[d]}'
+
+
+def set_body_reminder(uid, m):
+    off, wd, hh, mm = m.groups()
+    cur = body_reminder_setting(uid)
+    if off:
+        db.set_setting(uid, 'body_remind', 'off')
+        return line.text('🔕 已關閉每週體態提醒\n想再打開傳「體態提醒 週日 09:00」')
+    if wd is None and hh is None:
+        if cur == 'off':
+            return line.text('每週體態提醒目前是關閉的\n想開啟傳「體態提醒 週日 09:00」（星期和時間都可以改）')
+        d, tm = cur.split()
+        return line.text(f'📏 每週體態提醒：{_weekday_text(int(d))} {tm}\n要改傳「體態提醒 週六 08:00」，關閉傳「體態提醒 關閉」')
+    base_d, base_t = (cur if cur != 'off' else BODY_REMIND_DEFAULT).split()
+    d = int(base_d) if wd is None else WEEKDAYS.index('日' if wd == '天' else wd)
+    if hh is not None:
+        h, mi = int(hh), int(mm or 0)
+        if not (0 <= h <= 23 and 0 <= mi <= 59):
+            return line.text('時間格式不對，例如：體態提醒 週日 09:00')
+        tm = f'{h:02d}:{mi:02d}'
+    else:
+        tm = base_t
+    db.set_setting(uid, 'body_remind', f'{d} {tm}')
+    db.delete_setting(uid, 'body_reminded_on')
+    return line.text(f'✅ 每週體態提醒：{_weekday_text(d)} {tm}\n'
+                     '那一週還沒量體脂或腰圍，時間到就會提醒你\n關閉傳「體態提醒 關閉」')
+
+
+def body_reminder_due(uid, now=None):
+    """cron 每 5 分鐘呼叫；本人設定的星期、時間到了，近 7 天沒量過體脂或腰圍，才提醒（一天最多一次）"""
+    now = now or now_tpe()
+    s = body_reminder_setting(uid)
+    if s == 'off':
+        return None
+    d, tm = s.split()
+    h, mi = map(int, tm.split(':'))
+    if now.weekday() != int(d) or (now.hour, now.minute) < (h, mi):
+        return None
+    today = now.date().isoformat()
+    if db.get_setting(uid, 'body_reminded_on') == today:
+        return None
+    db.set_setting(uid, 'body_reminded_on', today)
+    week_ago = now - timedelta(days=6)
+    if any(datetime.fromisoformat(r['ts']) >= week_ago.replace(hour=0, minute=0, second=0, microsecond=0)
+           for r in db.list_body(uid)):
+        return None
+    return line.text('📏 這週還沒量體態喔\n量完傳「體脂 28.5 腰圍 82」，只量一項也可以')
+
+
 def reminder_for(uid):
     """相容舊版：今天還沒記錄就回傳提醒（不看時間）"""
     today = now_tpe().date()
@@ -1171,6 +1237,10 @@ def selftest():
     m = chart_marks(a[1:], a, 70)
     assert m['goal'] == 1 and m['goal_row']['weight'] == 69.8
     assert chart_marks(a, a, 71, losing=False)['goal'] == 0
+    for txt, exp in (('體態提醒 週日 09:00', (None, '日', '09', '00')), ('體態提醒 關閉', ('關閉', None, None, None)),
+                     ('體態提醒 每週六 8點', (None, '六', '8', None)), ('體態提醒', (None, None, None, None)),
+                     ('腰圍提醒 21:30', (None, None, '21', '30'))):
+        assert RE_BODY_REMIND.match(txt).groups() == exp, txt
     assert progress_value(0.49).endswith(' 0.5%') and progress_value(42.4).endswith(' 42%')
     assert RE_START.match('起始 90').group(1) == '90' and RE_START.match('起始重設').group(2)
     return True

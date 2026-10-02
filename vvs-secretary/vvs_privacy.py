@@ -107,6 +107,10 @@ def check_isolation():
         problems.append('A 撤銷／修改／刪除時動到了 B 的紀錄')
     if not res.get('b_start_ok'):
         problems.append('A 的操作改到或清掉了 B 的起始體重')
+    if not res.get('a_bremind_ok', True):
+        problems.append('每週體態提醒看到了別人的設定或紀錄')
+    if not res.get('b_bremind_kept', True):
+        problems.append('A 的操作改到了 B 的體態提醒設定')
     if not res.get('a_invariant', True):
         problems.append('B 的資料一變，A 看到的摘要／平均就跟著變（間接洩漏）')
     if not res.get('a_week4_ok', True):
@@ -147,6 +151,7 @@ def _isolation_child():
     w.handle(B, f'{md(ago(7))} 體脂 32.9 腰圍 96.4')   # B 的體態：上週一筆、今天一筆
     w.handle(B, '體脂 31.7 腰圍 93.3')
     w.handle(B, '起始 99.9')                           # B 自訂起始體重
+    w.handle(B, '體態提醒 04:44')                       # B 的每週體態提醒（預設週日）
     b_body = db.list_body(B)
     b_body_ids = [r['id'] for r in b_body]
 
@@ -180,7 +185,7 @@ def _isolation_child():
         return out
 
     def a_views():
-        return json.dumps([chart_hashes(),w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
+        return json.dumps([chart_hashes(), w.handle(A, '體態提醒'), w.body_reminder_setting(A),w.weekly_trend(A), w.weekly_summary(A), w.monthly_summary(A),
                            w.period(A, 'week'), w.period(A, 'month'), w.progress_msg(A),
                            w.recent(A), w.body_recent(A), w.streak(A), w.start_weight(A),
                            w.trend_data(A)[1], w.trend_data(A, '全部')[1], w.trend_data(A, '90')[1]],
@@ -191,8 +196,10 @@ def _isolation_child():
     extra += [db.add_weight(B, w.iso(ago(k * 7 + 2)), 40.5 + k, '反事實', w.iso(now)) for k in range(6)]
     extra_body = [db.add_body(B, w.iso(ago(k * 7 + 1)), 'fat', 45.5 + k, w.iso(now))[0] for k in range(6)]
     db.set_setting(B, 'start_kg', 30.5)
+    db.set_setting(B, 'body_remind', '2 13:13')
     a_invariant = a_views() == before
     db.set_setting(B, 'start_kg', 99.9)
+    db.set_setting(B, 'body_remind', '6 04:44')
     for rid in extra:
         db.delete_weight(B, rid)
     for rid in extra_body:
@@ -226,6 +233,22 @@ def _isolation_child():
     run([db.list_body(A), db.list_body(A, 'fat'), db.list_body(A, 'waist')])
     today = w.iso(now)[:10]
     a_body_ok = [(r['kind'], r['value']) for r in db.list_body(A) if r['ts'][:10] == today] == [('waist', 71.0), ('fat', 24.0)]
+
+    # 每週體態提醒：只看自己的設定、自己的紀錄
+    future = now + timedelta(days=14)                   # 兩週後，A 的體態紀錄都超過 7 天
+    wd = '一二三四五六日'[future.weekday()]
+    run(w.handle(A, f'體態提醒 週{wd} 10:00'))
+    db.set_setting(B, 'body_remind', f'{future.weekday()} 23:00')   # B 同一天但晚上
+    b_future = db.add_body(B, w.iso(future - timedelta(days=1)), 'waist', 95.5, w.iso(now))[0]
+    at = future.replace(hour=10, minute=5)
+    a_bremind = w.body_reminder_due(A, at)              # A 該提醒：時間到了、近 7 天沒量（B 有量不算）
+    b_bremind = w.body_reminder_due(B, at)              # B 不該提醒：B 設的是 23:00
+    run([a_bremind])
+    a_bremind_ok = a_bremind is not None and b_bremind is None
+    db.delete_body(B, b_future)
+    db.delete_setting(B, 'body_reminded_on')
+    db.set_setting(B, 'body_remind', '6 04:44')
+    run(w.handle(A, '體態提醒 關閉'))
     a_rec = db.list_weights(A)[-1]                      # A 修改自己的紀錄要成功（確認功能本身正常）
     run(w.handle_postback(A, f"edit:{a_rec['id']}"))
     run(w.handle(A, '56.4'))
@@ -251,6 +274,8 @@ def _isolation_child():
         'a_start_ok': a_start_own,
         'a_week4_ok': a_week4_ok,
         'a_invariant': a_invariant,
+        'a_bremind_ok': a_bremind_ok,
+        'b_bremind_kept': db.get_setting(B, 'body_remind') == '6 04:44',
         'b_start_ok': db.get_setting(B, 'start_kg') == '99.9',
         'a_body_ok': a_body_ok and not db.list_body(A),        # 記錄正確，且刪除自己資料時有清掉
         'b_body_intact': db.list_body(B) == b_body and len(b_body) == 4,
